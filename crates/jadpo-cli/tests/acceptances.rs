@@ -455,7 +455,7 @@ fn every_sign_off_is_asked_once_with_its_entries() {
         .expect("one sign-off block");
     assert!(
         block.starts_with(
-            "  ask: Widening who can do what needs a person: lending.Book.read. Do you accept it?\n"
+            "  ask: Widening who can do what needs a person: lending.Book.read. Who may do it, and to which records?\n"
         ),
         "{block}"
     );

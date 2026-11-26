@@ -1,6 +1,7 @@
 //! `jadpo explain` (area 14, "`jadpo explain`"): a digest of the app in
 //! front of an agent, read from the graph `jadpo check` builds, so it can't
-//! drift from the code. It is a map, not documentation: who calls and what
+//! drift from the code. It is a map, not documentation: where the product's
+//! rules are written, and that one not written is the owner's; who calls and what
 //! tenancy limits them to; each entity's fields, lifecycle and policy; each
 //! route with what it takes, gives and runs; the background work; the
 //! acceptances already given; and, for each kind of construct the app
@@ -95,6 +96,62 @@ pub fn explain(call: &Call) -> Reply {
     let mut used: BTreeSet<Construct> = BTreeSet::new();
     let mut screen = Screen::new();
     let mut data: Vec<(&str, Json)> = Vec::new();
+
+    // Where the product's rules are written, and that one not written down
+    // is the owner's to decide (chunk 10.11a).
+    let cwd = call
+        .cwd
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let readme = jadpo_db::find_root(&cwd)
+        .and_then(|root| std::fs::read_to_string(root.join("README.md")).ok());
+    let sections = readme.as_deref().map(rules_sections);
+    let written = match &sections {
+        None => "each entity's policy and about: below; the project has no README".to_string(),
+        Some(sections) if sections.is_empty() => {
+            "README.md; each entity's policy and about: below".to_string()
+        }
+        Some(sections) => format!(
+            "README.md, {}; each entity's policy and about: below",
+            sections
+                .iter()
+                .map(|section| format!("\"{section}\""))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    let unwritten = "the owner's to decide; ask them before choosing one";
+    data.push((
+        "rules",
+        Json::object([
+            (
+                "written",
+                Json::array(sections.iter().flat_map(|sections| {
+                    let whole = sections.is_empty().then(|| {
+                        Json::object([("file", "README.md".into()), ("section", Json::Null)])
+                    });
+                    sections
+                        .iter()
+                        .map(|section| {
+                            Json::object([
+                                ("file", "README.md".into()),
+                                ("section", section.as_str().into()),
+                            ])
+                        })
+                        .chain(whole)
+                        .collect::<Vec<_>>()
+                })),
+            ),
+            ("unwritten", unwritten.into()),
+        ]),
+    ));
+    screen.push(Block::Answer {
+        headline: "Rules".to_string(),
+        fields: vec![
+            ("written".to_string(), written),
+            ("unwritten".to_string(), unwritten.to_string()),
+        ],
+    });
 
     // Who calls, and what tenancy limits them to.
     let memberships = jadpo_check::policy::memberships(db, project);
@@ -678,6 +735,23 @@ pub fn explain(call: &Call) -> Reply {
                 .collect(),
         ),
     )
+}
+
+/// The `##` headings of a README that hold its rules: those that name rules,
+/// policy or permissions, or say who may do what.
+fn rules_sections(readme: &str) -> Vec<String> {
+    readme
+        .lines()
+        .filter_map(|line| line.strip_prefix("## "))
+        .map(str::trim)
+        .filter(|heading| {
+            let lower = heading.to_lowercase();
+            ["rule", "polic", "permission", "who may", "who can"]
+                .iter()
+                .any(|word| lower.contains(word))
+        })
+        .map(str::to_string)
+        .collect()
 }
 
 /// The nodes of `kind`, in key order.

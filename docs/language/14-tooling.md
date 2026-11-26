@@ -109,10 +109,18 @@ todo-app/
   before it is designed around, `jadpo help <rule>` for an error, and
   for a change that needs a person, a stop to ask them and, once they
   agree to that change, `jadpo acceptance new` with their words as the
-  reason ([Acceptances](18-records-and-manifest.md#acceptances)). Those
-  and a `(human)` step are its only stops: a product detail a request
-  leaves open, the agent chooses a reasonable reading of, writes down
-  where the owner will see it and carries on. Before a stop it leaves
+  reason ([Acceptances](18-records-and-manifest.md#acceptances)); a
+  request that widens a written rule in so many words still needs the
+  owner to say the widening's limits (who, which records, under what
+  conditions). It also stops, once, asking every open point in one
+  question, when a request changes or contradicts a rule the project
+  writes down (the README's rules, an entity's policy or `about:`), or
+  leaves open a case the rules or the product would decide: who may do it
+  and to which records, deadlines and whether a time boundary is
+  inclusive, what happens when related data is missing, and whether a
+  limit can move. It chooses a reasonable reading only of presentation,
+  such as wording, names and order, and writes it down where the owner
+  will see it. Before a stop it leaves
   the project passing `jadpo check` and `jadpo test`, the part that
   waits on the owner backed out. In an app that has code, the app is the
   agent's closest example: it runs `jadpo explain` first, reads the
@@ -184,10 +192,16 @@ itself once the other errors are fixed isn't reported beside them at all.
 
 ### `jadpo fmt`
 
-`jadpo fmt` formats every file. It fixes each file's imports first, then
+`jadpo fmt` formats the files edited since the last commit: staged,
+unstaged and new ones git doesn't ignore. Its summary says so, as
+`formatted: 2 files edited since the last commit, 1 changed`, and its hint
+names `jadpo fmt --all`, which formats every file. A project outside git,
+or with nothing committed yet, has every file formatted. `jadpo fmt <path>`
+formats the file or folder named. It fixes each file's imports first, then
 lays the file out, writing each file's declarations before their use, the
 primary declaration last. `--check` only reports what it would change, and
-`--layout` also makes promotion moves ([Formatting](#formatting)).
+reads every file, as CI runs it; `--layout` also makes promotion moves,
+across every file ([Formatting](#formatting)).
 
 ### `jadpo test`
 
@@ -378,6 +392,10 @@ can't drift from the code. It is a map an agent reads before changing an
 app that has code, in place of every file and many pages; it is not
 documentation. In order:
 
+- **Rules**: where the product's rules are written, the project's
+  `README.md` and its sections on rules, policy or who may do what, with
+  each entity's policy and `about:` below; and that a rule not written down
+  is the owner's to decide, so an agent asks before choosing one.
 - **Access**: each kind of caller, the ways to sign in, the tenant and
   the entities it scopes, those it doesn't, the membership roles, and the
   actions root policy lists.
@@ -511,6 +529,10 @@ jadpo explain
 ```
 
 ```text output
+Rules
+  written: each entity's policy and about: below; the project has no README
+  unwritten: the owner's to decide; ask them before choosing one
+
 Access
   listed: notes.leave_note: Access.public
 
@@ -542,7 +564,8 @@ next: jadpo inspect <name>  shows one declaration's fields, signature and edges
 ```
 
 The same source gives the same digest. `--json` gives each part as data:
-`access`, `entities`, `routes`, `background`, `acceptances` and `docs`.
+`rules`, `access`, `entities`, `routes`, `background`, `acceptances` and
+`docs`.
 Like `jadpo inspect`, it refuses a project with errors and shows them
 instead, and it takes no argument (`cli.explain_arguments`).
 

@@ -52,23 +52,35 @@ change what.
    the person whether to accept the change, saying what it allows and
    for whom: it is their decision. Go on only once they agree to that
    change, in their answer or in a request that asks in so many words
-   for what it does; "do whatever it needs" agrees to nothing. Then run
+   for what it does; "do whatever it needs" agrees to nothing. A request
+   that widens a written rule in so many words, such as "let agents
+   delete customers", isn't enough on its own:
+   ask the owner for its limits (who, which records, under what
+   conditions) first. Then run
    `jadpo acceptance new <purpose>` and write their own words as its
    `///` reason, with who said them and where, such as
    `/// Sam (owner), in chat: "Yes, owners and admins may import."`.
    Never write a reason of your own.
-7. **Stop only for those two.** A `(human)` error and an acceptance are
-   the decisions Jadpo names as the owner's. A product detail the
-   request leaves open is not one, such as whether "the past 7 days" is a
-   rolling week in UTC, or whether a count includes reopened tickets:
-   choose the reasonable reading, write it down where the owner will see
-   it, as a `///` line on the code that applies it and in your summary,
-   and carry on. Before you stop to ask, leave the project passing
-   `jadpo check` and `jadpo test`: back out or set aside the part that
-   needs the owner, keep the rest of the change that works, and say what
-   is waiting on them. The next change starts from what you leave.
+7. **Stop to ask in three cases**, once, with
+   every open point in one question:
+   - a `(human)` error or an acceptance;
+   - a request that changes or contradicts a rule the project writes down,
+     in the README's rules, an entity's policy or its `about:`;
+   - a case the request leaves open that the rules or the product would
+     decide: who may do it and to which records, a deadline or time
+     boundary (is a boundary inclusive?), what happens when related data
+     is missing, whether a limit can move.
+
+   Choose the reasonable reading only for presentation, such as wording,
+   names and order: write it down as a `///` line on the code that
+   applies it and in your summary, and carry on.
+   Before you stop to ask, leave the project passing `jadpo check` and
+   `jadpo test`: back out or set aside the part that needs the owner,
+   keep the rest of the change that works, and say what is waiting on
+   them. The next change starts from what you leave.
 8. **In an app that has code, run `jadpo explain` first.** It prints a
-   digest of the app from its checked code: who calls, each entity's
+   digest of the app from its checked code: where its rules are
+   written, who calls, each entity's
    fields, lifecycle and who may read, write and delete it, the routes
    with their input and output, the background work, the acceptances
    already given, and for each kind of construct the app uses the one

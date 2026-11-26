@@ -711,6 +711,18 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
     }
 }
 
+/// The changes that let more callers do something, whose question asks
+/// for the widening's limits.
+fn widens_who(change: &str) -> bool {
+    matches!(
+        change,
+        "PolicyChange.widened"
+            | "PolicyChange.restriction_removed"
+            | "PolicyChange.listing_added"
+            | "PolicyChange.listing_removed"
+    )
+}
+
 /// Where a change shows: its entry's line in the record when it has one,
 /// else the file.
 fn place(db: &dyn Db, project: Project, path: &str, heading: Option<&str>) -> Span {
@@ -743,8 +755,16 @@ fn missing_acceptance(
     let subjects: Vec<String> = needs.iter().map(|need| need.subject.clone()).collect();
     // The question to put to the person, and the entries their agreement
     // writes, said once for every such error (chunk 10.9a).
+    // A widening of who may do what asks for its limits rather than a yes,
+    // since a request that names it rarely says who and which records
+    // (chunk 10.11a).
+    let asked = if widens_who(change) {
+        "Who may do it, and to which records?"
+    } else {
+        "Do you accept it?"
+    };
     let question = format!(
-        "{}{}: {}. Do you accept it?",
+        "{}{}: {}. {asked}",
         what[..1].to_uppercase(),
         &what[1..],
         subjects.join(", ")

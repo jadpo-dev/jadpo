@@ -1,5 +1,6 @@
-//! `jadpo fmt`: formats every `.jadpo` file in the project, or in the file
-//! or folder named, and with `--check` reports instead of writing. The
+//! `jadpo fmt`: formats the `.jadpo` files edited since the last commit,
+//! every file with `--all`, or those in the file or folder named, and with
+//! `--check`, which reads every file, reports instead of writing. The
 //! project is found by walking up to `app.jadpo` (area 14). Paths in output
 //! are relative to the project, or to the folder named when there is no
 //! project around it.
@@ -52,6 +53,7 @@ pub fn fmt(call: &Call) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let mut moves = Vec::new();
     let mut refused = Vec::new();
+    let mut scope = Scope::Named;
     if call.flag("--layout") {
         let start = cwd.join(call.arguments.first().map_or(".", String::as_str));
         let Some(root) = jadpo_db::find_root(&start) else {
@@ -71,7 +73,18 @@ pub fn fmt(call: &Call) -> Reply {
         },
         None => match jadpo_db::find_root(&cwd) {
             Some(root) => {
-                let files = jadpo_files(&root);
+                let mut files = jadpo_files(&root);
+                // Alone, `fmt` formats what was edited since the last commit;
+                // `--all`, `--check` (as CI runs it) and `--layout` read
+                // every file (chunk 10.11a).
+                if !call.flag("--all")
+                    && !check
+                    && !call.flag("--layout")
+                    && let Some(edited) = edited_since_commit(&root)
+                {
+                    files.retain(|file| edited.contains(file));
+                    scope = Scope::Edited;
+                }
                 (root, files)
             }
             None => return project_not_found("fmt"),
@@ -108,7 +121,59 @@ pub fn fmt(call: &Call) -> Reply {
     let left = refused.len();
     diagnostics.extend(moves);
     diagnostics.extend(refused);
-    report(check, results, (moved, left), diagnostics, sources)
+    report(check, scope, results, (moved, left), diagnostics, sources)
+}
+
+/// Which files a run read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Scope {
+    /// Every file in the project, or under the path named.
+    Named,
+    /// Only those edited since the last commit.
+    Edited,
+}
+
+/// The files under `root` edited since the last commit: staged, unstaged
+/// and new files git doesn't ignore. Nothing when `root` isn't in a git
+/// repository, there is no commit yet, or none of the project's files is
+/// committed, so such a project formats every file.
+fn edited_since_commit(root: &Path) -> Option<std::collections::BTreeSet<PathBuf>> {
+    let git = |args: &[&str]| -> Option<String> {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        output
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    };
+    let tracked = git(&["ls-files", "-z", "--", "."])?;
+    if tracked.is_empty() {
+        return None;
+    }
+    let changed = git(&["diff", "--name-only", "-z", "--relative", "HEAD", "--", "."])?;
+    let added = git(&[
+        "ls-files",
+        "-z",
+        "--others",
+        "--exclude-standard",
+        "--",
+        ".",
+    ])?;
+    Some(
+        changed
+            .split('\0')
+            .chain(added.split('\0'))
+            .filter(|path| !path.is_empty())
+            .map(|path| root.join(path))
+            .collect(),
+    )
 }
 
 /// The moves the compiler asks for (`layout.promotion_required`) that
@@ -393,7 +458,7 @@ fn unformatted(shown: &str, text: &str, formatted: &str) -> Diagnostic {
             "the formatter changes this line",
         )
         .reason("`jadpo fmt` lays this file out differently from here on.")
-        .next("Run `jadpo fmt` to format it")
+        .next("Run `jadpo fmt --all` to format it")
         .edit(Span::new(shown, 0, text.len() as u32), formatted)
 }
 
@@ -430,6 +495,7 @@ fn count(n: usize, what: &str) -> String {
 
 fn report(
     check: bool,
+    scope: Scope,
     results: Vec<(String, Status)>,
     (moves, refused): (usize, usize),
     diagnostics: Vec<Diagnostic>,
@@ -443,6 +509,7 @@ fn report(
         (Status::Unwritable, "couldn't be written"),
         (Status::Unformatted, "not formatted"),
     ];
+    let edited = scope == Scope::Edited;
     let mut facts: Vec<Fact> = problems
         .iter()
         .filter(|(status, _)| tally(*status) > 0)
@@ -464,8 +531,22 @@ fn report(
     if changed > 0 {
         facts.push(Fact::plain(count(changed, "changed")));
     }
+    if edited && !results.is_empty() {
+        let files = if results.len() == 1 { "file" } else { "files" };
+        facts.insert(
+            0,
+            Fact::plain(format!(
+                "{} {files} edited since the last commit",
+                results.len()
+            )),
+        );
+    }
     let (outcome, headline) = if results.is_empty() {
-        facts.push(Fact::plain("no .jadpo files"));
+        facts.push(Fact::plain(if edited {
+            "no file edited since the last commit"
+        } else {
+            "no .jadpo files"
+        }));
         (Outcome::Success, "nothing to format")
     } else if failed {
         if unchanged > 0 {
@@ -491,8 +572,12 @@ fn report(
         screen.push(Block::diagnostic(diagnostic, &sources));
     }
     screen.push(Block::summary(outcome, headline, facts));
+    if edited {
+        screen.push(Block::hint("jadpo fmt --all", "formats every file"));
+    }
     let data = Json::object([
         ("check", check.into()),
+        ("scope", if edited { "changed" } else { "all" }.into()),
         (
             "files",
             Json::array(results.iter().map(|(path, status)| {
