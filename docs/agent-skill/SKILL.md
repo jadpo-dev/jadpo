@@ -157,15 +157,23 @@ the answer.
 
 ## What you decide yourself
 
-Stop and ask only where Jadpo names the decision as the owner's: an
-error or step whose `next:` ends `(human)`, and an acceptance (below).
-Everything else is yours. A product detail the request leaves open isn't
-the owner's decision in this sense, such as whether "the past 7 days" is
-a rolling week in UTC or whether a count includes tickets reopened
-since. Choose the reasonable reading, write it down where the owner will
-see it, as a `///` line on the code that applies it and in your summary,
-and carry on. The owner can change a reading they disagree with; a
-change that stopped to ask gives them nothing to look at.
+Stop and ask in three cases, once, with every open point in one question:
+
+- an error or step whose `next:` ends `(human)`, and an acceptance
+  (below);
+- a request that changes or contradicts a rule the project writes down:
+  in the README's rules, an entity's policy or its `about:`
+  (`jadpo explain` opens with where they are);
+- a case the request leaves open that the rules or the product would
+  decide: who may do it and to which records, a deadline or time boundary
+  (is a boundary inclusive?), what happens when related data is missing,
+  and whether a limit can move. A rule that isn't written down is the
+  owner's to decide, not yours.
+
+Everything else is yours: presentation, such as wording, names and order.
+Choose the reasonable reading, write it down where the owner will see it,
+as a `///` line on the code that applies it and in your summary, and
+carry on.
 
 Before you stop to ask, leave the project passing `jadpo check` and
 `jadpo test`. Back out or set aside the part that needs the owner, keep
@@ -189,6 +197,9 @@ owner's decision, not yours:
 2. Go on only once they agree to that change: in their answer, or in a
    request that asks in so many words for what it does ("owners and
    admins only" agrees to listing the new action for those roles). A
+   request that widens a written rule without its limits, such as "let
+   agents delete customers", isn't enough on its own: ask who, which
+   records and under what conditions before you draft. A
    general go-ahead, such as "do whatever it needs" or "carry on", agrees
    to nothing that widens access or breaks a client. If they don't
    agree, undo the change. While you wait for the answer, the change
