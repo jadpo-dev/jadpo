@@ -140,6 +140,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.9d A field on a page's items**: [A field from a related record on a page's items](language/06-reads-and-writes.md#a-field-from-a-related-record-on-a-pages-items), and the error pages of [`query.result_field`](errors/query.result_field.md) and [`type.missing_field`](errors/type.missing_field.md).
 - [x] **10.9e Find-or-create and help fixes**: a find-or-create in [What else shows a field](language/09-policy.md#what-else-shows-a-field) and the decision in [the notes](language/notes/09-policy.md), records holding `none` under a unique rule in [Unique rules](language/05-data.md#unique-rules), the `jadpo fix` hint in [`jadpo check`](language/14-tooling.md#jadpo-check) and [the notes](language/notes/14-tooling.md), and the text form of a standard type built on `Text` in `jadpo help <Type>`.
 - [x] **10.10 A second final measurement, on changes nothing tuned on**: the held-out changes H31–H40 are in [agent-changes](../benchmarks/agent-changes/README.md); the report is in the results pull request.
+- [x] **10.11c Filter by a related record**: [Filtering by a related record](language/06-reads-and-writes.md#filtering-by-a-related-record) and its decision in [the notes](language/notes/06-reads-and-writes.md), [What else shows a field](language/09-policy.md#what-else-shows-a-field), the [agent skill](agent-skill/SKILL.md), and the error pages of [`query.unknown_field`](errors/query.unknown_field.md) and [`query.condition_unsupported`](errors/query.condition_unsupported.md).
 
 ## What the 0.2.0 run found
 

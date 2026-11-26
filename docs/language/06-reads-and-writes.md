@@ -1076,6 +1076,228 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE INDEX "note_title_trgm_idx" ON "note" USING gin ((lower("title" COLLATE "C")) gin_trgm_ops);
 ```
 
+## Filtering by a related record
+<!-- topic: filtering-by-a-related-record -->
+
+A condition can ask whether a related record exists:
+`exists(<Entity>.<reference>, <condition>)`. The reference links the two
+entities, and the condition tests the related record's own fields. Here
+a help desk tags tickets through a link entity, `TicketTag`, and lists a
+page of the tickets carrying a tag:
+
+```jadpo check project=related-filter file=app.jadpo hidden
+use desk/entities { Agent }
+
+application {}
+
+principal {
+    user: {
+        subject: Agent.handle
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/agent.jadpo hidden
+type Handle = Text {
+    min_length: 1
+    max_length: 40
+}
+
+/// Someone who answers tickets.
+entity Agent {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/ticket.jadpo hidden
+type TicketTitle = Text {
+    min_length: 1
+    max_length: 200
+}
+
+/// Something a customer asked for.
+entity Ticket {
+    id: Uuid
+    title: TicketTitle
+
+    policy: {
+        read: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/tag.jadpo hidden
+type TagName = Text {
+    min_length: 1
+    max_length: 40
+}
+
+/// A label tickets are sorted by.
+entity Tag {
+    id: Uuid
+    name: TagName
+
+    policy: {
+        read: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/ticket_tag.jadpo
+use desk/entities { Agent, Tag, Ticket }
+
+/// A tag an agent put on a ticket, which only they see, until they take
+/// it off.
+entity TicketTag {
+    id: Uuid
+    ticket_id: Ticket.id {
+        on_delete: OnDelete.cascade
+    }
+    tag_id: Tag.id {
+        on_delete: OnDelete.cascade
+    }
+    agent_id: Agent.id {
+        on_delete: OnDelete.cascade
+    }
+    removed_at: Instant?
+
+    lifecycle: {
+        visible: removed_at == none
+    }
+
+    policy: {
+        read: [agent_id]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/types/ticket_row.jadpo hidden
+use desk/entities { Ticket }
+
+/// A ticket as a list shows it.
+type TicketRow = Output {
+    pick: [Ticket.id, Ticket.title]
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/queries/tagged.jadpo migrate=initial
+use desk/entities { Tag, Ticket, TicketTag }
+use desk/types { TicketRow }
+
+/// The tickets the caller tagged `tag_id`, a page at a time, by title.
+query tagged(tag_id: Tag.id, after: PageCursor?, caller: Principal.user) -> Page<TicketRow> {
+    from: Ticket
+    where: exists(TicketTag.ticket_id, TicketTag.tag_id == tag_id)
+    order: [Ticket.title asc]
+    page: {
+        size: 2
+        after: after
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/queries/tagged.test.jadpo
+use desk/entities { Agent, Tag, Ticket, TicketTag }
+use desk/types { TicketRow }
+
+/// `ticket` tagged `tag` by `agent`.
+fixture tag_ticket(ticket: Ticket, tag: Tag, agent: Agent) -> TicketTag {
+    return make.TicketTag {
+        ticket_id: ticket.id
+        tag_id: tag.id
+        agent_id: agent.id
+    }
+}
+
+test "a page of the tickets an agent tagged, in title order" {
+    var ann: Agent = make.Agent { handle: "ann" }
+    var bob: Agent = make.Agent { handle: "bob" }
+    var urgent: Tag = make.Tag { name: "urgent" }
+    var later: Tag = make.Tag { name: "later" }
+    var lift: Ticket = make.Ticket { title: "Fix the lift" }
+    var bins: Ticket = make.Ticket { title: "Empty the bins" }
+    var door: Ticket = make.Ticket { title: "Oil the door" }
+    var paint: Ticket = make.Ticket { title: "Paint the hall" }
+    tag_ticket(lift, urgent, ann)
+    tag_ticket(bins, urgent, ann)
+    tag_ticket(door, urgent, ann)
+    tag_ticket(paint, later, ann)
+    tag_ticket(paint, urgent, bob)
+    var first: Page<TicketRow> = tagged(urgent.id, none, Principal.user(ann))
+    assert list.map(first.items, t -> t.title) == ["Empty the bins", "Fix the lift"]
+    var second: Page<TicketRow> = tagged(urgent.id, first.next, Principal.user(ann))
+    assert list.map(second.items, t -> t.title) == ["Oil the door"]
+    assert second.next == none
+    var bobs: Page<TicketRow> = tagged(urgent.id, none, Principal.user(bob))
+    assert list.map(bobs.items, t -> t.title) == ["Paint the hall"]
+}
+```
+
+- **The reference.** Either way round: another entity's reference to
+  the one the query reads asks for a record that refers here, as
+  `TicketTag.ticket_id` does; one of the query's own entity's references
+  asks for the record it points at, so a list of todos in a project
+  called `name` is `exists(Todo.project_id, Project.name == name)`. Only a
+  reference links two records, so `exists(Ticket.title, ...)` is
+  `query.condition_unsupported`, naming the references there are.
+- **The condition.** Any condition a query's `where:` takes, on the
+  related entity's fields: comparisons, `in`, `== none`, `and`, `or` and
+  `not`, and the [operations](#operations-in-conditions) with an exact SQL
+  form. Leave it out when any related record will do:
+  `exists(TicketTag.ticket_id)` is a ticket with a tag. A `geo.` test, a
+  search inside text and `matches` stay in a query of their own, since
+  Jadpo's code works them out again on the rows a query reads.
+- **None of them.** `not exists(TicketTag.ticket_id)` keeps the tickets
+  with no tag. `exists` stands anywhere a condition does, under `not`,
+  `or` and `and` too, on a query's own `where:` lines and an aggregate
+  query's, so a count of the tickets with a tag is one statement. An
+  include's `where:` and `exists`'s own condition don't take another.
+- **Who sees the related records.** A related record the caller may not
+  read, or that the related entity's `visible:` hides, isn't there for
+  `exists`, as it isn't for any read. So above, Ann's page holds only the
+  tickets she tagged, and a tag she took off counts for nothing. A call
+  with no caller, a test's or a seed's, runs without policy
+  ([Calls with no caller](13-testing.md#calls-with-no-caller)), so it
+  sees every link `visible:` lets through. The fields `exists` tests
+  show their values, as any condition's do, so each must be one everyone
+  the related entity's `read:` lets in may read
+  ([What else shows a field](09-policy.md#what-else-shows-a-field)):
+  otherwise `policy.output_field_unproved` names it.
+- **What it can't link.** An entity with itself, another store's or a
+  Redis entity, and another domain's, whose records come from its public
+  queries (`query.condition_unsupported`).
+- **Paging and order.** `exists` decides which records a query reads,
+  before its order and its page, so a page holds as many as it can and
+  its cursor walks every match once. Don't read the related records
+  first and filter with `Ticket.id in` a list of their references: that
+  reads every link, and stops at `limit: every`'s 10,000
+  ([Every record that matches](#every-record-that-matches)).
+
+The statement (`jadpo sql`) is one `EXISTS` holding the link, the
+condition, the related entity's `visible:` and its policy, and the index
+derived for it starts with the reference, then the fields the condition
+tests with `==` or `in`, as an include's children's does:
+
+```sql
+-- tagged
+SELECT "id", "title"
+FROM "ticket"
+WHERE ($4 IS NULL OR ("title" COLLATE "C", "id") > ($4 COLLATE "C", $5))
+  AND EXISTS (SELECT 1 FROM "ticket_tag" WHERE "ticket_tag"."ticket_id" = "ticket"."id" AND "tag_id" = $1 AND "removed_at" IS NULL AND "ticket_tag"."agent_id" = $2)
+  AND $3
+ORDER BY "title" COLLATE "C" ASC, "id" ASC
+LIMIT 3
+
+CREATE INDEX "ticket_tag_ticket_id_tag_id_idx" ON "ticket_tag" ("ticket_id", "tag_id") WHERE "removed_at" IS NULL;
+```
+
 ## Order and pages
 <!-- topic: order-and-pages -->
 

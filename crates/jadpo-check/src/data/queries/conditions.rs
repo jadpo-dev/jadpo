@@ -327,6 +327,11 @@ impl Reader<'_> {
                 self.under.pop();
                 Some(Condition::Not(Box::new(inner?)))
             }
+            // A related record (area 6, "Filtering by a related record";
+            // chunk 10.11c).
+            Expr::CallExpr(call) if related::is_exists(call) => {
+                self.related_condition(scope, entity, call, &expr)
+            }
             // `geo.within`, `geo.contains` and `geo.intersects` (area 20,
             // "Queries").
             Expr::CallExpr(call) if geo_condition_name(call).is_some() => {
@@ -466,13 +471,30 @@ impl Reader<'_> {
         let field = tree::name_ref_text(field_node)?;
         let span = Self::span(path, expr);
         if qualifier != entity.name {
-            let other = self.entities.get(&qualifier).is_some();
+            let other = self.entities.get(&qualifier);
+            // The references linking the two, which a condition on a
+            // related record follows (chunk 10.11c).
+            let inside = self.related_refused == Some(related::INSIDE);
+            let links = other
+                .filter(|_| self.related_refused.is_none())
+                .map(|other| related::links(entity, other))
+                .unwrap_or_default();
             let problem = Diagnostic::new(
                 &rule::QUERY_UNKNOWN_FIELD,
                 format!("`{qualifier}.{field}` isn't a field of `{}`", entity.name),
             )
             .at(Self::span(path, &first), format!("not `{}`", entity.name))
-            .reason(if other {
+            .reason(if inside {
+                format!(
+                    "A related record's condition tests that record's own fields, named `{}.<field>`; a condition on `{qualifier}` stands on a `where:` line of the query's own.",
+                    entity.name
+                )
+            } else if !links.is_empty() {
+                format!(
+                    "This part of the query reads `{}` records, and `{qualifier}` is another entity. A condition on a related record is written `exists(<Entity>.<reference>, <condition>)`, which keeps the `{}` records a matching `{qualifier}` is linked to (`jadpo help topic filtering-by-a-related-record`).",
+                    entity.name, entity.name
+                )
+            } else if other.is_some() {
                 format!(
                     "This part of the query reads `{}` records, and `{qualifier}` is another entity; a related entity's records come in through `include:`.",
                     entity.name
@@ -483,14 +505,39 @@ impl Reader<'_> {
                     entity.name
                 )
             });
-            self.out
-                .push(if entity.fields.iter().any(|f| f.name == field) {
-                    problem
-                        .next(format!("Write `{}.{field}`", entity.name))
-                        .edit(Self::span(path, &first), entity.name.clone())
-                } else {
-                    problem.next(format!("Name a field of `{}`", entity.name))
+            // The comparison it stands in, when it is the field compared.
+            let compared = expr
+                .syntax()
+                .parent()
+                .and_then(ast::BinExpr::cast)
+                .filter(|binary| {
+                    binary
+                        .lhs()
+                        .is_some_and(|lhs| lhs.syntax() == expr.syntax())
+                        && binary.op().is_some_and(|op| {
+                            compare_token(op.text()).is_some() || op.text() == "in"
+                        })
                 });
+            let problem = match (links.as_slice(), &compared) {
+                ([link], Some(binary)) => {
+                    let written = format!("exists({link}, {})", shown(binary.syntax()));
+                    problem
+                        .next(format!("Write `{written}`"))
+                        .edit(Self::span(path, binary), written)
+                }
+                ([_, ..], _) => {
+                    let named: Vec<String> = links.iter().map(|l| format!("`{l}`")).collect();
+                    problem.next(format!(
+                        "Test the related `{qualifier}` with `exists(<reference>, <condition>)`, through {}",
+                        crate::or_list(&named)
+                    ))
+                }
+                ([], _) if entity.fields.iter().any(|f| f.name == field) => problem
+                    .next(format!("Write `{}.{field}`", entity.name))
+                    .edit(Self::span(path, &first), entity.name.clone()),
+                ([], _) => problem.next(format!("Name a field of `{}`", entity.name)),
+            };
+            self.out.push(problem);
             return None;
         }
         match entity.fields.iter().find(|f| f.name == field) {

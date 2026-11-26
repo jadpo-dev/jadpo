@@ -281,6 +281,11 @@ fn equality(condition: &Condition) -> Result<(&str, &Value), Unserved> {
             "`matches`",
             "A search reads a full-text index, which only PostgreSQL keeps.",
         )),
+        Condition::Related(_) => Err(unserved(
+            "where",
+            "a related record, `exists(...)`",
+            "Jadpo finds a record in Redis by one key or one set, and Redis can't ask another entity's records which of them refer to it.",
+        )),
     }
 }
 

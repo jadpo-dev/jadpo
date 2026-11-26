@@ -164,6 +164,55 @@ pub enum Condition {
     /// stands on a `where:` line of its own, never under `not`, `or` or
     /// `where_present:`.
     Matches(Search),
+    /// `exists(Related.reference, condition)` (area 6, "Filtering by a
+    /// related record"; chunk 10.11c): some record of another entity
+    /// refers to this one through `reference` and meets `condition`. The
+    /// plan writes it as an `EXISTS` subquery under the related entity's
+    /// lifecycle and policy, so [`condition`] alone gives `None` for it.
+    Related(Box<Related>),
+}
+
+/// A related record a condition asks for (chunk 10.11c).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Related {
+    /// The entity whose records are asked for.
+    pub entity: String,
+    /// The reference that links the two, by field name now: the related
+    /// entity's reference to the record being tested, or with `parent`,
+    /// the tested record's own reference to the related one.
+    pub via: String,
+    /// Whether `via` is the tested record's own reference, so the related
+    /// record is the one it points at.
+    pub parent: bool,
+    /// What the related record must meet, on its own fields; `None` when
+    /// any record that refers here will do.
+    pub condition: Option<Condition>,
+}
+
+impl Condition {
+    /// Whether it asks for a related record anywhere inside.
+    pub fn relates(&self) -> bool {
+        match self {
+            Condition::Related(_) => true,
+            Condition::And(all) | Condition::Or(all) => all.iter().any(Condition::relates),
+            Condition::Not(inner) => inner.relates(),
+            Condition::Present { condition, .. } => condition.relates(),
+            _ => false,
+        }
+    }
+
+    /// The related records it asks for, anywhere inside.
+    pub fn related<'c>(&'c self, out: &mut Vec<&'c Related>) {
+        match self {
+            Condition::Related(related) => out.push(related),
+            Condition::And(all) | Condition::Or(all) => {
+                all.iter().for_each(|c| c.related(out));
+            }
+            Condition::Not(inner) => inner.related(out),
+            Condition::Present { condition, .. } => condition.related(out),
+            _ => {}
+        }
+    }
 }
 
 /// An entity's search, as a `matches` condition tests it.
@@ -328,6 +377,9 @@ impl Condition {
                 condition: inner, ..
             } => inner.fields(out),
             Condition::Matches(search) => out.extend(search.fields.iter().cloned()),
+            // The related entity's fields, which [`Condition::related`]
+            // gives.
+            Condition::Related(_) => {}
         }
     }
 
@@ -749,6 +801,8 @@ pub fn condition(
             }
             crate::search::matches(&search_query(bind, search)?)
         }
+        // Written by the plan, which knows the related entity's policy.
+        Condition::Related(_) => return None,
         Condition::Present { value, condition } => {
             // A field held in several columns or as JSON is given whole:
             // whether it is there is what the line tests.

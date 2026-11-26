@@ -64,10 +64,13 @@ impl Planner<'_> {
         for (name, entry) in &grouping.entries {
             selected.push(self.entry(&mut statement, entity, name, entry)?);
         }
-        let mut conditions: Vec<String> = Vec::new();
-        for line in &query.filter {
-            conditions.push(self.condition(&mut statement, entity, line, false)?);
-        }
+        // A related record's lines are written with its policy and without
+        // (chunk 10.11c).
+        let super::Filter {
+            lines: mut conditions,
+            policed: related,
+            open: related_open,
+        } = self.filter(&mut statement, entity, &query.filter)?;
         let reach = if query.include_erased {
             Reach::Erased
         } else {
@@ -134,7 +137,8 @@ impl Planner<'_> {
                 limit.as_deref(),
             )
         };
-        let (sql, unpoliced) = both(&write, conditions, policy);
+        let (sql, unpoliced) =
+            super::both_filtered(&write, conditions, related, related_open, policy);
         let mut fields = Vec::new();
         for (name, source) in &query.element.fields {
             let model::Source::Entry { at, .. } = source else {
@@ -208,10 +212,11 @@ impl Planner<'_> {
         // Deciding reads each record's tested fields, so a sensitive one
         // is an access record of each, as a list of them would be.
         let sensitive = self.sensitive_read(entity, &mut columns, false);
-        let mut conditions: Vec<String> = Vec::new();
-        for line in &query.filter {
-            conditions.push(self.condition(&mut statement, entity, line, false)?);
-        }
+        let super::Filter {
+            lines: mut conditions,
+            policed: related,
+            open: related_open,
+        } = self.filter(&mut statement, entity, &query.filter)?;
         conditions.extend(self.access(&mut statement, entity, reach)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
         let names = borns(entity, &columns.names);
@@ -220,7 +225,8 @@ impl Planner<'_> {
             text::where_clause(&mut sql, conditions, "");
             sql
         };
-        let (sql, unpoliced) = both(&write, conditions, policy);
+        let (sql, unpoliced) =
+            super::both_filtered(&write, conditions, related, related_open, policy);
         let held = self.rules_held(entity, &columns.names, &columns.kinds);
         Some(Decided {
             select: Select {

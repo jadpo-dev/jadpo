@@ -1926,3 +1926,30 @@ fn project_of(db: &Database, files: &[(&str, &str)]) -> Project {
         Vec::new(),
     )
 }
+
+/// A related record's condition (area 6, "Filtering by a related record";
+/// chunk 10.11c) is an `EXISTS` under its entity's policy in the statement
+/// a caller runs, and without it in the one a call with no caller runs.
+#[test]
+fn a_related_record_is_under_its_policy_only_with_a_caller() {
+    let plan = plan();
+    let read = &plan
+        .query_named("projects_with_open_todos")
+        .expect("planned")
+        .read;
+    assert!(
+        read.select.sql.contains(r#"EXISTS (SELECT 1 FROM "todo" WHERE "todo"."project_id" = "project"."id" AND "status" = $1 AND "todo"."owner_id" = $2)"#),
+        "{}",
+        read.select.sql
+    );
+    let unpoliced = read
+        .select
+        .unpoliced
+        .as_deref()
+        .expect("a statement without policy");
+    assert!(
+        unpoliced.contains(r#"EXISTS (SELECT 1 FROM "todo" WHERE "todo"."project_id" = "project"."id" AND "status" = $1)"#),
+        "{unpoliced}"
+    );
+    assert!(!unpoliced.contains("owner_id"), "{unpoliced}");
+}

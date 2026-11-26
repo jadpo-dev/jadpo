@@ -43,9 +43,11 @@ use jadpo_std::read::{
 use crate::constant::Constant;
 
 mod aggregates;
+mod related;
 use crate::policy::Row;
 use crate::types::Types;
 use jadpo_check::policy::Effect;
+use related::{Filter, both_filtered};
 
 /// A query's plan: its read, with the failure when a query for exactly
 /// one record finds none (`ReadPlan::missing`).
@@ -554,10 +556,13 @@ impl Planner<'_> {
                 cursor.push((at + sorted.part, sorted.ty));
             }
         }
-        let mut conditions: Vec<String> = Vec::new();
-        for line in &query.filter {
-            conditions.push(self.condition(&mut statement, entity, line, false)?);
-        }
+        // A related record's lines are written with its policy and without
+        // (chunk 10.11c).
+        let Filter {
+            lines: mut conditions,
+            policed: related,
+            open: related_open,
+        } = self.filter(&mut statement, entity, &query.filter)?;
         // A record whose vector is `none` is never near anything.
         if let Some((_, _, column, _)) = &nearest {
             conditions.push(jadpo_sql::condition::present(column));
@@ -669,6 +674,10 @@ impl Planner<'_> {
         // A read of exactly one record selects its grant, so the one
         // statement tells a hidden record from one that isn't there.
         let (sql, unpoliced, permitted) = if cardinality == Cardinality::One && limit.is_none() {
+            // One statement for every call, so a related record's policy
+            // holds in it.
+            let mut conditions = conditions;
+            conditions.extend(related);
             granted(
                 &borns(entity, &columns.names),
                 entity,
@@ -681,7 +690,7 @@ impl Planner<'_> {
                 },
             )
         } else {
-            let (sql, unpoliced) = both(&write, conditions, policy);
+            let (sql, unpoliced) = both_filtered(&write, conditions, related, related_open, policy);
             (sql, unpoliced, None)
         };
         let includes = self.includes(entity, &query.includes, &columns)?;

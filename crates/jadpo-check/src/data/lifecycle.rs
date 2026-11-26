@@ -112,6 +112,7 @@ pub fn reads_now(condition: &Condition) -> bool {
         Condition::And(all) | Condition::Or(all) => all.iter().any(reads_now),
         Condition::Not(inner) => reads_now(inner),
         Condition::Present { condition, .. } => reads_now(condition),
+        Condition::Related(related) => related.condition.as_ref().is_some_and(reads_now),
     }
 }
 

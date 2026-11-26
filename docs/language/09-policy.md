@@ -2603,7 +2603,11 @@ compiler checks each like an output:
   condition or order. A transition's `when:` is a write's condition:
   refusing a record shows what it tests. A lifecycle's `visible:` is a
   condition on every read of its entity, so it tests only fields everyone
-  the entity's `read:` lets in may read.
+  the entity's `read:` lets in may read. A condition on a related record,
+  `exists(...)`, reads only the related records the caller may read and
+  `visible:` shows, and tests only fields everyone the related entity's
+  `read:` lets in may read, as an include's children do
+  ([Filtering by a related record](06-reads-and-writes.md#filtering-by-a-related-record)).
 - **Copies.** Passing a value through a variable, another type, a
   function or the record a write stores it in doesn't escape the field's
   rules, because the compiler tracks where it came from. A migration's

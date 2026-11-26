@@ -3931,7 +3931,8 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
 /// index the table has already starts with those columns. The columns are
 /// ascending: PostgreSQL reads an index backwards for a descending order.
 /// The records of an entity with a lifecycle are indexed only as far as
-/// its `visible:` lets queries see them.
+/// its `visible:` lets queries see them. A related record a condition asks
+/// for is indexed as an include's children are.
 fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mut Schema) {
     use queries::{Include, IncludeKind};
     let queries = queries::query_models(db, project);
@@ -3960,6 +3961,21 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         let cols = columns(&[], &query.filter, &query.order);
         if !cols.0.is_empty() {
             wanted.push((query.entity.clone(), cols, query.name.clone()));
+        }
+        // A related record that refers here is found by its reference,
+        // then what its condition tests for equality (chunk 10.11c); one
+        // this record points at, by its `id`.
+        let mut related = Vec::new();
+        for line in &query.filter {
+            line.related(&mut related);
+        }
+        for found in related.into_iter().filter(|found| !found.parent) {
+            let cols = columns(
+                std::slice::from_ref(&found.via),
+                found.condition.as_slice(),
+                &[],
+            );
+            wanted.push((found.entity.clone(), cols, query.name.clone()));
         }
         walk(&query.includes, &query.name, &mut wanted);
     }

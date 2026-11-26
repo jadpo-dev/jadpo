@@ -170,6 +170,18 @@ impl Read {
             Condition::Call { call, .. } => self.field(entity, &call.field),
             // Its words come from the entity's `search:`, counted there.
             Condition::Matches(_) => {}
+            // The related record's fields, which it tests (chunk 10.11c).
+            Condition::Related(related) => {
+                let holder = if related.parent {
+                    entity
+                } else {
+                    &related.entity
+                };
+                self.field(holder, &related.via);
+                if let Some(inner) = &related.condition {
+                    self.condition(&related.entity, inner);
+                }
+            }
         }
     }
 }

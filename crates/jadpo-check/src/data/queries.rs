@@ -45,6 +45,7 @@ mod missing;
 mod operations;
 mod order;
 mod read;
+mod related;
 mod values;
 mod vectors;
 
@@ -173,7 +174,7 @@ pub use jadpo_std::read::Cardinality;
 /// reads: the SQL renderer's model, which the plan's statements and the
 /// partial indexes render (`jadpo-sql`).
 pub use jadpo_sql::form::Held;
-pub use jadpo_sql::{Call, CallArg, Compare, Condition, Lowering, Test, Value, lowering};
+pub use jadpo_sql::{Call, CallArg, Compare, Condition, Lowering, Related, Test, Value, lowering};
 
 /// A comparison's operator from its token: `==`, `<=`.
 fn compare_token(token: &str) -> Option<Compare> {
@@ -433,6 +434,7 @@ pub fn query_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         under: Vec::new(),
         layer: false,
         search_refused: None,
+        related_refused: None,
     };
     let model = reader.query(symbol, &decl).map(Arc::new);
     Some(QueryRead {
@@ -520,6 +522,10 @@ struct Reader<'a> {
     /// Where the conditions being read stand, when `matches` can't (area
     /// 16, "Search"; chunk B12): an include's or an aggregate's.
     search_refused: Option<&'static str>,
+    /// Where the conditions being read stand, when `exists` can't (area 6,
+    /// "Filtering by a related record"; chunk 10.11c): an include's, or a
+    /// related record's own.
+    related_refused: Option<&'static str>,
 }
 
 /// The sections of one query or include block, as written.

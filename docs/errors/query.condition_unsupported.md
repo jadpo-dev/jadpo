@@ -377,6 +377,51 @@ error: `found` searches by words and orders by nearness
 check failed: 1 error, 1 file
 ```
 
+A condition on a related record follows a reference, so `exists` names
+one first:
+
+main.jadpo:
+
+```jadpo check project=e-condition-related-reference expect=query.condition_unsupported
+type Title = Text {
+    max_length: 80
+}
+
+entity Author {
+    id: Uuid
+    name: Title
+}
+
+entity Book {
+    id: Uuid
+    author_id: Author.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+}
+
+query books_by(name: Title) -> List<Book> {
+    from: Book
+    where: exists(Book.title, Author.name == name)
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+```text output
+error: `Book.title` isn't a reference to or from `Book`
+ --> main.jadpo:20:19
+   |
+20 |     where: exists(Book.title, Author.name == name)
+   |                   ^^^^^^^^^^ not a reference
+  reason: `exists` follows a reference: another entity's reference to `Book` asks for a record that refers here, and one of `Book`'s own asks for the record it points at. The references here are `Book.author_id`.
+  next: Name one of those references first (agent)
+  rule: query.condition_unsupported
+  help: https://jadpo.dev/docs/errors/query.condition_unsupported
+
+check failed: 1 error, 1 file
+```
+
 ## How to fix it
 
 **If the condition can compare for equality**, use `==`, `!=` or `in`:
@@ -495,8 +540,44 @@ query found(phrase: SearchText) -> List<Book> {
 
 One `SearchText` takes several words, quoted phrases and `-word`. A nearest-neighbour search goes in a query of its own.
 
+**If a related record's condition names no reference**, name the one
+that links the two entities first:
+
+```jadpo fragment
+    where: exists(Book.author_id, Author.name == name)
+```
+
+```jadpo check project=e-condition-related-reference-fix hidden
+type Title = Text {
+    max_length: 80
+}
+
+entity Author {
+    id: Uuid
+    name: Title
+}
+
+entity Book {
+    id: Uuid
+    author_id: Author.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+}
+
+query books_by(name: Title) -> List<Book> {
+    from: Book
+    where: exists(Book.author_id, Author.name == name)
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+The query keeps the books whose author is called `name`.
+
 ## Related
 
+- [Filtering by a related record](../language/06-reads-and-writes.md#filtering-by-a-related-record)
 - [Filters](../language/06-reads-and-writes.md#filters)
 - [Operations in conditions](../language/06-reads-and-writes.md#operations-in-conditions)
 - [`query.optional_value`](query.optional_value.md)

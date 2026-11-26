@@ -157,6 +157,7 @@ mod recordings;
 mod records;
 mod refits;
 mod registry_commands;
+mod related_records;
 mod released;
 mod removals;
 mod rename;
