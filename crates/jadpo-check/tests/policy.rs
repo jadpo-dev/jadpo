@@ -1359,22 +1359,16 @@ action spend(project_id: Project.id, amount: Amount) fails ProjectNotFound, Over
 }
 "#,
     );
-    // The project sent when the spend fits shows that it fits, which the
-    // budget decides (chunk 4.8).
+    // The project sent when the spend fits shows only that it fits, which
+    // the failure shows already: a guard is one decision (chunk 10.11b).
+    // The budget the failure carries is still refused.
     assert_eq!(
         rules_of(&found),
-        [
-            "policy.output_field_unproved",
-            "policy.output_field_unproved"
-        ],
+        ["policy.output_field_unproved"],
         "{found:#?}"
     );
     assert!(
         found[0].contains("`OverBudget.budget` carries `Project.budget`"),
-        "{found:#?}"
-    );
-    assert!(
-        found[1].contains("`ProjectCard.id` carries `Project.budget`"),
         "{found:#?}"
     );
 }

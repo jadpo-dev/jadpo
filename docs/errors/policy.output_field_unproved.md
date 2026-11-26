@@ -2007,6 +2007,205 @@ with a literal or a constant, storing the key where the readers may read
 it too (the sender's address in the ticket's `subject`), or storing the
 field's value itself ([What else shows a field](../language/09-policy.md#what-else-shows-a-field)).
 
+**If the field only decides whether the action goes ahead**, it is a
+guard, one decision, not a copy into every field the action stores. Only
+staff read a customer, and so whether one is blocked; every member reads
+a ticket. A ticket opened past the guard holds the request's values and
+the customer's `id`, none of them worked out from `blocked`, so it is
+stored with no acceptance:
+
+```jadpo check project=e-guard-one-decision file=app.jadpo hidden
+use desk/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+```
+
+```jadpo check project=e-guard-one-decision file=authentication.jadpo hidden
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=e-guard-one-decision file=policy.jadpo hidden
+use desk/entities { Workspace }
+
+policy {
+    tenant: Workspace
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/types/role.jadpo hidden
+/// What a member may do.
+type Role = Enum {
+    owner
+    agent
+    viewer
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/types/message_body.jadpo hidden
+/// A message's text.
+type MessageBody = Text {
+    max_length: 500
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/entities/user.jadpo hidden
+use desk/types { MessageBody }
+
+/// Someone who signs in.
+entity User {
+    id: Uuid
+    handle: MessageBody {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/entities/workspace.jadpo hidden
+use desk/types { MessageBody, Role }
+
+/// A customer of the desk, which every other record belongs to.
+entity Workspace {
+    id: Uuid
+    name: MessageBody
+
+    policy: {
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/entities/membership.jadpo hidden
+use desk/entities { User, Workspace }
+use desk/types { Role }
+
+/// A person's role in a workspace.
+entity Membership {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: workspace_id
+        member: user_id
+        role: role
+    }
+
+    policy: {
+        read: [Role.owner, user_id]
+    }
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/entities/customer.jadpo hidden
+use desk/entities { Workspace }
+use desk/types { MessageBody, Role }
+
+/// Someone who writes to the desk, whom only staff see, and whether
+/// they may open tickets.
+entity Customer {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    email: MessageBody
+    blocked: Bool
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent]
+    }
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/entities/ticket.jadpo migrate=initial hidden
+use desk/entities { Customer, Workspace }
+use desk/types { MessageBody, Role }
+
+/// A request for help, which every member reads, its customer by `id`.
+entity Ticket {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    customer_id: Customer.id {
+        on_delete: OnDelete.cascade
+    }
+    subject: MessageBody
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/failures/customer_blocked.jadpo hidden
+/// The customer may not open tickets.
+type CustomerBlocked = Failure {
+    kind: FailureKind.rejected
+    message: "This customer can't open tickets."
+}
+```
+
+```jadpo check project=e-guard-one-decision file=domains/desk/actions/open_ticket.jadpo
+use desk/entities { Customer, CustomerNotFound, Ticket, Workspace, WorkspaceNotFound }
+use desk/types { MessageBody }
+use desk/failures { CustomerBlocked }
+
+/// Opens a ticket for a customer who isn't blocked.
+action open_ticket(
+    workspace_id: Workspace.id,
+    customer_id: Customer.id,
+    subject: MessageBody
+) fails CustomerNotFound, WorkspaceNotFound, CustomerBlocked -> Ticket {
+    var customer: Customer = attempt Customer.get(customer_id)
+    if (customer.blocked) {
+        reject CustomerBlocked
+    }
+    return attempt Ticket.create {
+        set: {
+            workspace_id: workspace_id
+            customer_id: customer.id
+            subject: subject
+        }
+    }
+}
+```
+
+What a guard shows is that it refused, to whoever gets the failure.
+Everyone who reaches the customer here may read `blocked`, so that needs
+nothing. When some callers may not, the one error is at the `reject`:
+`open_ticket` raises `desk.CustomerBlocked` on a condition that tests
+`Customer.blocked`. A person's one acceptance answers it, however many
+fields the action stores: an entry
+`"desk.Customer.blocked -> desk.CustomerBlocked": PolicyChange.field_copied`,
+the field and the failure, with their words as its reason.
+
+A value worked out from the field after the guard is still a copy, and
+so is one decided by an `if` that may `return`, which shows the caller a
+different value. A guard on a secret, such as a `PasswordHash` checked
+with `crypto.verify_password`, lets nothing past it, and no acceptance
+allows its failure
+([What else shows a field](../language/09-policy.md#what-else-shows-a-field)).
+
 **If everyone who may read a note should read its appraisal**, remove the
 field's own `policy:`, so it follows `Note`'s grants:
 

@@ -260,9 +260,10 @@ fn a_reply_action_failing_on_what_only_the_system_reads_is_refused() {
             "    for call in earlier {\n        if (call.secret_note == \"blocked\") {\n            reject CallerBlocked\n        }\n    }\n"
         ),
         [
+            // The reply after a loop that may have failed shows only that
+            // none did, which whether it fails shows already: a guard is
+            // one decision (chunk 10.11b).
             "domains/support/actions/answer_call.jadpo policy.output_field_unproved: whether `answer_call` fails shows `PhoneLog.secret_note`, which not everyone may read",
-            // The reply after a loop that may have failed shows that none did.
-            CALLS_SEEN,
         ]
     );
     assert_eq!(

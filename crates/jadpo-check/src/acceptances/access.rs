@@ -215,11 +215,21 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
     out.extend(declined.into_iter().map(Entry::new));
     // Each field copy a person approved (chunk 10.7c), between fields
     // that are there: one naming a field that isn't approves nothing.
+    // A guard's failure (chunk 10.11b) is there when a failure has its
+    // name.
     let fields = super::present_fields(db, project);
+    let failures = crate::failures::failure_table(db, project);
+    let there = |to: &str| {
+        fields.contains(to)
+            || (super::copies::failure(to)
+                && to
+                    .rsplit_once('.')
+                    .is_some_and(|(_, name)| failures.contains(name)))
+    };
     out.extend(
         super::copies::accepted(db, project)
             .into_iter()
-            .filter(|(from, to)| fields.contains(from) && fields.contains(to))
+            .filter(|(from, to)| fields.contains(from) && there(to))
             .map(|(from, to)| {
                 Entry::new(format!(
                     "{}{}",

@@ -377,8 +377,9 @@ action forecast_budget(project_id: Project.id) fails ProjectNotFound -> Project 
 
 #[test]
 fn what_decides_a_stored_value_is_stored_with_it() {
-    // An action is all-or-nothing, so what a `reject` tests decides every
-    // value it stores, before it or after.
+    // An action is all-or-nothing, but what a `reject` tests decides only
+    // whether it fails, which its failure shows: a value stored before it
+    // or after isn't decided by it (chunk 10.11b).
     let found = stores(
         r#"type OverBudget = Failure {
     kind: FailureKind.conflict
@@ -473,7 +474,6 @@ action close_over_spent(task_id: Task.id) fails TaskNotFound, ProjectNotFound ->
         &[
             "`flag_budget` stores a value decided by `Project.budget` in `Project.spent`, which not everyone who may read `spent` may read",
             "`close_over_budget` stores a value decided by `Project.budget` in `Task.closed`, which not everyone who may read `closed` may read",
-            "`spend_unless_over` stores a value decided by `Project.budget` in `Project.spent`, which not everyone who may read `spent` may read",
             "`spend_unless_over` raises `OverBudget` on a condition that tests `Project.budget`, which not every caller may read",
             "`forecast_unless_over` raises `OverBudget` on a condition that tests `Project.budget`, which not every caller may read",
             "`move_and_close` stores a value decided by `Project.spent` in `Task.closed`, which not everyone who may read `closed` may read",

@@ -800,9 +800,12 @@ file (below).
   approves storing that field in that field from any action, for as long
   as its file is kept, as a decline goes on declining while its line is
   there ([What else shows a field](09-policy.md#what-else-shows-a-field)).
+  A guard's entry names the failure in place of a target field,
+  `"desk.Customer.blocked -> desk.CustomerBlocked"`, and approves letting
+  every caller learn whether a guard on that field raises it.
   `access.jadpo_record` keeps it as a `copy` line, which is the change the
-  acceptance that adds it matches; one naming a field that isn't there
-  approves nothing and matches nothing. Without it, the copy is
+  acceptance that adds it matches; one naming a field or a failure that
+  isn't there approves nothing and matches nothing. Without it, the copy is
   `policy.output_field_unproved`, whose `next:` gives the entry, since
   `jadpo acceptance new` drafts only once the source checks.
 - **Drafting is a command; the reason is the person's words.**
@@ -876,7 +879,7 @@ Each change the compiler reports, and the subject it names:
 | `PolicyChange.shared_entity_added` | `library.Genre` | A new entity shared by every tenant |
 | `PolicyChange.listing_added` | `lending.borrow` | An action is newly listed under `actions:`, which replaces its entities' grants |
 | `PolicyChange.listing_removed` | `catalogue.staff_books` | An action's or a query's line under `actions:` is gone |
-| `PolicyChange.field_copied` | `"desk.Macro.body -> desk.Reply.body"` | An acceptance approves storing the first field in the second, which people may read who may not read the first ([What else shows a field](09-policy.md#what-else-shows-a-field)); a new `copy` line in the access record |
+| `PolicyChange.field_copied` | `"desk.Macro.body -> desk.Reply.body"`, or a guard's `"desk.Customer.blocked -> desk.CustomerBlocked"` | An acceptance approves storing the first field in the second, which people may read who may not read the first, or letting every caller learn whether a guard on the field raises the failure ([What else shows a field](09-policy.md#what-else-shows-a-field)); a new `copy` line in the access record |
 | `PolicyChange.call_ungranted_declined` | `lending.borrow` | A new `decline policy.call_ungranted:`, on the declaration it sits above |
 | `PolicyChange.sign_in_loosened` | `magic_link.expires_after` | A setting past its limit and looser than before |
 | `PolicyChange.scopes_loosened` | `external_token`, `OAuthScope.notes_read`, `notes.Note.read` | `external_token:`'s `scopes:` removed, a declared scope reading another scope-token, or an effect naming a scope it didn't, or another ([Scopes](09-policy.md#scopes)) |

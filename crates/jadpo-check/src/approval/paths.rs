@@ -171,7 +171,14 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
         "PolicyChange.listing_added" | "PolicyChange.listing_removed" => callable_named(subject),
         // Who reaches the field a copy is stored in (chunk 10.7c).
         crate::acceptances::copies::CHANGE => {
-            let (_, to) = crate::acceptances::copies::parse(subject)?;
+            let (from, to) = crate::acceptances::copies::parse(subject)?;
+            // A guard's failure shows the source to whoever reaches the
+            // action raising it (chunk 10.11b): who reaches its field.
+            let to = if crate::acceptances::copies::failure(&to) {
+                from
+            } else {
+                to
+            };
             let (_, entity, field, _) = grant_parts(&to);
             Some(Target::Reads {
                 entity: entity?.to_string(),

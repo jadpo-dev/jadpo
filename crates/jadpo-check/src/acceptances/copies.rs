@@ -35,12 +35,24 @@ pub fn flow(from: &str, to: &str) -> String {
     format!("{from} -> {to}")
 }
 
-/// The source and target fields a subject names, when it names a copy.
+/// The source field and the target a subject names, when it names a
+/// copy: a field, or a failure a guard raises on the field (chunk 10.11b,
+/// `"desk.Customer.blocked -> desk.CustomerBlocked"`).
 pub fn parse(subject: &str) -> Option<(String, String)> {
     let text = subject.strip_prefix('"')?.strip_suffix('"')?;
     let (from, to) = text.split_once(" -> ")?;
     let field = |name: &str| name.split('.').count() >= 3 && !name.contains(' ');
-    (field(from) && field(to)).then(|| (from.to_string(), to.to_string()))
+    (field(from) && (field(to) || failure(to))).then(|| (from.to_string(), to.to_string()))
+}
+
+/// Whether a copy's target names a failure, `desk.CustomerBlocked`, not a
+/// field: whether a guard raises it shows one fact about the source.
+pub fn failure(to: &str) -> bool {
+    let parts: Vec<&str> = to.split('.').collect();
+    parts.len() == 2
+        && !parts[0].is_empty()
+        && !to.contains(' ')
+        && parts[1].chars().next().is_some_and(char::is_uppercase)
 }
 
 /// Every copy an acceptance in the project approves, as `(from, to)`.
