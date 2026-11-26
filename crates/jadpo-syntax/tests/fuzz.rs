@@ -128,6 +128,15 @@ fn a_semicolon_before_an_infix_not_equal_is_not_split() {
     );
 }
 
+/// A `;` before a word that joins two values, `in` among them, isn't
+/// split onto a line of its own, which that word can't start.
+#[test]
+fn a_semicolon_before_an_infix_word_is_not_split() {
+    check(
+        "query todos_by_ids(todo_ids: List<Todo.id>) -> List<TodoView> {\n    from: Todo\n    where: Todo.id ;in todo_ids\n    limit: 100\n}\n",
+    );
+}
+
 #[test]
 fn a_semicolon_opening_a_line_keeps_its_indent() {
     check("library security {\n    constant a: Int = 5\n    /// B.\n;    constant b: Int = 3\n}\n");

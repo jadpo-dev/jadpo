@@ -550,8 +550,14 @@ impl Lexer<'_> {
         // rest of a path: `use bakery;/actions`), a `{`, a `(` or a `[`
         // (the arguments of `assert set_oven;("TOAST", 0)`, which no line
         // starts with), or what only follows a value, such as the `?` of
-        // `flour: Grams;?`, a `,` or an infix operator, `!=` among them.
+        // `flour: Grams;?`, a `,` or an infix operator, `!=` among them,
+        // and a word that joins two values, `in`, `and`, `or` or `matches`.
+        let first_word = code
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .next()
+            .unwrap_or("");
         let starts_line = !code.starts_with("!=")
+            && !matches!(first_word, "in" | "and" | "or" | "matches")
             && code
                 .chars()
                 .next()

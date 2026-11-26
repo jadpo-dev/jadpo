@@ -10,7 +10,8 @@
 use jadpo_check::data::EntityModel;
 use jadpo_check::data::queries::{Condition, Related};
 use jadpo_check::policy::Effect;
-use jadpo_sql::policy::{ANYONE, qualified};
+use jadpo_sql::policy::ANYONE;
+use jadpo_sql::statement as text;
 
 use super::{Planner, Reach, Statement, both, field};
 use crate::policy::Row;
@@ -63,8 +64,7 @@ impl Planner<'_> {
     ) -> Option<String> {
         Some(match condition {
             Condition::Related(related) => {
-                let text = self.exists(statement, entity, related, policed)?;
-                if negated { format!("NOT {text}") } else { text }
+                self.exists(statement, entity, related, negated, policed)?
             }
             Condition::And(parts) | Condition::Or(parts) if condition.relates() => {
                 let and = matches!(condition, Condition::And(_)) != negated;
@@ -72,7 +72,7 @@ impl Planner<'_> {
                 for part in parts {
                     rendered.push(self.relating(statement, entity, part, negated, policed)?);
                 }
-                format!("({})", rendered.join(if and { " AND " } else { " OR " }))
+                text::joined(&rendered, and)
             }
             Condition::Not(inner) if inner.relates() => {
                 self.relating(statement, entity, inner, !negated, policed)?
@@ -82,12 +82,14 @@ impl Planner<'_> {
     }
 
     /// `EXISTS (SELECT 1 ...)` of the related records `related` asks for,
-    /// linked to the row of `entity` the statement reads.
+    /// linked to the row of `entity` the statement reads, `NOT EXISTS`
+    /// when `negated`.
     fn exists(
         &mut self,
         statement: &mut Statement,
         entity: &EntityModel,
         related: &Related,
+        negated: bool,
         policed: bool,
     ) -> Option<String> {
         let target = self.model.entity(&related.entity)?;
@@ -96,11 +98,9 @@ impl Planner<'_> {
         } else {
             (related.via.as_str(), "id")
         };
-        let mut tests = vec![format!(
-            "{} = {}",
-            qualified(&target.table, &field(target, theirs)?.column),
-            qualified(&entity.table, &field(entity, ours)?.column),
-        )];
+        let theirs = &field(target, theirs)?.column;
+        let ours = &field(entity, ours)?.column;
+        let mut tests = Vec::new();
         if let Some(inner) = &related.condition {
             tests.push(self.condition(statement, target, inner, false)?);
         }
@@ -111,10 +111,12 @@ impl Planner<'_> {
                 tests.push(policy);
             }
         }
-        Some(format!(
-            "EXISTS (SELECT 1 FROM {} WHERE {})",
-            jadpo_sql::ident(&target.table),
-            tests.join(" AND ")
+        Some(text::related(
+            &target.table,
+            theirs,
+            (&entity.table, ours),
+            &tests,
+            negated,
         ))
     }
 }
