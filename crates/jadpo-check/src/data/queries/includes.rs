@@ -540,10 +540,7 @@ impl Reader<'_> {
                         crate::and_list(&names),
                         field.name
                     ))
-                    .next(format!(
-                        "Remove `{}` from `{ty}`, or include records under it",
-                        field.name
-                    ))
+                    .next(related_next(entity, ty, &field.name, &field.declared))
                 };
                 self.out.push(problem);
                 continue;
@@ -683,4 +680,34 @@ impl Reader<'_> {
             ..include.clone()
         })
     }
+}
+
+/// What to do with `ty`'s `name`, which no field of `entity` or include
+/// fills (chunk 10.9d): a field of a record `entity` refers to is filled
+/// through an include, as a nested record, never as a flat field. A
+/// page's items are filled as any result is ("A field from a related
+/// record on a page's items", area 6).
+fn related_next(entity: &EntityModel, ty: &str, name: &str, declared: &Ty) -> String {
+    let topic = "`jadpo help topic order-and-pages`";
+    if let Ty::Field(other, path) = declared.strip_nullable()
+        && *other != entity.name
+        && let Some(reference) = entity.fields.iter().find(|field| {
+            field
+                .reference
+                .as_ref()
+                .is_some_and(|reference| reference.target == *other)
+        })
+    {
+        let include = reference
+            .name
+            .strip_suffix("_id")
+            .unwrap_or(&reference.name);
+        let picked = path.join(".");
+        let optional = if reference.nullable { "?" } else { "" };
+        return format!(
+            "Fill it from an include: in place of `{name}`, give `{ty}` a field `{include}: {other}Label{optional}`, an `Output` that picks `{other}.{picked}`, and add `{include}: {}.{}` to the query's `include:` ({topic})",
+            entity.name, reference.name
+        );
+    }
+    format!("Remove `{name}` from `{ty}`, or include records under it ({topic})")
 }

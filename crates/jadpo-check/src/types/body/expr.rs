@@ -2371,13 +2371,32 @@ impl Body<'_> {
             &rule::TYPE_MISSING_FIELD
         };
         let first = missing[0].trim_matches('`').to_string();
+        // An output's field of another record (chunk 10.9d): a query fills
+        // it through an include, as a nested record, so say where that is
+        // shown, for a page's items as for any result.
+        let related = !is_variant
+            && self.table.base(host) == Some(FieldsBase::Output)
+            && fields.iter().any(|field| {
+                field.name == first
+                    && matches!(
+                        field.declared.strip_nullable(),
+                        Ty::Field(owner, _) if self.table.base(owner) == Some(FieldsBase::Entity)
+                    )
+            });
+        let next = if related {
+            format!(
+                "Add `{first}: ...` to the block, from the record it is read from; a query fills a related record's field through an include, as a nested record (`jadpo help topic order-and-pages`)"
+            )
+        } else {
+            format!("Add `{first}: ...` to the block")
+        };
         self.out.push(
             Diagnostic::new(rule, format!("`{shown}` is missing {}", crate::and_list(&missing)))
                 .at(head_span, "fields missing")
                 .reason(format!(
                     "Every field of `{shown}` is given when a value is built; a field that may be absent is declared `T?` and given as `none`."
                 ))
-                .next(format!("Add `{first}: ...` to the block")),
+                .next(next),
         );
     }
 

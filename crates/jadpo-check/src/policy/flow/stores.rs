@@ -31,8 +31,8 @@ use jadpo_std::http::PrincipalKind;
 use jadpo_std::write::WriteOp;
 
 use super::{
-    DEPTH, Flow, Origin, Prov, Run, Src, Walk, erased, field_name, retold, shallow, tenancy_of,
-    widen,
+    DEPTH, Flow, Origin, Prov, Run, Src, Test, Walk, erased, field_name, retold, shallow,
+    tenancy_of, widen,
 };
 use crate::policy::proof::{Fact, Facts, Reached, Way};
 use crate::policy::{Effect, Grant};
@@ -301,6 +301,25 @@ enum Rel {
     Tenant(String, String),
     /// Any other record.
     Other,
+}
+
+/// What a lookup a body stores tells apart (chunk 10.9c).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Chose {
+    /// By equality with this key, made of parameters.
+    Matched(Vec<Src>),
+    /// By which turn of a loop made it.
+    Turn,
+}
+
+/// The part of a parameter a store's value holds: not one that only
+/// decided it, as a lookup's key decides the `id` it chose.
+fn stored_param(src: &Src) -> Option<(usize, Vec<String>)> {
+    match src {
+        Src::Param(at, path) => Some((*at, path.clone())),
+        Src::Deep(inner) => stored_param(inner),
+        _ => None,
+    }
 }
 
 /// The parameter a store's value is part of.
@@ -852,10 +871,21 @@ impl Walk<'_> {
                     if self.copy_accepted(flow, &entity, &from, dest, field) {
                         continue;
                     }
-                    if decided && !self.kept.insert((entity.clone(), from.clone())) {
+                    // A lookup isn't a copy (chunk 10.9c).
+                    let chose = if decided {
+                        self.chose(flow, &inner, &prov)
+                    } else {
+                        None
+                    };
+                    if matches!(chose, Some(Chose::Turn)) {
                         continue;
                     }
-                    reported = true;
+                    if chose.is_none()
+                        && decided
+                        && !self.kept.insert((entity.clone(), from.clone()))
+                    {
+                        continue;
+                    }
                     let span = match at {
                         At::Site(site) => self.span(site),
                         At::Span(span) => span.clone(),
@@ -863,10 +893,105 @@ impl Walk<'_> {
                     let problem = self.unstored(
                         flow, dest, field, span, &entity, &from, who, decided, callee,
                     );
+                    if let Some(Chose::Matched(key)) = chose {
+                        self.lookups.push((key, inner.clone(), problem));
+                        continue;
+                    }
+                    reported = true;
                     self.problems.push(problem);
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// Whether `src`, a field that decided the value `prov`, only chose
+    /// which record's `id` it is (chunk 10.9c, area 9 "What else shows a
+    /// field"): each value it holds is an `id` of `src`'s entity, every
+    /// caller may read `src`, as if it were sent them, and `src` decided
+    /// it by equality with a key of parameters, or only by which turn of
+    /// a loop over its records made it. Its readers then learn which
+    /// existing record was chosen, which they read in the `id` anyway; a
+    /// lookup is still a copy where they may know the key
+    /// ([`Walk::kept_lookups`]). Only in a body walked for its own
+    /// callers: an event, a batch's run and its summary have left them.
+    fn chose(&self, flow: &Flow<'_>, src: &Src, prov: &Prov) -> Option<Chose> {
+        let Src::Field {
+            entity,
+            field,
+            reached,
+            test,
+            ..
+        } = src
+        else {
+            return None;
+        };
+        if matches!(test, Test::Value) || self.event.is_some() || self.run.is_some() || self.summary
+        {
+            return None;
+        }
+        let mut values = prov
+            .flat()
+            .into_iter()
+            .map(shallow)
+            .filter(|src| !matches!(src, Src::Decided(_)))
+            .peekable();
+        values.peek()?;
+        let ids = values.all(|value| match value {
+            Src::Field {
+                entity: of, field, ..
+            } => of == *entity && field == "id",
+            Src::Record { entity: of, .. } => of == *entity,
+            _ => false,
+        });
+        if !ids || !flow.prover.field_proved(entity, field, reached) {
+            return None;
+        }
+        Some(match test {
+            Test::Matched(key) => Chose::Matched(key.clone()),
+            _ => Chose::Turn,
+        })
+    }
+
+    /// The lookups this body stores whose key it also stores where
+    /// someone reads it whose role may not read the field it was compared
+    /// with: they would learn which record holds what (chunk 10.9c). Each
+    /// is still a copy, which only a person may approve.
+    pub(super) fn kept_lookups(&mut self, flow: &Flow<'_>) {
+        for (key, source, mut problem) in std::mem::take(&mut self.lookups) {
+            let found = self.stores.iter().find_map(|store| {
+                let (at, path) = stored_param(&store.value)?;
+                let named = key.iter().find_map(|part| match part {
+                    Src::Param(of, part)
+                        if *of == at && (part.starts_with(&path) || path.starts_with(part)) =>
+                    {
+                        Some(part.clone())
+                    }
+                    _ => None,
+                })?;
+                let readers = readers(flow, &store.dest.entity, &store.field);
+                let (_, _, unread) = self.unread_by(flow, &store.dest, &readers, &source)?;
+                (unread.cause == Cause::Role).then_some((at, named, store))
+            });
+            let Some((at, path, store)) = found else {
+                continue;
+            };
+            let name = self
+                .body
+                .params
+                .get(at)
+                .map(|param| self.body.local(*param).name.clone())
+                .unwrap_or_default();
+            let key = std::iter::once(name)
+                .chain(path)
+                .collect::<Vec<_>>()
+                .join(".");
+            let reason = problem.reason.take().unwrap_or_default();
+            problem.reason = Some(format!(
+                "{reason} It decided which record by equality, but `{key}`, which it was compared with, is stored in `{}.{}`, which they may read, so they learn which record holds it.",
+                store.dest.entity, store.field
+            ));
+            self.problems.push(problem);
         }
     }
 
@@ -1282,6 +1407,7 @@ impl Walk<'_> {
                 field,
                 reached: reached.cloned().unwrap_or_default(),
                 origin: dest.own,
+                test: Test::Value,
             })));
         }
         let set: Vec<String> = model.set.iter().map(|(field, _)| field.clone()).collect();

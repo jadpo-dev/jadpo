@@ -1794,6 +1794,207 @@ The copy now checks, from `reply_with_macro` or any other action, and
 read the macros themselves. The approval covers this one flow: the
 macro's text stored in any other field is refused as before.
 
+**If the field only chose which record's `id` is stored**, it is a
+lookup, not a copy, and needs no acceptance. A viewer may read a
+ticket's `customer_id` but not a customer's `email`; matching the
+sender's address against `email` to choose that `id` shows a viewer only
+which existing customer was chosen, whose `id` they read anyway:
+
+```jadpo check project=e-lookup-not-copy file=app.jadpo hidden
+use desk/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=authentication.jadpo hidden
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=policy.jadpo hidden
+use desk/entities { Workspace }
+
+policy {
+    tenant: Workspace
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/types/role.jadpo hidden
+/// What a member may do.
+type Role = Enum {
+    owner
+    agent
+    viewer
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/types/message_body.jadpo hidden
+/// A message's text.
+type MessageBody = Text {
+    max_length: 500
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/entities/user.jadpo hidden
+use desk/types { MessageBody }
+
+/// Someone who signs in.
+entity User {
+    id: Uuid
+    handle: MessageBody {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/entities/workspace.jadpo hidden
+use desk/types { MessageBody, Role }
+
+/// A customer of the desk, which every other record belongs to.
+entity Workspace {
+    id: Uuid
+    name: MessageBody
+
+    policy: {
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/entities/membership.jadpo hidden
+use desk/entities { User, Workspace }
+use desk/types { Role }
+
+/// A person's role in a workspace.
+entity Membership {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: workspace_id
+        member: user_id
+        role: role
+    }
+
+    policy: {
+        read: [Role.owner, user_id]
+    }
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/entities/customer.jadpo hidden
+use desk/entities { Workspace }
+use desk/types { MessageBody, Role }
+
+/// Someone who writes to the desk, whom only staff see.
+entity Customer {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    email: MessageBody
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent]
+    }
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/entities/ticket.jadpo hidden
+use desk/entities { Customer, Workspace }
+use desk/types { MessageBody, Role }
+
+/// A request for help, which every member reads, its customer by `id`.
+entity Ticket {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    customer_id: Customer.id? {
+        on_delete: OnDelete.cleared
+    }
+    subject: MessageBody
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/queries/workspace_customers.jadpo migrate=initial hidden
+use desk/entities { Customer, Workspace }
+
+/// A workspace's customers.
+query workspace_customers(workspace_id: Workspace.id) -> List<Customer> {
+    from: Customer
+    where: Customer.workspace_id == workspace_id
+    order: [Customer.id asc]
+    limit: every
+}
+```
+
+```jadpo check project=e-lookup-not-copy file=domains/desk/actions/ticket_from_email.jadpo
+use desk/entities { Customer, CustomerNotFound, Ticket, Workspace, WorkspaceNotFound }
+use desk/types { MessageBody }
+use desk/queries { workspace_customers }
+
+/// Opens a ticket for the customer an email came from, if one has it.
+action ticket_from_email(
+    workspace_id: Workspace.id,
+    sender: MessageBody,
+    subject: MessageBody
+) fails WorkspaceNotFound, CustomerNotFound -> Ticket {
+    var customers: List<Customer> = workspace_customers(workspace_id)
+    var found: Customer? = list.find(customers, c -> text.equals_ignoring_case(c.email, sender))
+    var mut customer_id: Customer.id? = none
+    match found {
+        some(customer) -> {
+            customer_id = customer.id
+        }
+        none -> {
+            customer_id = none
+        }
+    }
+    return attempt Ticket.create {
+        set: {
+            workspace_id: workspace_id
+            customer_id: customer_id
+            subject: subject
+        }
+    }
+}
+```
+
+A field compared by `==`, `!=` or `text.equals_ignoring_case` with a
+value made only of the action's parameters, so that it chooses an
+existing record's `id`, is a lookup, as is which turn of a loop over
+those records chose it, when everyone who may run the action may read the
+field. Anything else is still a copy a person approves: choosing by what
+the field holds (`text.ends_with(c.email, "@vip.test")`), comparing it
+with a literal or a constant, storing the key where the readers may read
+it too (the sender's address in the ticket's `subject`), or storing the
+field's value itself ([What else shows a field](../language/09-policy.md#what-else-shows-a-field)).
+
 **If everyone who may read a note should read its appraisal**, remove the
 field's own `policy:`, so it follows `Note`'s grants:
 

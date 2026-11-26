@@ -60,7 +60,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_graph::body::{ArmBody, Body, Callee, Expr, LocalId, Node, SiteId, Stmt};
+use jadpo_graph::body::{ArmBody, BinaryOp, Body, Callee, Expr, LocalId, Node, SiteId, Stmt};
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::Op;
 use jadpo_std::batch::{BatchOp, EXPORT_SUMMARY_FIELDS, IMPORT_SUMMARY_FIELDS};
@@ -103,12 +103,13 @@ enum Src {
         given: Vec<String>,
         origin: Origin,
     },
-    /// A field of a record of `entity`.
+    /// A field of a record of `entity`, got from it as `test` says.
     Field {
         entity: String,
         field: String,
         reached: Reached,
         origin: Origin,
+        test: Test,
     },
     /// The part `path` names (each field in turn; none for all of it) of
     /// the parameter at this position.
@@ -153,6 +154,25 @@ enum Src {
     Answered(Box<Src>),
 }
 
+/// How a [`Src::Field`]'s value was got from the field (chunk 10.9c,
+/// area 9 "What else shows a field"). Only a value it decides tells them
+/// apart: a field's value itself is always [`Test::Value`] wherever it
+/// goes, and anything that doesn't know these kinds treats each as one.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum Test {
+    /// What it holds, or anything worked out from it.
+    Value,
+    /// Whether it equals a key made only of these parts of parameters,
+    /// by `==`, `!=` or `text.equals_ignoring_case`: a lookup by a value
+    /// the request sent. Someone who doesn't know the key learns nothing
+    /// of what the field holds from which record it chose.
+    Matched(Vec<Src>),
+    /// Which turn of a loop over a list of its records a value was made
+    /// in: the item's place in the list, which what decided the list
+    /// carries, not what the field holds.
+    Turn,
+}
+
 /// Which record a [`Src::Record`] or [`Src::Field`] is, when the body
 /// knows: the site that read, created or changed it, which runs at most
 /// once each time the body does, or once in each turn of the loop it is
@@ -190,12 +210,14 @@ fn as_held_by(src: &Src, reached: &Reached) -> Src {
             entity,
             field,
             origin,
+            test,
             ..
         } => Src::Field {
             entity: entity.clone(),
             field: field.clone(),
             reached: reached.clone(),
             origin: *origin,
+            test: test.clone(),
         },
         Src::Present { entity, .. } => Src::Present {
             entity: entity.clone(),
@@ -231,11 +253,13 @@ fn retold(src: &Src, change: &dyn Fn(u32) -> Origin) -> Src {
             field,
             reached,
             origin,
+            test,
         } => Src::Field {
             entity: entity.clone(),
             field: field.clone(),
             reached: reached.clone(),
             origin: origin.and_then(change),
+            test: test.clone(),
         },
         Src::Decided(inner) => Src::Decided(Box::new(retold(inner, change))),
         Src::Deep(inner) => Src::Deep(Box::new(retold(inner, change))),
@@ -313,6 +337,109 @@ fn decide(prov: &Prov) -> Vec<Src> {
     prov.flat().into_iter().filter_map(decided).collect()
 }
 
+/// `src`, deciding a value, as what a loop's turn decides by an item's
+/// field: its place in the list, not what it holds (chunk 10.9c).
+fn turned(src: Src) -> Src {
+    match src {
+        Src::Decided(inner) => match *inner {
+            Src::Field {
+                entity,
+                field,
+                reached,
+                origin,
+                test: Test::Value,
+            } => Src::Decided(Box::new(Src::Field {
+                entity,
+                field,
+                reached,
+                origin,
+                test: Test::Turn,
+            })),
+            other => Src::Decided(Box::new(other)),
+        },
+        Src::Deep(inner) => deep(turned(*inner)),
+        other => other,
+    }
+}
+
+/// `src`, a field compared with a key of parameters, with the key as
+/// `args` give it (chunk 10.9c): still a lookup only while what is passed
+/// is parts of the caller's own parameters, and otherwise a test of what
+/// the field holds.
+fn rekeyed(src: &Src, args: &[Prov]) -> Src {
+    let Src::Field {
+        entity,
+        field,
+        reached,
+        origin,
+        test: Test::Matched(key),
+    } = src
+    else {
+        return src.clone();
+    };
+    let mut keys: Vec<Src> = Vec::new();
+    let mut only = true;
+    for part in key {
+        let Src::Param(at, path) = part else {
+            only = false;
+            continue;
+        };
+        let given = args.get(*at).map(|arg| arg.at(path)).unwrap_or_default();
+        for src in given.flat() {
+            match src {
+                Src::Param(..) => {
+                    if !keys.contains(&src) {
+                        keys.push(src);
+                    }
+                }
+                Src::Decided(_) => {}
+                _ => only = false,
+            }
+        }
+    }
+    Src::Field {
+        entity: entity.clone(),
+        field: field.clone(),
+        reached: reached.clone(),
+        origin: *origin,
+        test: if only && !keys.is_empty() {
+            Test::Matched(keys)
+        } else {
+            Test::Value
+        },
+    }
+}
+
+/// `src` with each key made from a parameter in `loose` a test of what
+/// its field holds: what the caller passes there isn't made only of its
+/// parameters (chunk 10.9c).
+fn loosened(src: &Src, loose: &BTreeSet<usize>) -> Src {
+    match src {
+        Src::Field {
+            entity,
+            field,
+            reached,
+            origin,
+            test: Test::Matched(key),
+        } if key
+            .iter()
+            .any(|part| matches!(part, Src::Param(at, _) if loose.contains(at))) =>
+        {
+            Src::Field {
+                entity: entity.clone(),
+                field: field.clone(),
+                reached: reached.clone(),
+                origin: *origin,
+                test: Test::Value,
+            }
+        }
+        Src::Decided(inner) => Src::Decided(Box::new(loosened(inner, loose))),
+        Src::Deep(inner) => Src::Deep(Box::new(loosened(inner, loose))),
+        Src::Answered(inner) => Src::Answered(Box::new(loosened(inner, loose))),
+        other => other.clone(),
+    }
+}
+
 /// What decides whether a callable with `summary` fails, given `args`.
 fn failed(summary: &Summary, args: &[Prov]) -> Prov {
     Prov {
@@ -369,6 +496,7 @@ impl Prov {
                             field: name.to_string(),
                             reached: reached.clone(),
                             origin: *origin,
+                            test: Test::Value,
                         });
                     }
                 }
@@ -438,9 +566,9 @@ impl Prov {
                             }
                         }
                     }
-                    _ => out.add(Src::Decided(inner.clone())),
+                    _ => out.add(Src::Decided(Box::new(rekeyed(inner, args)))),
                 },
-                other => out.add(other.clone()),
+                other => out.add(rekeyed(other, args)),
             }
         }
         for (name, prov) in &self.fields {
@@ -1265,7 +1393,9 @@ impl<'a> Flow<'a> {
         walk.left_params.clear();
         walk.pc.clear();
         walk.found.clear();
+        walk.lookups.clear();
         walk.block(self, &body.block);
+        walk.kept_lookups(self);
         // An action is all-or-nothing: whatever a `reject` tests decides
         // whether its events are kept.
         let failing: Vec<Src> = walk.failing.iter().map(kept_origin).collect();
@@ -1373,6 +1503,10 @@ struct Walk<'b> {
     /// The fields already reported for deciding a value stored: one
     /// problem for each, at the first value it decides.
     kept: BTreeSet<(String, String)>,
+    /// Each lookup it stores (chunk 10.9c): the key a field was compared
+    /// with, the field, and the problem it is should the key be stored
+    /// where it shows ([`Walk::kept_lookups`]).
+    lookups: Vec<(Vec<Src>, Src, Diagnostic)>,
     /// What decided each `reject` in the body: an action is
     /// all-or-nothing, so these decide every value it stores, before them
     /// or after. Gathered in every walk, so the last walk, which reports,
@@ -1476,6 +1610,7 @@ impl<'b> Walk<'b> {
             decided: BTreeSet::new(),
             stores: Vec::new(),
             kept: BTreeSet::new(),
+            lookups: Vec::new(),
             failing: Vec::new(),
             looping: 0,
             turns: BTreeSet::new(),
@@ -1572,11 +1707,13 @@ fn of_run(src: &Src) -> Src {
             field,
             reached,
             origin: None,
+            test,
         } => Src::Field {
             entity: entity.clone(),
             field: field.clone(),
             reached: reached.clone(),
             origin: Some(stores::TENANT),
+            test: test.clone(),
         },
         Src::Decided(inner) => Src::Decided(Box::new(of_run(inner))),
         Src::Deep(inner) => Src::Deep(Box::new(of_run(inner))),
@@ -1651,7 +1788,22 @@ impl Walk<'_> {
     /// over records would otherwise send each one's every field: a `for`'s list, and `list.map`'s and `list.count`'s.
     fn iterated(&self, prov: &Prov) -> Vec<Src> {
         if !self.personal {
-            return decide(prov);
+            // What decided the list decides each turn as it is; an
+            // item's own fields only which turn it is (chunk 10.9c).
+            let mut out = decide(&Prov {
+                whole: prov.whole.clone(),
+                fields: BTreeMap::new(),
+            });
+            let items = Prov {
+                whole: Vec::new(),
+                fields: prov.fields.clone(),
+            };
+            for src in decide(&items).into_iter().map(turned) {
+                if !out.contains(&src) {
+                    out.push(src);
+                }
+            }
+            return out;
         }
         prov.whole
             .iter()
@@ -1916,6 +2068,7 @@ impl Walk<'_> {
                             field: field_name(&field),
                             reached: reached.clone(),
                             origin: *origin,
+                            test: Test::Value,
                         });
                     }
                 }
@@ -1963,9 +2116,17 @@ impl Walk<'_> {
                 }
                 self.with_pc(out)
             }
-            Expr::Binary { lhs, rhs, .. } => {
+            Expr::Binary { op, lhs, rhs } => {
                 let mut out = self.eval(flow, lhs);
-                out.union(&self.eval(flow, rhs));
+                let right = self.eval(flow, rhs);
+                if matches!(op, BinaryOp::Equal | BinaryOp::NotEqual)
+                    && let Some(matched) = self
+                        .matched(&out, &right, rhs)
+                        .or_else(|| self.matched(&right, &out, lhs))
+                {
+                    return matched;
+                }
+                out.union(&right);
                 out
             }
             Expr::Unary { operand, .. } => self.eval(flow, operand),
@@ -2465,8 +2626,9 @@ impl Walk<'_> {
                 whole: self.iterated(&first),
                 fields: BTreeMap::new(),
             },
-            // Which items pass shows what the predicate tests.
-            Callee::Std(Op::ListFilter) => {
+            // Which items pass, and which one is found, shows what the
+            // predicate tests (chunk 10.9c for `find`).
+            Callee::Std(Op::ListFilter | Op::ListFind) => {
                 let mut out = first;
                 if let Some(predicate) = provs.get(1) {
                     for src in decide(predicate) {
@@ -2474,6 +2636,16 @@ impl Walk<'_> {
                     }
                 }
                 out
+            }
+            // A lookup by a key of parameters (chunk 10.9c).
+            Callee::Std(Op::TextEqualsIgnoringCase)
+                if let (Some(Some(left)), Some(Some(right)), Some(l), Some(r)) =
+                    (args.first(), args.get(1), provs.first(), provs.get(1))
+                    && let Some(matched) = self
+                        .matched(l, r, *right)
+                        .or_else(|| self.matched(r, l, *left)) =>
+            {
+                matched
             }
             Callee::Std(Op::ListMap) => {
                 let mut out = provs.get(1).cloned().unwrap_or_default();
@@ -2910,11 +3082,99 @@ impl Walk<'_> {
                 self.emitted(flow, event, prov);
             }
         }
+        // A key a lookup in it compares is a lookup's here only when what
+        // is passed for it is made only of parameters (chunk 10.9c).
+        let loose: BTreeSet<usize> = args
+            .iter()
+            .enumerate()
+            .filter(|(_, arg)| !arg.is_some_and(|arg| self.key_only(arg)))
+            .map(|(at, _)| at)
+            .collect();
         if here && !summary.fails.is_empty() {
-            let fails = decide(&failed(summary, provs));
+            let fails = Prov {
+                whole: summary
+                    .fails
+                    .iter()
+                    .map(|src| loosened(src, &loose))
+                    .collect(),
+                fields: BTreeMap::new(),
+            };
+            let fails = decide(&fails.substitute(provs));
             self.may_fail(flow, site, &fails);
         }
-        summary.returns.substitute(provs)
+        summary
+            .returns
+            .retold(&|src| loosened(src, &loose))
+            .substitute(provs)
+    }
+
+    /// Whether the expression at `site` is made only of parameters: a
+    /// parameter, a part of one, or a standard operation given only such
+    /// values, never a literal, a constant, a setting or a variable
+    /// (chunk 10.9c). Compared with a field, it is a key the request sent.
+    fn key_only(&self, site: SiteId) -> bool {
+        match &self.body.site(site).node {
+            Node::Expr(Expr::Local(id)) => self.body.params.contains(id),
+            Node::Expr(Expr::Field { receiver, .. }) => self.key_only(*receiver),
+            Node::Expr(Expr::Call {
+                callee: Callee::Std(_),
+                args,
+                ..
+            }) => {
+                args.iter().any(Option::is_some)
+                    && args.iter().flatten().all(|arg| self.key_only(*arg))
+            }
+            _ => false,
+        }
+    }
+
+    /// `field` compared by equality with `key`, the expression at
+    /// `key_site` (chunk 10.9c): when the one is made only of fields and
+    /// the other only of parameters, the comparison, with each field
+    /// marked [`Test::Matched`] by that key; otherwise nothing.
+    fn matched(&self, field: &Prov, key: &Prov, key_site: SiteId) -> Option<Prov> {
+        if !field.fields.is_empty() || !key.fields.is_empty() || !self.key_only(key_site) {
+            return None;
+        }
+        let keys: Vec<Src> = key
+            .whole
+            .iter()
+            .filter(|src| !matches!(src, Src::Decided(_)))
+            .cloned()
+            .collect();
+        if keys.is_empty() || !keys.iter().all(|src| matches!(src, Src::Param(..))) {
+            return None;
+        }
+        let mut values = field
+            .whole
+            .iter()
+            .filter(|src| !matches!(src, Src::Decided(_)))
+            .peekable();
+        values.peek()?;
+        if !values.all(|src| matches!(src, Src::Field { .. })) {
+            return None;
+        }
+        let mut out = Prov::default();
+        for src in &field.whole {
+            out.add(match src {
+                Src::Field {
+                    entity,
+                    field,
+                    reached,
+                    origin,
+                    test: Test::Value,
+                } => Src::Field {
+                    entity: entity.clone(),
+                    field: field.clone(),
+                    reached: reached.clone(),
+                    origin: *origin,
+                    test: Test::Matched(keys.clone()),
+                },
+                other => other.clone(),
+            });
+        }
+        out.union(key);
+        Some(out)
     }
 
     /// What a query's result carries: an `Output` was proved where the
@@ -3061,6 +3321,7 @@ impl Walk<'_> {
                     field: "id".to_string(),
                     reached,
                     origin,
+                    test: Test::Value,
                 }),
                 other => by.add(other),
             }
@@ -3566,6 +3827,7 @@ fn element(
                 field: field.clone(),
                 reached: reached.clone(),
                 origin,
+                test: Test::Value,
             }),
             Source::Include(at) => {
                 let Some(inner) = includes.get(*at) else {

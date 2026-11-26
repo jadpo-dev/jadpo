@@ -2650,6 +2650,27 @@ compiler checks each like an output:
   in it tests. A value read through a query's `Output` is still the field
   it picks, so storing it is checked as storing one read from the record
   is.
+- **A lookup isn't a copy.** A restricted field used only to choose
+  which existing record's `id` a write stores shows the field's readers
+  nothing it holds: they learn which record was chosen, and they read
+  its `id` anyway. So no acceptance is needed when every value stored is
+  an `id` of the field's own entity (a reference to the chosen record,
+  or `none`), everyone who may run the action may read the field, and the
+  field decided it only by equality with a key: `==`, `!=` or
+  `text.equals_ignoring_case`, between the field, or a standard
+  operation of it such as `text.lower`, and a value made only of the
+  action's parameters, or a standard operation of them, never a literal,
+  a constant, a setting or a variable. A loop over the records, an `if`
+  or a `match` on the comparison, `list.filter` and `list.find` keep it
+  a lookup; so does an action that does the lookup and returns the `id`,
+  while what its caller passes for the key is made only of parameters
+  too. It is a copy, as before, when the value is worked out from what
+  the field holds (`text.ends_with(c.email, "@vip.test")`, a length),
+  when the key is a literal or anything but the request's
+  values, when the action also stores the key in a field that a role
+  may read who may not read the source field (the readers would then
+  know which record holds that value), and when anything but the `id` is
+  stored, the field's value above all.
 - **Copies a person approves.** A copy that lets people read what a
   field keeps from them, such as a staff-only macro's text stored in a
   reply every member reads, is the app owner's decision, so it is allowed

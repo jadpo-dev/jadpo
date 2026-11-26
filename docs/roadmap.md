@@ -135,6 +135,8 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.7e Fewer docs reads and error loops**: the [primer](primer.md), the `jadpo new` AGENTS.md and [`jadpo new`](language/14-tooling.md#jadpo-new), [Files and names](language/01-project-layout-and-modules.md#files-and-names), and the error pages of [`type.mismatch`](errors/type.mismatch.md) and [`naming.folded_collision`](errors/naming.folded_collision.md).
 - [x] **10.8 The final measurement, on changes nothing tuned on**: the held-out changes H21–H30 are in [agent-changes](../benchmarks/agent-changes/README.md); the report is in the results pull request.
 - [x] **10.9b A digest of the app**: [`jadpo explain`](language/14-tooling.md#jadpo-explain) and `jadpo help topic <id>` ([Commands for debugging, editors and help](language/14-tooling.md#commands-for-debugging-editors-and-help)), the `jadpo new` AGENTS.md and the [agent skill](agent-skill/SKILL.md), and the decisions in [the notes](language/notes/14-tooling.md).
+- [x] **10.9c A lookup isn't a copy**: [What else shows a field](language/09-policy.md#what-else-shows-a-field), the decision in [the notes](language/notes/09-policy.md), and the error page of [`policy.output_field_unproved`](errors/policy.output_field_unproved.md).
+- [x] **10.9d A field on a page's items**: [A field from a related record on a page's items](language/06-reads-and-writes.md#a-field-from-a-related-record-on-a-pages-items), and the error pages of [`query.result_field`](errors/query.result_field.md) and [`type.missing_field`](errors/type.missing_field.md).
 
 ## What the 0.2.0 run found
 

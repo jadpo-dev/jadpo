@@ -83,7 +83,15 @@ function incomplete_receipt() -> Receipt {
 
 Code that reads `email` now handles both cases, usually with `match`.
 
+A missing field that holds a related record's field, such as a
+customer's name added to a ticket's `Output`, is given by an action from
+the record it read. A query fills it only through an include, as a
+nested record, for a page's items as for any result
+([A field from a related record on a page's items](../language/06-reads-and-writes.md#a-field-from-a-related-record-on-a-pages-items),
+`jadpo help topic order-and-pages`), and `next:` says so.
+
 ## Related
 
+- [A field from a related record on a page's items](../language/06-reads-and-writes.md#a-field-from-a-related-record-on-a-pages-items)
 - [Objects](../language/02-values-and-types.md#objects)
 - [Values that may be missing](../language/02-values-and-types.md#values-that-may-be-missing)
