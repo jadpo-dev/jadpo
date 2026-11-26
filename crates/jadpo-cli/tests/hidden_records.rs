@@ -204,12 +204,12 @@ query every_ticket(caller: Principal.user) -> List<TicketView> {
 "#,
     ),
     (
-        "domains/desk/queries/bin.jadpo",
+        "domains/desk/queries/binned_tickets.jadpo",
         r#"use desk/entities { Ticket }
 use desk/types { TicketView }
 
 /// The caller's tickets in the bin, which a restore can bring back.
-query bin(caller: Principal.user) -> List<TicketView> {
+query binned_tickets(caller: Principal.user) -> List<TicketView> {
     from: Ticket
     where: Ticket.binned_at != none
     order: [Ticket.title asc]
@@ -311,7 +311,7 @@ test "a query saying include_hidden sees the bin, and one without doesn't" {
     attempt bin_ticket(binned.id)
     assert list.map(open_tickets(Principal.user(ann)), t -> t.title) == ["a"]
     assert list.map(every_ticket(Principal.user(ann)), t -> t.title) == ["a", "b"]
-    assert list.map(bin(Principal.user(ann)), t -> t.title) == ["b"]
+    assert list.map(binned_tickets(Principal.user(ann)), t -> t.title) == ["b"]
 }
 
 test "the read policy still hides another person's binned ticket" {
@@ -322,8 +322,8 @@ test "the read policy still hides another person's binned ticket" {
     var bobs: Ticket = held_ticket(acme, bob, "c")
     attempt bin_ticket(bobs.id)
     assert list.map(every_ticket(Principal.user(ann)), t -> t.title) == ["a"]
-    assert list.map(bin(Principal.user(ann)), t -> t.title) == []
-    assert list.map(bin(Principal.user(bob)), t -> t.title) == ["c"]
+    assert list.map(binned_tickets(Principal.user(ann)), t -> t.title) == []
+    assert list.map(binned_tickets(Principal.user(bob)), t -> t.title) == ["c"]
 }
 
 test "a customer with only binned tickets still has tickets" {
@@ -361,7 +361,7 @@ fn project(name: &str) -> PathBuf {
     for (path, text) in FILES {
         write(&root, path, text);
     }
-    write(&root, "domains/desk/queries/bin.test.jadpo", TESTS);
+    write(&root, "domains/desk/queries/binned_tickets.test.jadpo", TESTS);
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
     root
@@ -554,7 +554,7 @@ fn explain_names_the_queries_that_see_hidden_records() {
     assert!(
         explained
             .stdout
-            .contains("read by bin, binned_count, every_ticket, ticketless"),
+            .contains("read by binned_count, binned_tickets, every_ticket, ticketless"),
         "{}",
         explained.stdout
     );

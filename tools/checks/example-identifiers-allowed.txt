@@ -671,3 +671,7 @@ row
 since
 skipped
 solved
+# Ordinary words for records a lifecycle hides, which `query.unknown_section`
+# reads as a guess at `include_hidden:` (chunk 10.11d)
+archived
+binned

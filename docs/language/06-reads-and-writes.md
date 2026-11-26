@@ -1184,7 +1184,7 @@ entity EnquiryTag {
 ```jadpo check project=related-filter file=domains/desk/types/enquiry_row.jadpo hidden
 use desk/entities { Enquiry }
 
-/// A enquiry as a list shows it.
+/// An enquiry as a list shows it.
 type EnquiryRow = Output {
     pick: [Enquiry.id, Enquiry.title]
 }
@@ -1327,7 +1327,7 @@ CREATE INDEX "enquiry_tag_enquiry_id_tag_id_idx" ON "enquiry_tag" ("enquiry_id",
 <!-- topic: records-a-lifecycle-hides -->
 
 A query leaves out the records its entity's
-[lifecycle](05-data.md#lifecycle) hides, such as tickets in the bin.
+[lifecycle](05-data.md#lifecycle) hides, such as enquiries in the bin.
 `include_hidden: true` says it reads them too, beside the visible ones.
 A bin view is that with a condition on the field the lifecycle sets, and
 a guard that must count binned records says it inside `exists(...)`:
@@ -1350,7 +1350,7 @@ type Handle = Text {
     max_length: 40
 }
 
-/// Someone who answers tickets.
+/// Someone who answers enquiries.
 entity Deskhand {
     id: Uuid
     handle: Handle {
@@ -1382,18 +1382,18 @@ entity Customer {
 }
 ```
 
-```jadpo check project=binned-records file=domains/desk/entities/ticket.jadpo
+```jadpo check project=binned-records file=domains/desk/entities/enquiry.jadpo
 use desk/entities { Customer, Deskhand }
 
-type TicketTitle = Text {
+type EnquiryTitle = Text {
     min_length: 1
     max_length: 200
 }
 
 /// Something a customer asked for, kept in the bin for 30 days.
-entity Ticket {
+entity Enquiry {
     id: Uuid
-    title: TicketTitle
+    title: EnquiryTitle
     customer_id: Customer.id {
         on_delete: OnDelete.restricted
     }
@@ -1433,12 +1433,12 @@ entity Ticket {
 }
 ```
 
-```jadpo check project=binned-records file=domains/desk/types/ticket_row.jadpo hidden
-use desk/entities { Ticket }
+```jadpo check project=binned-records file=domains/desk/types/enquiry_row.jadpo hidden
+use desk/entities { Enquiry }
 
-/// A ticket as a list shows it.
-type TicketRow = Output {
-    pick: [Ticket.id, Ticket.title]
+/// An enquiry as a list shows it.
+type EnquiryRow = Output {
+    pick: [Enquiry.id, Enquiry.title]
 }
 ```
 
@@ -1451,35 +1451,35 @@ type CustomerRow = Output {
 }
 ```
 
-```jadpo check project=binned-records file=domains/desk/queries/bin.jadpo
-use desk/entities { Ticket }
-use desk/types { TicketRow }
+```jadpo check project=binned-records file=domains/desk/queries/binned_enquiries.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryRow }
 
-/// The caller's tickets in the bin, which `Ticket.restore` brings back.
-query bin(caller: Principal.user) -> List<TicketRow> {
-    from: Ticket
-    where: Ticket.binned_at != none
-    order: [Ticket.title asc]
+/// The caller's enquiries in the bin, which `Enquiry.restore` brings back.
+query binned_enquiries(caller: Principal.user) -> List<EnquiryRow> {
+    from: Enquiry
+    where: Enquiry.binned_at != none
+    order: [Enquiry.title asc]
     limit: 50
     include_hidden: true
 }
 ```
 
-```jadpo check project=binned-records file=domains/desk/queries/ticketless.jadpo migrate=initial
-use desk/entities { Customer, Ticket }
+```jadpo check project=binned-records file=domains/desk/queries/without_enquiries.jadpo migrate=initial
+use desk/entities { Customer, Enquiry }
 use desk/types { CustomerRow }
 
-/// The customer, while they have no tickets at all, binned ones included.
-query ticketless(customer_id: Customer.id) -> CustomerRow? {
+/// The customer, while they have no enquiries at all, binned ones included.
+query without_enquiries(customer_id: Customer.id) -> CustomerRow? {
     from: Customer
     where: Customer.id == customer_id
-    where: not exists(Ticket.customer_id, include_hidden: true)
+    where: not exists(Enquiry.customer_id, include_hidden: true)
 }
 ```
 
 - **Only what the lifecycle hides.** `include_hidden: true` leaves out
   the entity's `visible:` and nothing else. Its read policy still holds
-  in full, so above, a deskhand's bin holds only their own tickets, and a
+  in full, so above, a deskhand's bin holds only their own enquiries, and a
   call with no caller runs without policy, as every read does
   ([Calls with no caller](13-testing.md#calls-with-no-caller)). A
   person's record that erasure kept stays out: only `include_erased:
@@ -1488,7 +1488,7 @@ query ticketless(customer_id: Customer.id) -> CustomerRow? {
 - **Where it is said.** On a query, for the records `from:` reads, a
   list's, a page's, one record's or an aggregate's; and last inside
   `exists(...)`, for the related records:
-  `exists(Ticket.customer_id, include_hidden: true)`. An include's
+  `exists(Enquiry.customer_id, include_hidden: true)`. An include's
   children still leave hidden records out, and a parent is read whether
   its lifecycle hides it or not
   ([Children and parents](#children-and-parents)). It takes only `true`
@@ -1497,10 +1497,10 @@ query ticketless(customer_id: Customer.id) -> CustomerRow? {
 - **Bringing one back.** A query reads hidden records; only a transition
   marked `reaches: hidden` changes one
   ([Restoring a hidden record](05-data.md#restoring-a-hidden-record)), so
-  a bin view lists what `Ticket.restore` can bring back.
+  a bin view lists what `Enquiry.restore` can bring back.
 - **A delete a binned record blocks.** A `restricted` reference holds
   whether the record holding it is hidden or not, so above, deleting a
-  customer with only binned tickets is refused with the conflict its
+  customer with only binned enquiries is refused with the conflict its
   `conflict:` maps, until purge removes them
   ([Conflicts](#conflicts)). The guard query says the same thing first,
   so an action can answer before it tries.
