@@ -1217,14 +1217,30 @@ fixture tag_ticket(ticket: Ticket, tag: Tag, agent: Agent) -> TicketTag {
 }
 
 test "a page of the tickets an agent tagged, in title order" {
-    var ann: Agent = make.Agent { handle: "ann" }
-    var bob: Agent = make.Agent { handle: "bob" }
-    var urgent: Tag = make.Tag { name: "urgent" }
-    var later: Tag = make.Tag { name: "later" }
-    var lift: Ticket = make.Ticket { title: "Fix the lift" }
-    var bins: Ticket = make.Ticket { title: "Empty the bins" }
-    var door: Ticket = make.Ticket { title: "Oil the door" }
-    var paint: Ticket = make.Ticket { title: "Paint the hall" }
+    var ann: Agent = make.Agent {
+        handle: "ann"
+    }
+    var bob: Agent = make.Agent {
+        handle: "bob"
+    }
+    var urgent: Tag = make.Tag {
+        name: "urgent"
+    }
+    var later: Tag = make.Tag {
+        name: "later"
+    }
+    var lift: Ticket = make.Ticket {
+        title: "Fix the lift"
+    }
+    var bins: Ticket = make.Ticket {
+        title: "Empty the bins"
+    }
+    var door: Ticket = make.Ticket {
+        title: "Oil the door"
+    }
+    var paint: Ticket = make.Ticket {
+        title: "Paint the hall"
+    }
     tag_ticket(lift, urgent, ann)
     tag_ticket(bins, urgent, ann)
     tag_ticket(door, urgent, ann)
