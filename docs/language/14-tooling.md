@@ -115,8 +115,8 @@ todo-app/
   where the owner will see it and carries on. Before a stop it leaves
   the project passing `jadpo check` and `jadpo test`, the part that
   waits on the owner backed out. In an app that has code, the app is the
-  agent's closest example: it reads the app's code before the docs and
-  doesn't reopen a page it has read. It ends with
+  agent's closest example: it runs `jadpo explain` first, reads the
+  app's code before the docs and doesn't reopen a page it has read. It ends with
   the closest teaching example for each feature, for a new app with no
   code yet, linked at this
   `jadpo`'s own release, and what isn't built
@@ -339,12 +339,14 @@ Not built yet:
 ## Commands for looking into and changing code
 <!-- topic: commands-for-looking-into-and-changing-code -->
 
-These commands show you what your code does: the project map, what a
-change to a name reaches, its routes, the SQL its queries send, and what a
-prompt sends a model. Two change it: a rename, and a domain's move.
+These commands show you what your code does: a digest of the app, the
+project map, what a change to a name reaches, its routes, the SQL its
+queries send, and what a prompt sends a model. Two change it: a rename,
+and a domain's move.
 
 | Command | Does |
 |---|---|
+| `jadpo explain` | Prints a digest of the app: its access, entities, routes, background work, acceptances and the docs topics it needs |
 | `jadpo inspect` | Prints the project map |
 | `jadpo inspect <name>` | Prints one declaration: where it is, its fields or signature, and its edges |
 | `jadpo impact <name>` | Lists what a change to a declaration reaches |
@@ -355,6 +357,181 @@ prompt sends a model. Two change it: a rename, and a domain's move.
 | `jadpo ai show <prompt>` | Prints what a prompt sends a model |
 | `jadpo ai record <prompt> --as <name>` | Records the model's answer to a prompt, for tests |
 | `jadpo ai usage` | Shows the tokens and cost of the app's model calls |
+
+### `jadpo explain`
+
+Prints a digest of the app, read from the graph `jadpo check` builds, so it
+can't drift from the code. It is a map an agent reads before changing an
+app that has code, in place of every file and many pages; it is not
+documentation. In order:
+
+- **Access**: each kind of caller, the ways to sign in, the tenant and
+  the entities it scopes, those it doesn't, the membership roles, and the
+  actions root policy lists.
+- **Each entity**, with where it is written: its description's first
+  line, its fields, with what deleting a referenced record does, its
+  unique rules, its lifecycle (`visible`, each transition as a `change`,
+  and `purge`), who may create, read, update and delete it as written,
+  and each field's own policy.
+- **Routes**, under their API: method and path, input `->` output (or the
+  status of a route with no output), what it runs, and `no sign-in` or
+  `fresh sign-in` where the route says so.
+- **Background work**: each schedule you write, each event with what
+  emits it and its subscribers, and each batch an action starts, with what
+  it walks and the actions `each:` and `finished:` call.
+- **Acceptances** already given: each file's entries and its reason.
+- **Docs**: for each kind of construct the app uses, the one topic that
+  explains it, as the command that prints it offline.
+
+```jadpo check project=explain-notes file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=explain-notes file=policy.jadpo hidden
+use notes
+
+policy {
+    actions: {
+        notes.leave_note: [Access.public]
+    }
+}
+```
+
+```jadpo check project=explain-notes file=domains/notes/types/note_text.jadpo hidden
+/// What a note says.
+type NoteText = Text {
+    max_length: 500
+}
+```
+
+```jadpo check project=explain-notes file=domains/notes/types/new_note.jadpo hidden
+use notes/types { NoteText }
+
+/// A note to write.
+type NewNote = Input {
+    text: NoteText
+}
+```
+
+```jadpo check project=explain-notes file=domains/notes/entities/note.jadpo hidden
+use notes/types { NoteText }
+
+/// A note anyone may leave, kept 30 days once deleted.
+entity Note {
+    id: Uuid
+    text: NoteText
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                when: deleted_at == none
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: deleted_at
+        }
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: []
+        delete: [Access.public]
+    }
+}
+```
+
+```jadpo check project=explain-notes file=domains/notes/types/note_view.jadpo hidden
+use notes/entities { Note }
+
+/// A note as it is shown.
+type NoteView = Output {
+    pick: [Note.id, Note.text]
+}
+```
+
+```jadpo check project=explain-notes file=domains/notes/actions/leave_note.jadpo hidden
+use notes/entities { Note }
+use notes/types { NewNote, NoteView }
+
+/// Leaves a note.
+action leave_note(input: NewNote) -> NoteView {
+    var saved: Note = Note.create {
+        set: {
+            text: input.text
+        }
+    }
+    return NoteView {
+        id: saved.id
+        text: saved.text
+    }
+}
+```
+
+```jadpo check project=explain-notes file=domains/notes/routes/notes.jadpo hidden migrate=initial
+use notes/types { NewNote, NoteView }
+use notes/actions { leave_note }
+
+/// Notes.
+routes Notes {
+    prefix: /notes
+
+    /// Leaves a note, for anyone.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewNote
+        output: NoteView
+        status: SuccessStatus.created
+        run: leave_note(input)
+    }
+}
+```
+
+```sh run project=explain-notes
+jadpo explain
+```
+
+```text output
+Access
+  listed: notes.leave_note: Access.public
+
+Note domains/notes/entities/note.jadpo:4
+  about: A note anyone may leave, kept 30 days once deleted.
+  fields: id: Uuid, text: NoteText, deleted_at: Instant?
+  visible: deleted_at == none
+  change: delete when deleted_at == none, sets deleted_at
+  purge: after 30d since deleted_at
+  create: Access.public
+  read: Access.public
+  update: nobody
+  delete: Access.public
+
+Routes  main  /
+  POST /notes NewNote -> NoteView 201  runs leave_note  no sign-in
+
+Docs
+  listed     jadpo help topic action-permissions
+  entities   jadpo help topic entities-and-the-id
+  lifecycle  jadpo help topic lifecycle
+  policy     jadpo help topic grants
+  routes     jadpo help topic route-groups
+  actions    jadpo help topic functions-and-actions
+
+1 entity: 1 route, 1 action
+
+next: jadpo inspect <name>  shows one declaration's fields, signature and edges
+```
+
+The same source gives the same digest. `--json` gives each part as data:
+`access`, `entities`, `routes`, `background`, `acceptances` and `docs`.
+Like `jadpo inspect`, it refuses a project with errors and shows them
+instead, and it takes no argument (`cli.explain_arguments`).
 
 ### `jadpo inspect`
 
@@ -1959,6 +2136,7 @@ Not built yet:
 | `jadpo help <rule>` | A rule's page, offline, by the id on an error's `rule:` line |
 | `jadpo help <Type>` | A standard type's page, offline: what it is, its shape and an example. `--json` gives its shape as data |
 | `jadpo help types` | Every standard type from A to Z |
+| `jadpo help topic <id>` | A topic of the language pages, offline, by its ID, as `jadpo explain` names it |
 | `jadpo completions <shell>` | Prints the Tab-completion script for zsh, bash or fish |
 | `jadpo version` | Prints the version |
 | `jadpo toolchain` | Lists, removes and pins the Jadpo releases kept for projects |
@@ -1986,6 +2164,15 @@ example, what is good to know, its JSON and its details (`jadpo help PersonName`
 With `--json` it gives the type's fields, which are required, and the page. Any
 spelling finds it, so `personname` and `person_name` do too. `jadpo help types`
 lists every standard type from A to Z.
+
+`jadpo help topic <id>` prints one topic of the language pages offline,
+the same topic as on the site: its prose, its tables a row to a line, and
+each example that isn't hidden, under the file it is in. The ID is the
+one `jadpo explain` names, or one the topic had before it was renamed.
+`jadpo help <id>` does the same when no command has that name; `topic`
+reads one that shares a command's name, such as `schedules`. With
+`--json` it gives the topic's `id`, `area`, `title` and Markdown. An ID
+no topic has is `cli.help_arguments`, naming the nearest.
 
 `jadpo help <rule>`, with the id an error's `rule:` line gives
 (`jadpo help import.unused`), prints the rule's page offline, the page its
@@ -2648,6 +2835,11 @@ before it changes something shared, it asks what the change reaches.
 - **The schema and query reports** (`build/report/`): every table, column
   and index with the queries that read it, and each statement's rows and
   index, each query call and the queries each request sends.
+- **`jadpo explain`**: a digest of the app, about 1,000 to 3,000 tokens
+  for a mid-size app, which an agent reads first in an app that has code:
+  its access, entities, routes, background work and acceptances, and the
+  one topic for each kind of construct it uses, which `jadpo help topic
+  <id>` prints offline ([`jadpo explain`](#jadpo-explain)).
 - **`jadpo inspect`**: the project map, or one declaration with its
   fields, signature and edges ([`jadpo inspect`](#jadpo-inspect)).
 - **`jadpo impact <name>`**: what a change to a declaration reaches: the
@@ -2687,7 +2879,7 @@ before it changes something shared, it asks what the change reaches.
   must follow this.
 
 Not built yet: generated CI. The catalogues, the schema and query
-reports, the similar-helper check, `jadpo inspect`, `jadpo impact`,
+reports, the similar-helper check, `jadpo explain`, `jadpo inspect`, `jadpo impact`,
 `jadpo rename`, the `jadpo domain` commands and the agent skill are built.
 
 ## Suggestions
@@ -4219,10 +4411,11 @@ yet, or that other commands replace.
 | `cli.dev_start_failed` | `dev` | The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API |
 | `cli.domain_arguments` | `domain` | A `jadpo domain` command names a move it doesn't make, a domain the project doesn't have, a new name that is taken or isn't one, or a split or merge the domains can't take |
 | `cli.email_arguments` | `email` | A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold |
+| `cli.explain_arguments` | `explain` | A `jadpo explain` command is given an argument, which it doesn't take |
 | `cli.fix_arguments` | `fix` | A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have |
 | `cli.flags_arguments` | `flags` | A `jadpo flags` command names an action it doesn't have, a flag the project doesn't declare, or a value, user or share the flag can't take |
 | `cli.fmt_arguments` | `fmt` | A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file |
-| `cli.help_arguments` | `help` | A `jadpo help` command names more than one command or rule |
+| `cli.help_arguments` | `help` | A `jadpo help` command names more than one command or rule, or a topic the docs don't have |
 | `cli.impact_arguments` | `impact` | A `jadpo impact` command names no declaration, one the project doesn't have, or a name two domains share |
 | `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
 | `cli.incident_invalid` | `incident` | Runtime event is not a valid enrichment input |

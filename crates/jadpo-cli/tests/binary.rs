@@ -116,6 +116,7 @@ fn bash_completes_commands_and_values() {
             "seed",
             "sql",
             "routes",
+            "explain",
             "inspect",
             "impact",
             "ai",

@@ -72,6 +72,7 @@ mod erasure_providers;
 mod erasure_stores;
 mod events;
 mod every_record;
+mod explain;
 mod external_first_sign_in;
 mod external_tokens;
 mod field_rules_on_read;

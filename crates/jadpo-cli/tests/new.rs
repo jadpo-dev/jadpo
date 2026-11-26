@@ -164,6 +164,9 @@ fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
         // In an existing app, its own code comes before the docs and the
         // examples, and a page read once isn't read again (chunk 10.7e).
         "this app is your closest example",
+        // A digest of the app before its files and the docs (chunk 10.9b).
+        "run `jadpo explain` first",
+        "`jadpo help topic <id>` prints",
         "its code before the docs, and don't reopen pages you have already",
         "Only a new app with no code of its own yet starts from the",
         "## The closest example for each feature",

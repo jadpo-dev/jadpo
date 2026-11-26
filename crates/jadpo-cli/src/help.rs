@@ -88,6 +88,101 @@ pub fn rule_page(id: &str) -> Option<String> {
     None
 }
 
+/// Every topic of the area pages, packed by `build.rs`.
+const TOPICS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/topics.deflate"));
+
+/// One topic of an area page (docs/documentation.md, "Topic IDs").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Topic {
+    pub id: String,
+    /// The IDs it had before a rename, which still reach it.
+    pub old: Vec<String>,
+    pub area: u32,
+    pub title: String,
+    /// Its Markdown, from its heading to the next topic's, without its ID
+    /// line.
+    pub page: String,
+}
+
+/// Every topic, in the areas' order.
+pub fn topics() -> Vec<Topic> {
+    let Ok(packed) = miniz_oxide::inflate::decompress_to_vec(TOPICS) else {
+        return Vec::new();
+    };
+    let mut rest = packed.as_slice();
+    let take = |rest: &mut &[u8]| -> Option<String> {
+        let (len, after) = rest.split_first_chunk::<4>()?;
+        let len = u32::from_le_bytes(*len) as usize;
+        let bytes = after.get(..len)?.to_vec();
+        *rest = &after[len..];
+        String::from_utf8(bytes).ok()
+    };
+    let mut out = Vec::new();
+    while !rest.is_empty() {
+        let (Some(names), Some(page)) = (take(&mut rest), take(&mut rest)) else {
+            break;
+        };
+        let mut parts = names.splitn(3, '\t');
+        let ids: Vec<String> = parts
+            .next()
+            .unwrap_or_default()
+            .split(' ')
+            .map(str::to_string)
+            .collect();
+        let area = parts.next().and_then(|area| area.parse().ok()).unwrap_or(0);
+        let title = parts.next().unwrap_or_default().to_string();
+        let Some((id, old)) = ids.split_first() else {
+            continue;
+        };
+        out.push(Topic {
+            id: id.clone(),
+            old: old.to_vec(),
+            area,
+            title,
+            page,
+        });
+    }
+    out
+}
+
+/// The topic `id` names, by its ID or one it had before.
+pub fn find_topic(id: &str) -> Option<Topic> {
+    topics()
+        .into_iter()
+        .find(|topic| topic.id == id || topic.old.iter().any(|old| old == id))
+}
+
+/// `jadpo help topic <id>`, and `jadpo help <id>` when no command has that
+/// name: the topic read in the terminal with no network, as a rule's page
+/// is. Its prose, its `###` headings, its tables a row to a line, and each
+/// example that isn't hidden, under the file it is in.
+pub fn topic(topic: &Topic) -> Reply {
+    let mut screen = Screen::new().with(Block::header(
+        topic.title.clone(),
+        [format!("area {}", topic.area), topic.id.clone()],
+    ));
+    let body: String = topic
+        .page
+        .lines()
+        .skip(1)
+        .map(|line| format!("{line}\n"))
+        .collect();
+    for part in page_parts(&body, "") {
+        screen.push(match part {
+            Part::Prose(paragraphs) => Block::prose(paragraphs),
+            Part::Heading(heading) => Block::section(heading, Vec::<String>::new()),
+            Part::Example { heading, lines } => Block::section(heading, lines),
+        });
+    }
+    let data = Json::object([
+        ("id", topic.id.as_str().into()),
+        ("area", i64::from(topic.area).into()),
+        ("title", topic.title.as_str().into()),
+        ("page", topic.page.as_str().into()),
+    ]);
+    Reply::screen(screen, data)
+}
+
 /// `jadpo help <rule>`: the rule's page from `docs/errors/`, read in the
 /// terminal with no network. The page's prose, then each example in the
 /// order it is written: the file it is in, its code, and what `jadpo
@@ -199,7 +294,30 @@ fn page_parts(page: &str, summary: &str) -> Vec<Part> {
             continue;
         }
         let line = line.trim();
-        if let Some(heading) = line.strip_prefix("## ") {
+        let heading = ["## ", "### ", "#### "]
+            .iter()
+            .find_map(|marks| line.strip_prefix(marks));
+        if line.starts_with("<!--") {
+            continue;
+        }
+        if line.starts_with('|') {
+            // A table, a row to a line; the line under its header is left
+            // out.
+            end_paragraph(&mut current, &mut paragraphs);
+            let cells: Vec<String> = line
+                .trim_matches('|')
+                .split('|')
+                .map(|cell| cell.trim().to_string())
+                .collect();
+            if !cells
+                .iter()
+                .all(|cell| !cell.is_empty() && cell.chars().all(|c| matches!(c, '-' | ':')))
+            {
+                paragraphs.push(link_text(&cells.join(" | ")).replace("**", ""));
+            }
+            continue;
+        }
+        if let Some(heading) = heading {
             end_paragraph(&mut current, &mut paragraphs);
             if !paragraphs.is_empty() {
                 parts.push(Part::Prose(std::mem::take(&mut paragraphs)));
@@ -237,11 +355,17 @@ pub(crate) fn link_text(paragraph: &str) -> String {
     let mut rest = paragraph;
     while let Some(open) = rest.find('[') {
         let after = &rest[open + 1..];
-        let Some(close) = after.find("](") else {
+        let Some(close) = after.find(']') else {
             break;
         };
-        let Some(end) = after[close + 2..].find(')') else {
-            break;
+        // A bracket that opens no link, as in `[Access.public]`, is kept.
+        let end = after[close + 1..]
+            .strip_prefix('(')
+            .and_then(|target| target.find(')'));
+        let Some(end) = end else {
+            out.push_str(&rest[..open + 1 + close + 1]);
+            rest = &after[close + 1..];
+            continue;
         };
         out.push_str(&rest[..open]);
         out.push_str(&after[..close]);
@@ -436,7 +560,57 @@ pub fn reference_json() -> Json {
 
 #[cfg(test)]
 mod tests {
-    use super::{Part, link_text, page_parts};
+    use super::{Part, find_topic, link_text, page_parts, topics};
+
+    #[test]
+    fn each_topic_runs_from_its_heading_to_the_next() {
+        let lifecycle = find_topic("lifecycle").expect("area 5's topic");
+        assert_eq!((lifecycle.area, lifecycle.title.as_str()), (5, "Lifecycle"));
+        assert!(lifecycle.page.starts_with("## Lifecycle\n"));
+        assert!(!lifecycle.page.contains("<!-- topic:"));
+        assert!(
+            !lifecycle.page.contains("\n## "),
+            "a topic ends at the next `##`"
+        );
+        // An area's own topic is its `#` heading, up to its first `##`.
+        let data = find_topic("data").expect("area 5's own topic");
+        assert!(data.page.starts_with("# Entities, stores and migrations\n"));
+        // A renamed topic is found by the ID it had.
+        assert_eq!(
+            find_topic("background-work").map(|topic| topic.id),
+            Some("policy-and-background-work".to_string())
+        );
+        // `## Errors` declares no topic, and only lists error pages.
+        assert!(
+            topics()
+                .iter()
+                .all(|topic| !topic.page.starts_with("## Errors\n"))
+        );
+    }
+
+    #[test]
+    fn a_topic_reads_its_tables_a_row_to_a_line_and_its_smaller_headings() {
+        let page = "Intro.\n\n<!-- note -->\n### Smaller\n\n| Command | Does |\n|---|---|\n| `jadpo new` | Starts a project |\n";
+        assert_eq!(
+            page_parts(page, ""),
+            vec![
+                Part::Prose(vec!["Intro.".to_string()]),
+                Part::Heading("Smaller".to_string()),
+                Part::Prose(vec![
+                    "Command | Does".to_string(),
+                    "`jadpo new` | Starts a project".to_string()
+                ]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_bracket_that_opens_no_link_is_kept() {
+        assert_eq!(
+            link_text("as `read: [CompanyRole.viewer]` ([Grants](#grants))."),
+            "as `read: [CompanyRole.viewer]` (Grants)."
+        );
+    }
 
     #[test]
     fn links_read_as_their_text() {

@@ -25,6 +25,15 @@ languages. The docs are the only source, and the compiler is the check.
 
 ## Before you add or change code
 
+In an app that has code, run `jadpo explain` first. It prints a digest of
+the app from its checked code, about 1,000 to 3,000 tokens: who calls and
+what tenancy limits them to, each entity's fields, lifecycle and who may
+create, read, update and delete it, each route with its input, output and
+what it runs, the background work, the acceptances already given, and for
+each kind of construct the app uses the one topic that explains it.
+`jadpo help topic <id>` prints that topic offline. Read the digest instead
+of every file, and a topic it names instead of a whole page.
+
 `jadpo check` writes two catalogues of the project into `build/catalogue/`,
 errors or not. `build/` is never committed, so in a fresh workspace run
 `jadpo check` once before reading them.
