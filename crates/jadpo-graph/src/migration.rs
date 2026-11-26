@@ -1988,7 +1988,22 @@ fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
 /// them, while it finds any (area 5, "Unique rules").
 fn unique_duplicates(table: &str, name: &str, def: &Table) -> Option<Statement> {
     let unique = def.unique.get(name)?;
-    let query = table::duplicates(table, &key_columns(unique), unique.predicate.as_deref());
+    // A key counting `NULL`s as different holds no row with one as equal
+    // to another, so several records holding `none` share no value under
+    // it (chunk 10.9e).
+    let distinct = (!unique.nulls_not_distinct)
+        .then(|| {
+            unique
+                .columns
+                .iter()
+                .filter(|column| def.columns.get(*column).is_some_and(|c| c.nullable))
+                .map(|column| format!("{} IS NOT NULL", jadpo_sql::ident(column)))
+                .collect::<Vec<_>>()
+                .join(" AND ")
+        })
+        .filter(|condition| !condition.is_empty());
+    let predicate = unique.predicate.clone().or(distinct);
+    let query = table::duplicates(table, &key_columns(unique), predicate.as_deref());
     Some(Statement {
         sql: format!(
             "{}{}: refused while stored records share a value\n{query}",
