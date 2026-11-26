@@ -815,10 +815,7 @@ action {name}(workspace_id: Workspace.id, address: Body, subject: Body) fails Wo
 #[test]
 fn a_contact_found_or_created_in_one_body_is_stored_with_no_acceptance() {
     let action = find_or_create("case_found_or_created", "Contact", "address");
-    let found = diagnostics(&[(
-        "domains/desk/actions/case_found_or_created.jadpo",
-        &action,
-    )]);
+    let found = diagnostics(&[("domains/desk/actions/case_found_or_created.jadpo", &action)]);
     assert!(found.is_empty(), "{}", shown(&found));
 }
 
@@ -827,20 +824,16 @@ fn a_contact_created_with_a_literal_when_none_matches_is_still_a_lookup() {
     // Whatever the new contact holds, the readers of `Case.contact_id`
     // learn only which contact it is.
     let action = find_or_create("case_found_or_created", "Contact", "\"unknown@desk.test\"");
-    let found = diagnostics(&[(
-        "domains/desk/actions/case_found_or_created.jadpo",
-        &action,
-    )]);
+    let found = diagnostics(&[("domains/desk/actions/case_found_or_created.jadpo", &action)]);
     assert!(found.is_empty(), "{}", shown(&found));
 }
 
 #[test]
 fn a_find_or_create_storing_the_key_where_the_readers_read_it_is_a_copy() {
-    let action = find_or_create("case_found_or_created", "Contact", "address")
-        .replace("            subject: subject\n", "            subject: address\n");
-    let found = diagnostics(&[(
-        "domains/desk/actions/case_found_or_created.jadpo",
-        &action,
-    )]);
+    let action = find_or_create("case_found_or_created", "Contact", "address").replace(
+        "            subject: subject\n",
+        "            subject: address\n",
+    );
+    let found = diagnostics(&[("domains/desk/actions/case_found_or_created.jadpo", &action)]);
     asks_for(&found, CHOSEN);
 }

@@ -1026,13 +1026,14 @@ impl Walk<'_> {
         if !made {
             values.peek()?;
         }
-        let ids = made || values.all(|value| match value {
-            Src::Field {
-                entity: of, field, ..
-            } => of == *entity && field == "id",
-            Src::Record { entity: of, .. } => of == *entity,
-            _ => false,
-        });
+        let ids = made
+            || values.all(|value| match value {
+                Src::Field {
+                    entity: of, field, ..
+                } => of == *entity && field == "id",
+                Src::Record { entity: of, .. } => of == *entity,
+                _ => false,
+            });
         if !ids || !flow.prover.field_proved(entity, field, reached) {
             return None;
         }

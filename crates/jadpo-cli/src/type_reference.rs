@@ -7,9 +7,9 @@
 
 use jadpo_check::StdOperation;
 use jadpo_check::types::TypeRef;
-use jadpo_std::Kind;
 use jadpo_std::standard::groups::{GROUPS, group_of};
 use jadpo_std::standard::{Holds, Json as Wire, STANDARD_TYPES, StandardType, Storage, TextForm};
+use jadpo_std::{Builtin, Kind};
 use jadpo_term::Json;
 
 /// Every standard type, in its group's order (area 19, "How standard types are named, and what is left out"), each group's types in the order the group lists them.
@@ -68,7 +68,7 @@ pub fn types_json() -> Json {
             ("min", bound(entry.holds, true)),
             ("max", bound(entry.holds, false)),
             ("personal", entry.personal().map_or(Json::Null, Json::from)),
-            ("text", text_word(entry.text).map_or(Json::Null, Json::from)),
+            ("text", text_word(entry).map_or(Json::Null, Json::from)),
             ("json", json_word(entry.json).into()),
             ("storage", storage_word(entry.storage).into()),
             (
@@ -325,10 +325,15 @@ fn bound(holds: Holds, min: bool) -> Json {
 }
 
 /// Whether `text.from` writes it and `text.parse` reads it (`canonical`),
-/// only `text.parse` reads it (`secret`), or neither (`null`).
-fn text_word(text: Option<TextForm>) -> Option<&'static str> {
-    match text? {
+/// only `text.parse` reads it (`secret`), it is text already, which
+/// `text.parse` reads and a parameter written `Text` takes as it is, so
+/// `text.from` doesn't (`text`, chunk 10.9e), or neither (`null`).
+fn text_word(entry: &StandardType) -> Option<&'static str> {
+    let held_as_text = matches!(entry.holds, Holds::Text { .. })
+        || matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Builtin::Text);
+    match entry.text? {
         TextForm::Secret => Some("secret"),
+        _ if held_as_text => Some("text"),
         _ => Some("canonical"),
     }
 }

@@ -527,7 +527,7 @@ impl Reference {
             Some("canonical") => {
                 always.extend(["`text.parse`".to_string(), "`text.from`".to_string()]);
             }
-            Some("secret") => always.push("`text.parse`".to_string()),
+            Some("secret" | "text") => always.push("`text.parse`".to_string()),
             _ => {}
         }
         if text(entry, "text") != Some("secret") {
@@ -752,7 +752,7 @@ fn make_one(entry: &Json) -> Vec<String> {
         )),
         _ => {}
     }
-    if matches!(text(entry, "text"), Some("canonical" | "secret")) {
+    if matches!(text(entry, "text"), Some("canonical" | "secret" | "text")) {
         let written = match (holds, get(entry, "examples").and_then(|e| text(e, "of"))) {
             ("range", Some(of)) => format!("{name}<{of}>"),
             _ => name.to_string(),
@@ -883,6 +883,12 @@ fn text_form(entry: &Json, forms: &Forms) -> Vec<String> {
     match text(entry, "text") {
         Some("secret") => out.extend([
             "`text.parse` reads one from its text as it is typed. `text.from` and `text.format` don't take it, so nothing writes it.".to_string(),
+            String::new(),
+        ]),
+        // Text already: a `Text` parameter takes it as it is (chunk
+        // 10.9e), and `text.from` is `type.mismatch`.
+        Some("text") => out.extend([
+            "It is text already, so pass it as it is wherever `Text` is wanted: `Label(value)` for a type `Label` built on `Text`, or `text.lower(value)`. `text.from` doesn't take it. `text.parse` reads one from text, checking it.".to_string(),
             String::new(),
         ]),
         Some(_) => {
@@ -1392,6 +1398,78 @@ mod tests {
                 assert!(!found, "{name}: \"{word}\" in\n{page}");
             }
         }
+    }
+
+    /// The rules a loose file `source` breaks, as `jadpo check` finds them.
+    fn broken(source: &str) -> Vec<String> {
+        let db = jadpo_db::Database::default();
+        let file = jadpo_db::File::new(&db, "main.jadpo".to_string(), source.to_string());
+        let project = jadpo_db::Project::new(
+            &db,
+            vec![file],
+            Vec::new(),
+            jadpo_db::Layout::Loose,
+            Default::default(),
+            Vec::new(),
+        );
+        jadpo_check::check(&db, project)
+            .iter()
+            .map(|d| d.rule.id.to_string())
+            .collect()
+    }
+
+    /// What a page says to write a value as text compiles (chunk 10.9e):
+    /// `jadpo help Email` once offered `text.from`, which a type built on
+    /// `Text` is `type.mismatch` for. Each type a page calls text already
+    /// is passed as it is, and each it says `text.from` writes is given
+    /// to `text.from`, through the checker.
+    #[test]
+    fn what_a_page_says_writes_a_value_as_text_compiles() {
+        let reference = Reference::load();
+        let mut already = 0;
+        for entry in &reference.types {
+            let name = text(entry, "name").unwrap_or_default();
+            let page = reference.page(entry);
+            let held = text(entry, "holds") == Some("builtin");
+            let declared = if held {
+                format!("type Shown = {name} {{}}\n\n")
+            } else {
+                String::new()
+            };
+            let value = if held { "Shown" } else { name };
+            let check = |body: &str| {
+                broken(&format!(
+                    "{declared}type Label = Text {{}}\n\ntype Wire = Text {{}}\n\n/// Written.\nfunction f(value: {value}) -> Wire {{\n    return {body}\n}}\n"
+                ))
+            };
+            if text(entry, "text") == Some("text") {
+                already += 1;
+                assert!(page.contains("It is text already"), "{name}: {page}");
+                assert!(!page.contains("`text.from` writes"), "{name}: {page}");
+                assert!(
+                    !page.contains("takes `text.parse`, `text.from`"),
+                    "{name}: {page}"
+                );
+                assert_eq!(
+                    check("Wire(value)"),
+                    Vec::<String>::new(),
+                    "{name}: as it is"
+                );
+                assert_eq!(
+                    check("Wire(Label(text.lower(value)))"),
+                    Vec::<String>::new(),
+                    "{name}: `Label(value)` and `text.lower(value)`"
+                );
+                assert_eq!(
+                    check("Wire(text.from(value))"),
+                    ["type.mismatch"],
+                    "{name}: `text.from` doesn't take it"
+                );
+            }
+        }
+        let email = page("Email");
+        assert!(email.contains("It is text already"), "{email}");
+        assert!(already > 10, "{already} types are text already");
     }
 
     #[test]
