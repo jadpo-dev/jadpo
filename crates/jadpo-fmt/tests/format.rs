@@ -619,3 +619,13 @@ fn reserved_words_as_fields_and_variants_keep_their_places() {
         "type Flags = Object {\n    in: Bool\n    and: Bool\n    if: Bool\n}\n"
     );
 }
+
+/// A snippet's bare `seed` before a `use` line keeps the `use` where it is:
+/// moved above it, the word would join the declaration after it and
+/// become a `seed` declaration (found by the fuzz test).
+#[test]
+fn a_bare_seed_keeps_the_use_lines_after_it() {
+    let text = "seed\nuse x\n\npolicy {\n    a: 1\n}\n";
+    assert_eq!(format_snippet(text).expect("formats"), text);
+    assert_eq!(format_snippet("y\nuse x\n").expect("formats"), "use x\n\ny\n");
+}
