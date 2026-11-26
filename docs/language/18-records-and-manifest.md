@@ -814,8 +814,13 @@ file (below).
   agent first asks them, saying what the change allows and for whom, and
   drafts the acceptance only once they agree to that change: in their
   answer, or in a request that asks in so many words for what the change
-  allows. A general go-ahead, such as "do whatever it needs", agrees to
-  nothing that widens access or breaks a client. The agent then writes
+  allows. A request that widens who may do what in so many words, such
+  as "let agents delete customers", rarely says how far, so the agent
+  still asks for the widening's limits (who, which records, under what
+  conditions) first, and the question `jadpo check` prints for such a
+  change asks for them: `Who may do it, and to which records?`. A general
+  go-ahead, such as "do whatever it needs", agrees to nothing that widens
+  access or breaks a client. The agent then writes
   their own words as the reason, saying who gave them and where, as in
   the example above, and never a reason of its own. Without a reason,
   `check` fails. The errors' next steps say so.

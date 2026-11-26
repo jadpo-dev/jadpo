@@ -583,7 +583,8 @@ pub static COMMANDS: &[Command] = &[
                       With --layout it also moves each declaration another file uses into a file \
                       of its own, as layout.promotion_required asks. With --check, change nothing \
                       and fail if any file would change. Without a path, the project is found by \
-                      walking up to app.jadpo.",
+                      walking up to app.jadpo, and in a project with a commit only the files \
+                      edited since it are formatted; --all, --check and --layout read every file.",
         arguments: &[Argument {
             name: "path",
             description: "A file or folder instead of the whole project",
@@ -591,6 +592,12 @@ pub static COMMANDS: &[Command] = &[
             values: Values::Path,
         }],
         flags: &[
+            Flag {
+                name: "--all",
+                value: None,
+                description: "Format every file, not only edited ones",
+                values: &[],
+            },
             Flag {
                 name: "--check",
                 value: None,
@@ -606,8 +613,12 @@ pub static COMMANDS: &[Command] = &[
         ],
         examples: &[
             Example {
-                description: "Format the project you are in",
+                description: "Format the files edited since the last commit",
                 command: "jadpo fmt",
+            },
+            Example {
+                description: "Format every file in the project",
+                command: "jadpo fmt --all",
             },
             Example {
                 description: "Make the moves layout.promotion_required asks for, then format",

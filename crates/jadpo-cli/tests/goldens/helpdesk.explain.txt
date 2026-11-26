@@ -1,3 +1,7 @@
+Rules
+  written: README.md, "Who may do what"; each entity's policy and about: below
+  unwritten: the owner's to decide; ask them before choosing one
+
 Access
   caller: user: User by authentication_subject, active when User.status==UserStatus.active
   sign-in: api_token, browser_session

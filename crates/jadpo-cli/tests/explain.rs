@@ -53,7 +53,7 @@ fn the_helpdesk_digest_matches_its_golden_copy_and_never_changes() {
     let root = copy(
         &repository().join("benchmarks/helpdesk"),
         "helpdesk",
-        &["typescript", "README.md"],
+        &["typescript"],
     );
     let first = jadpo(&root, &["explain"]);
     assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
@@ -77,6 +77,46 @@ fn the_helpdesk_digest_matches_its_golden_copy_and_never_changes() {
     assert!(
         (1_000..=3_000).contains(&tokens),
         "the helpdesk's digest is about {tokens} tokens"
+    );
+}
+
+/// The digest opens with where the product's rules are written, and says
+/// that a rule not written down is the owner's to decide (chunk 10.11a: on
+/// Jadpo agents chose such rules themselves, and missed the owner's).
+#[test]
+fn the_digest_opens_with_where_the_rules_are_written() {
+    let root = copy(
+        &repository().join("benchmarks/helpdesk"),
+        "helpdesk-rules",
+        &["typescript"],
+    );
+    let output = jadpo(&root, &["explain"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert!(
+        output.stdout.starts_with(
+            "Rules\n  written: README.md, \"Who may do what\"; each entity's policy and about: below\n  unwritten: the owner's to decide; ask them before choosing one\n\n"
+        ),
+        "{}",
+        output.stdout
+    );
+    let json = jadpo(&root, &["explain", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert_eq!(
+        document["data"]["rules"]["written"],
+        serde_json::json!([{"file": "README.md", "section": "Who may do what"}])
+    );
+    let bare = copy(
+        &repository().join("benchmarks/helpdesk"),
+        "helpdesk-no-readme",
+        &["typescript", "README.md"],
+    );
+    let output = jadpo(&bare, &["explain"]);
+    assert!(
+        output.stdout.starts_with(
+            "Rules\n  written: each entity's policy and about: below; the project has no README\n"
+        ),
+        "{}",
+        output.stdout
     );
 }
 
