@@ -212,6 +212,9 @@ fn a_fix_that_would_add_an_error_changes_nothing() {
   |                                         ^^^ not a variant
   reason: `Weekday`'s variants are `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday` and `sunday`. Did you mean `saturday`?
   next: Use `Weekday.saturday` (agent)
+  fix:
+    5 - return OpensSaturday(day == Weekday.sat)
+    5 + return OpensSaturday(day == Weekday.saturday)
   rule: type.unknown_enum_variant
   help: https://jadpo.dev/docs/errors/type.unknown_enum_variant
 
@@ -279,4 +282,73 @@ fn outside_a_project_it_says_so() {
         "{}",
         output.stdout
     );
+}
+
+/// A project whose errors each carry their own repair: a call that can
+/// fail with nothing handling it, and an object built without a field
+/// that may be absent.
+const COUNTS: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/notes/failures/too_big.jadpo",
+        "/// A count over the limit.\ntype TooBig = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+    ),
+    (
+        "domains/notes/types/label.jadpo",
+        "/// A label.\ntype Label = Object {\n    text: Text\n    note: Text?\n}\n",
+    ),
+    (
+        "domains/notes/types/count.jadpo",
+        "/// How many.\ntype Count = Int {}\n",
+    ),
+    (
+        "domains/notes/actions/doubled.jadpo",
+        "use notes/failures { TooBig }\nuse notes/types { Count, Label }\n\n/// A count, checked.\nfunction checked(count: Count) fails TooBig -> Count {\n    if (count > 500) {\n        reject TooBig\n    }\n    return count\n}\n\n/// The count, checked and labelled.\naction doubled(count: Count) -> Label {\n    var once: Count = checked(count)\n    return Label {\n        text: text.from(once)\n    }\n}\n",
+    ),
+];
+
+fn counts(name: &str) -> PathBuf {
+    let root = folder(name);
+    for (path, text) in COUNTS {
+        write(&root, path, text);
+    }
+    root
+}
+
+/// Alone, `jadpo fix` applies every edit an agent's errors carry, round by
+/// round, since one fix can bring the next to light (`attempt`, then the
+/// `fails` list it needs), then says what it changed and what is left
+/// (chunk 10.9a).
+#[test]
+fn alone_it_applies_every_automatic_edit_and_checks_again() {
+    let root = counts("all");
+    let output = jadpo(&root, &["fix"]);
+    assert_eq!(output.stderr, "");
+    assert_eq!(
+        output.stdout,
+        "  domains/notes/actions/doubled.jadpo
+    + line 13  Add `TooBig` to `doubled`'s `fails` list
+    + line 14  Start the statement with `attempt`
+    + line 17  Add `note: none` to the block
+
+Fixed 3 errors in 1 file
+"
+    );
+    assert_eq!(output.code, 0);
+    let source = read(&root, "domains/notes/actions/doubled.jadpo");
+    assert!(
+        source.contains("action doubled(count: Count) fails TooBig -> Label {"),
+        "{source}"
+    );
+    assert!(
+        source.contains("    var once: Count = attempt checked(count)\n"),
+        "{source}"
+    );
+    assert!(
+        source.contains("        text: text.from(once)\n        note: none\n    }"),
+        "{source}"
+    );
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    // Nothing left to apply: the findings list, empty.
+    assert_eq!(jadpo(&root, &["fix"]).stdout, "Nothing to fix\n");
 }

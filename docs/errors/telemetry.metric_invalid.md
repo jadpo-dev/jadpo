@@ -30,10 +30,15 @@ error: `Count` isn't a kind of metric
   |                 ^^^^^ not `Counter`, `Measure` or `Gauge`
   reason: A metric is declared in a domain's `monitoring.jadpo` as `metric name = Counter { by: [label] }`: a `Counter`, a count that only rises, a `Measure`, a distribution, or a `Gauge`, a value at a moment. `by:` names its labels, which code gives as enums or `Bool`, so the number of series stays bounded.
   next: Use `Counter` instead of `Count` (agent)
+  fix:
+    2 - metric visits = Count {
+    2 + metric visits = Counter {
   rule: telemetry.metric_invalid
   help: https://jadpo.dev/docs/errors/telemetry.metric_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

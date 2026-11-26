@@ -85,10 +85,15 @@ error: `domains/crm/fixtures/files/` holds no `customer.csv`
   |                                                             ^^^^^^^^^^^^^^ no such file
   reason: `fixture_file` reads a file from the test's own domain's `fixtures/files/`, which holds `customers.csv`.
   next: Use `"customers.csv"` instead (agent)
+  fix:
+    5 - var sheet_kept: CustomerSheet = keep_sheet(fixture_file("customer.csv", store: imports))
+    5 + var sheet_kept: CustomerSheet = keep_sheet(fixture_file("customers.csv", store: imports))
   rule: semantic.fixture_file_invalid
   help: https://jadpo.dev/docs/errors/semantic.fixture_file_invalid
 
 check failed: 1 error, 4 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -27,10 +27,15 @@ error: `format` takes a `TextFormat` value, such as `TextFormat.email`
   |             ^^^^^ a name here
   reason: `format` is a constraint, and its value must be a `TextFormat` value, such as `TextFormat.email`.
   next: Write `TextFormat.email` (agent)
+  fix:
+    2 - format: email
+    2 + format: TextFormat.email
   rule: type.setting_value
   help: https://jadpo.dev/docs/errors/type.setting_value
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

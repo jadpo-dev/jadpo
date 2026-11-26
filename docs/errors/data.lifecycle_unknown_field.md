@@ -31,10 +31,15 @@ error: `Todo` has no field `deletd_at`
   |                  ^^^^^^^^^ not declared
   reason: A lifecycle names the fields of the record it is written in, and `Todo`'s fields are `id` and `deleted_at`. Did you mean `deleted_at`?
   next: Use `deleted_at` instead of `deletd_at` (agent)
+  fix:
+    6 - visible: deletd_at == none
+    6 + visible: deleted_at == none
   rule: data.lifecycle_unknown_field
   help: https://jadpo.dev/docs/errors/data.lifecycle_unknown_field
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

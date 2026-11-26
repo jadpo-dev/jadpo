@@ -33,10 +33,15 @@ error: `store: mian` isn't a database
   |                ^^^^ not a database
   reason: Every flag's state is kept in a database, so a change reaches each server; this application's databases are `main`.
   next: Use `main` instead of `mian` (agent)
+  fix:
+    9 - store: mian
+    9 + store: main
   rule: flag.store_invalid
   help: https://jadpo.dev/docs/errors/flag.store_invalid
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ```jadpo check project=e-flag-store-invalid file=config.jadpo hidden

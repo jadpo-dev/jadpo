@@ -48,10 +48,16 @@ error: `shared/types` has two `use` lines
   |     ^^^^^^^^^^^^ a second line
   reason: Each folder has one `use` line, listing every name the file takes from it; `use shared/types` is written twice.
   next: Move its names onto the first `shared/types` line (agent)
+  fix:
+    1 - use shared/types { Percent }
+    2 - use shared/types { Stock }
+    1 + use shared/types { Percent, Stock }
   rule: import.duplicate
   help: https://jadpo.dev/docs/errors/import.duplicate
 
 check failed: 1 error, 4 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -86,10 +92,15 @@ error: `Stock` is imported twice
   |                    ----- first imported here
   reason: Each name is imported once, on the line of the folder that holds it.
   next: Remove this `Stock` (agent)
+  fix:
+    1 - use shared/types { Stock, Stock }
+    1 + use shared/types { Stock }
   rule: import.duplicate
   help: https://jadpo.dev/docs/errors/import.duplicate
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

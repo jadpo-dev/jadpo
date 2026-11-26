@@ -35,10 +35,15 @@ error: `AcmeCourier.v1` is in the folder of `AcmeCouriers.v1`
   |         ^^^^^^^^^^^^^^ the folder says `AcmeCouriers.v1`
   reason: A package's folder is its name in `lower_snake_case` and its version, `acme_couriers/v1`, so its name in code is `AcmeCouriers.v1`, the folder's in `UpperCamelCase`, and the index gives the same.
   next: Write `package AcmeCouriers.v1` (agent)
+  fix:
+    2 - package AcmeCourier.v1 {
+    2 + package AcmeCouriers.v1 {
   rule: package.name_mismatch
   help: https://jadpo.dev/docs/errors/package.name_mismatch
 
 check failed: 1 error, 2 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

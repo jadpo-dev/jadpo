@@ -31,10 +31,15 @@ error: Jadpo writes `ProductName?`, not `ProductName | null`
   |                           ^^^^^^ write `ProductName?`
   reason: `T | null` and `T | undefined` are types that may be missing in TypeScript, and `T | None` and `Optional[T]` in Python; Jadpo writes `T?`, which holds a `T` or `none`.
   next: Write `ProductName?` (agent)
+  fix:
+    7 - subtitle: ProductName | null
+    7 + subtitle: ProductName?
   rule: syntax.nullable_type
   help: https://jadpo.dev/docs/errors/syntax.nullable_type
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -63,10 +68,15 @@ error: Jadpo writes `ProductName?`, not `Optional[ProductName]`
   |                       ^^^^^^^^^^^^^ write `ProductName?`
   reason: `T | null` and `T | undefined` are types that may be missing in TypeScript, and `T | None` and `Optional[T]` in Python; Jadpo writes `T?`, which holds a `T` or `none`.
   next: Write `ProductName?` (agent)
+  fix:
+    7 - subtitle: Optional[ProductName]
+    7 + subtitle: ProductName?
   rule: syntax.nullable_type
   help: https://jadpo.dev/docs/errors/syntax.nullable_type
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

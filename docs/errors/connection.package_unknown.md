@@ -75,10 +75,15 @@ error: `couriers` connects to `AcmeCouriers.v2`, which the app doesn't hold
   |                      ^^^^^^^^^^^^^^^ no such package
   reason: A connection's `package:` names a provider package by its name and version, installed in `packages/` or the app's own in `shared/providers/`; the app holds `AcmeCouriers.v1`.
   next: Write `package: AcmeCouriers.v1` (agent)
+  fix:
+    4 - package: AcmeCouriers.v2
+    4 + package: AcmeCouriers.v1
   rule: connection.package_unknown
   help: https://jadpo.dev/docs/errors/connection.package_unknown
 
 check failed: 1 error, 6 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

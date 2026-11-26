@@ -61,10 +61,15 @@ error: `in_progres` isn't an option of `locales`
   |     ^^^^^^^^^^ unknown option
   reason: `locales` takes `default:`, `supported:` and `in_progress:`, and nothing else. Did you mean `in_progress`?
   next: Use `in_progress` instead of `in_progres` (agent)
+  fix:
+    4 - in_progres: [Locale.fr_fr]
+    4 + in_progress: [Locale.fr_fr]
   rule: syntax.locales_unknown_option
   help: https://jadpo.dev/docs/errors/syntax.locales_unknown_option
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

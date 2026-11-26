@@ -27,10 +27,15 @@ error: `maxlength` isn't a setting Jadpo knows
   |     ^^^^^^^^^ unknown setting
   reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale`, `version`, `currency`, `rounding`, `from`, `to`, `dimensions` and `distance`. Did you mean `max_length`?
   next: Use `max_length` instead of `maxlength` (agent)
+  fix:
+    3 - maxlength: 120
+    3 + max_length: 120
   rule: type.unknown_setting
   help: https://jadpo.dev/docs/errors/type.unknown_setting
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

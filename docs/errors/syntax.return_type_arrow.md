@@ -30,10 +30,15 @@ error: Jadpo writes the result type after `->`, not `:`
   |                            ^ write `->`
   reason: `: Type` after the parameters is the result type in TypeScript and Kotlin; Jadpo writes `-> Type`, as in `function total(order: Order) -> Amount {`.
   next: Use `->` instead of `:` (agent)
+  fix:
+    5 - function same(count: Count): Count {
+    5 + function same(count: Count) -> Count {
   rule: syntax.return_type_arrow
   help: https://jadpo.dev/docs/errors/syntax.return_type_arrow
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -1383,6 +1383,10 @@ impl Walk<'_> {
                         crate::acceptances::copies::CHANGE
                     ),
                     Decider::Human,
+                )
+                .sign_off(
+                    format!("May {who} read what {source} holds once it is stored in {into}?"),
+                    vec![format!("{subject}: {}", crate::acceptances::copies::CHANGE)],
                 );
         }
         let next = match (callee, decided) {

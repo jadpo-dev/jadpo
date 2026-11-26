@@ -93,10 +93,15 @@ error: `title` is always there, so `where_present:` would always apply
    |                                  ^^^^^ never absent
   reason: `where_present:` is for a value that may be absent, such as an optional field of a request's `Input`; a condition that always applies is a `where:` line.
   next: Write `where:` instead (agent)
+  fix:
+    14 - where_present: Book.title == title
+    14 + where: Book.title == title
   rule: query.optional_value
   help: https://jadpo.dev/docs/errors/query.optional_value
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 An item of a list a field is tested `in` is a value, so it has to be there

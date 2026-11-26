@@ -41,10 +41,15 @@ error: `Stock` isn't in `shared/failures`
   |                       ^^^^^ not in this folder
   reason: A `use` line brings in names from the folder it names; `Stock` is a type in `shared/types/stock.jadpo`, so it comes in from `shared/types`.
   next: Import `Stock` from `shared/types` (agent)
+  fix:
+    1 - use shared/failures { Stock }
+    1 + use shared/types { Stock }
   rule: import.unknown
   help: https://jadpo.dev/docs/errors/import.unknown
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -78,10 +83,15 @@ error: `Stok` isn't declared
   |                           ^^^^ not declared
   reason: Nothing in this project is called `Stok`, so this line brings in nothing by that name. Did you mean `Stock`?
   next: Use `Stock` instead of `Stok` (agent)
+  fix:
+    1 - use shared/types { Stock, Stok }
+    1 + use shared/types { Stock, Stock }
   rule: import.unknown
   help: https://jadpo.dev/docs/errors/import.unknown
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A folder that isn't there is refused the same way:
@@ -112,10 +122,15 @@ error: `shared/tipes` isn't a folder of `shared/`
   |     ^^^^^^^^^^^^ not a folder
   reason: `shared/` holds only `types/`, `libraries/` and `failures/`: what every domain may use. Did you mean `types`?
   next: Use `shared/types` instead of `shared/tipes` (agent)
+  fix:
+    1 - use shared/tipes { Stock }
+    1 + use shared/types { Stock }
   rule: import.unknown
   help: https://jadpo.dev/docs/errors/import.unknown
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A library comes in whole, by its name, and a line that names one of its

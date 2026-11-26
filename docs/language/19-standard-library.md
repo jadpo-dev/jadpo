@@ -3202,10 +3202,14 @@ error: `currency: Currency.eur` is different from `CakePrice`'s `currency: Curre
   |               ^^^^^^^^^^^^ different from `CakePrice`'s `currency: Currency.gbp`
   reason: `CakePrice` fixes the currency at GBP, and a type built on another only narrows it, so it repeats that currency or leaves it out; with another one no value could follow both, and the type could never be built.
   next: Remove `currency:`, so the type keeps `CakePrice`'s GBP (agent)
+  fix:
+    8 - currency: Currency.eur
   rule: type.constraint_contradiction
   help: https://jadpo.dev/docs/errors/type.constraint_contradiction
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## Money operations

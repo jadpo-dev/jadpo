@@ -101,10 +101,15 @@ error: `constant` doesn't start a statement
   |     ^^^^^^^^ write `var`
   reason: A constant lives at the top of a file or in a library; inside a body a value that never changes is a `var`.
   next: Use `var` instead of `constant` (agent)
+  fix:
+    6 - constant copy: Count = count
+    6 + var copy: Count = count
   rule: syntax.expected_statement
   help: https://jadpo.dev/docs/errors/syntax.expected_statement
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A `decline` among a body's statements is this error too, because it stands

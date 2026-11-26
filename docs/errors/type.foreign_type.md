@@ -28,10 +28,15 @@ error: Jadpo writes `Text`, not `string`
   |           ^^^^^^ write `Text`
   reason: `string` is text in TypeScript, C# and Go; Jadpo calls it `Text`.
   next: Use `Text` instead of `string` (agent)
+  fix:
+    2 - name: string
+    2 + name: Text
   rule: type.foreign_type
   help: https://jadpo.dev/docs/errors/type.foreign_type
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

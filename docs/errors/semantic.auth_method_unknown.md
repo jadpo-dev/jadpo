@@ -76,10 +76,15 @@ error: `sign_in_providers:` is now `sign_in:`
   |     ^^^^^^^^^^^^^^^^^ renamed
   reason: `sign_in:` lists every way the language checks a person: `magic_link:`, `passkey:` and `providers: [...]`, the providers being connections in `app.jadpo`.
   next: Rename `sign_in_providers:` to `sign_in:` (agent)
+  fix:
+    2 - sign_in_providers: []
+    2 + sign_in: []
   rule: semantic.auth_method_unknown
   help: https://jadpo.dev/docs/errors/semantic.auth_method_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

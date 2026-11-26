@@ -37,10 +37,17 @@ error: An `attempt`'s mappings go in a block after the call
    |                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^ after the call, not in a block
   reason: An `attempt` maps its failures in a block, one per line, the same form writes and integration calls use; a construction's keys are the rules that can break, with `invalid:` covering the rest.
   next: Move `invalid: QuantityTooLarge` into a block after the call: `{ invalid: QuantityTooLarge }` (agent)
+  fix:
+    11 - var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge
+    11 + var result: Quantity = attempt Quantity(quantity * 2) {
+    12 +     invalid: QuantityTooLarge
+    13 + }
   rule: syntax.mapping_block_required
   help: https://jadpo.dev/docs/errors/syntax.mapping_block_required
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

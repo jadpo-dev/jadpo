@@ -59,10 +59,15 @@ error: `github.com/acme` isn't a host and a path ending in `/`
   |                       ^^^^^^^^^^^^^^^^^ not a git location
   reason: An entry is a host and a path ending in `/`, such as `github.com/acme/`. An entry ends in `/` so that what it covers reads plainly: `github.com/acme/` covers `github.com/acme/tools`, and never `github.com/acme-evil/tools`.
   next: Write `github.com/acme/` (agent)
+  fix:
+    3 - own_sources: ["github.com/acme"]
+    3 + own_sources: ["github.com/acme/"]
   rule: package.own_source_invalid
   help: https://jadpo.dev/docs/errors/package.own_source_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 So is an address with a scheme, which says how a repository is fetched,
@@ -84,10 +89,15 @@ error: `https://github.com/acme/` isn't a host and a path ending in `/`
   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^ not a git location
   reason: An entry is a host and a path ending in `/`, such as `github.com/acme/`, with no scheme: `https://` is how a repository is fetched, not whose it is.
   next: Write `github.com/acme/` (agent)
+  fix:
+    3 - own_sources: ["https://github.com/acme/"]
+    3 + own_sources: ["github.com/acme/"]
   rule: package.own_source_invalid
   help: https://jadpo.dev/docs/errors/package.own_source_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A misspelt setting is refused with the edit to `own_sources`, since a list
@@ -109,10 +119,15 @@ error: `own_source` isn't something `packages:` holds
   |         ^^^^^^^^^^ not a setting
   reason: `packages:` holds only `own_sources:`, your company's git locations.
   next: Use `own_sources` instead of `own_source` (agent)
+  fix:
+    3 - own_source: ["github.com/acme/"]
+    3 + own_sources: ["github.com/acme/"]
   rule: package.own_source_invalid
   help: https://jadpo.dev/docs/errors/package.own_source_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

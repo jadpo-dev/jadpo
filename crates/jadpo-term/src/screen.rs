@@ -373,6 +373,16 @@ pub enum Block {
         location: Option<String>,
         next: String,
     },
+    /// Every error only a person can clear, in one place (chunk 10.9a):
+    /// `◆ decision  <subject>`, an `ask` line per question to put to them,
+    /// the `accept` entries their agreement writes, each whole on a line
+    /// of its own so it copies, and the next step, theirs.
+    SignOff {
+        subject: String,
+        asks: Vec<String>,
+        entries: Vec<String>,
+        next: String,
+    },
     /// Something a passing command tells an agent to carry on past and
     /// pass to its user: `◆ notice  <subject>`, then the next step, owned by
     /// the agent. A decision stops the agent; a notice never does.
@@ -958,6 +968,55 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
                 lines.push(vec![raw(format!("decision: {subject}"))]);
                 if let Some(location) = location {
                     lines.push(vec![raw(format!(" --> {location}"))]);
+                }
+            }
+            lines.extend(field(
+                "next",
+                vec![raw(next.as_str()), decider(Decider::Human)],
+                style,
+            ));
+            lines
+        }
+        Block::SignOff {
+            subject,
+            asks,
+            entries,
+            next,
+        } => {
+            let mut lines = Vec::new();
+            if rich(style) {
+                let word = format!("{} decision", Symbol::Decision.text(style.symbols));
+                lines.push(vec![
+                    strong(Token::Decision, word),
+                    raw("  "),
+                    bold(subject.as_str()),
+                ]);
+            } else {
+                lines.push(vec![raw(format!("decision: {subject}"))]);
+            }
+            for ask in asks {
+                lines.extend(field("ask", vec![raw(ask.as_str())], style));
+            }
+            if !entries.is_empty() {
+                if rich(style) {
+                    for (index, entry) in entries.iter().enumerate() {
+                        let mut line = if index == 0 {
+                            vec![
+                                raw("  "),
+                                paint(Token::Muted, "accept"),
+                                raw(" ".repeat(VALUE_COLUMN - 2 - width("accept"))),
+                            ]
+                        } else {
+                            vec![raw(" ".repeat(VALUE_COLUMN))]
+                        };
+                        line.push(raw(entry.as_str()));
+                        lines.push(line);
+                    }
+                } else {
+                    lines.push(vec![raw("  accept:")]);
+                    for entry in entries {
+                        lines.push(vec![raw(format!("    {entry}"))]);
+                    }
                 }
             }
             lines.extend(field(

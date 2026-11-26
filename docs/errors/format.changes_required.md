@@ -53,6 +53,9 @@ error: This file isn't formatted
   |   ^ the formatter changes this line
   reason: `jadpo fmt` lays this file out differently from here on.
   next: Run `jadpo fmt` to format it (agent)
+  fix:
+    3 - max_length: 200
+    3 +   max_length: 200
   rule: format.changes_required
   help: https://jadpo.dev/docs/errors/format.changes_required
 

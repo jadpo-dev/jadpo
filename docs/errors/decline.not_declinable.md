@@ -66,6 +66,9 @@ error: `library.similar_exist` isn't a rule
   |         ^^^^^^^^^^^^^^^^^^^^^ no rule with this id
   reason: Jadpo has no rule `library.similar_exist`, so there is nothing to decline. Did you mean `library.similar_exists`?
   next: Use `library.similar_exists` instead of `library.similar_exist` (agent)
+  fix:
+    5 - decline library.similar_exist: "Caps the basket for the till, which changes on its own"
+    5 + decline library.similar_exists: "Caps the basket for the till, which changes on its own"
   rule: decline.not_declinable
   help: https://jadpo.dev/docs/errors/decline.not_declinable
 

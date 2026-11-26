@@ -29,10 +29,15 @@ error: `nmae` isn't defined in this scope
   |            ^^^^ not defined
   reason: Jadpo could not find this name. Did you mean `name`?
   next: Use `name` instead of `nmae` (agent)
+  fix:
+    4 - return nmae
+    4 + return name
   rule: type.unknown_value
   help: https://jadpo.dev/docs/errors/type.unknown_value
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

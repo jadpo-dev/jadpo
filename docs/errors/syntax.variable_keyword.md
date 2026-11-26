@@ -33,10 +33,15 @@ error: Jadpo writes `var`, not `let`
   |     ^^^ write `var`
   reason: `let` declares a variable in JavaScript, TypeScript, Swift and Rust; a Jadpo variable is `var name: Type = value`, or `var mut` when it can change.
   next: Use `var` instead of `let` (agent)
+  fix:
+    6 - let kept: Count = count
+    6 + var kept: Count = count
   rule: syntax.variable_keyword
   help: https://jadpo.dev/docs/errors/syntax.variable_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -66,10 +71,15 @@ error: Jadpo writes `constant`, not `const`
   | ^^^^^ write `constant`
   reason: `const` declares a value that never changes in JavaScript, TypeScript, Rust, Go and C#; at the top of a Jadpo file a fixed value is `constant name: Type = value`.
   next: Use `constant` instead of `const` (agent)
+  fix:
+    3 - const limit: Count = 3
+    3 + constant limit: Count = 3
   rule: syntax.variable_keyword
   help: https://jadpo.dev/docs/errors/syntax.variable_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

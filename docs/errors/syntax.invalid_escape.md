@@ -26,10 +26,15 @@ error: `\q` isn't an escape Jadpo knows
   |                                     ^^ unknown escape
   reason: Inside a string, `\` starts one of `\"`, `\\`, `\n`, `\r` or `\t`.
   next: Write `\\q` for a backslash followed by `q` (agent)
+  fix:
+    3 - constant share_root: SharePath = "C:\qdata"
+    3 + constant share_root: SharePath = "C:\\qdata"
   rule: syntax.invalid_escape
   help: https://jadpo.dev/docs/errors/syntax.invalid_escape
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

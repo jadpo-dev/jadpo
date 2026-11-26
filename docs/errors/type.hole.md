@@ -41,10 +41,15 @@ error: `_` stands for a `PersonName`
    |                 ^ a `PersonName` goes here
   reason: `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`. In scope, `author` fits.
   next: Write `author` (agent)
+  fix:
+    13 - author: _
+    13 + author: author
   rule: type.hole
   help: https://jadpo.dev/docs/errors/type.hole
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -80,10 +85,15 @@ error: `_` stands for a `PersonName`
    |                 ^ a `PersonName` goes here
   reason: `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`. Nothing in scope fits.
   next: Write `PersonName { given: _, family: none }`, and see `jadpo help PersonName` for the type (agent)
+  fix:
+    13 - author: _
+    13 + author: PersonName { given: _, family: none }
   rule: type.hole
   help: https://jadpo.dev/docs/errors/type.hole
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 Where nothing around the `_` says its type, as for an operator's operand,

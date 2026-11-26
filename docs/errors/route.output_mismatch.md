@@ -62,10 +62,15 @@ error: `POST /memos` sends `MemoSummary`, but `add_memo` returns `MemoView`
    |                 ^^^^^^^^^^^ not `MemoView`
   reason: A route's `output:` is exactly what it runs returns, so the route shows its contract and never sends a field its type doesn't declare.
   next: Write `output: MemoView` (agent)
+  fix:
+    35 - output: MemoSummary
+    35 + output: MemoView
   rule: route.output_mismatch
   help: https://jadpo.dev/docs/errors/route.output_mismatch
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

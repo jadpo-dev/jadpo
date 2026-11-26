@@ -40,10 +40,15 @@ error: `Book.title` says no direction
    |             ^^^^^^^^^^ `asc` or `desc`?
   reason: Each field of `order:` says which way it sorts: `asc` from the smallest, `desc` from the largest.
   next: Write `Book.title asc` or `Book.title desc` (agent)
+  fix:
+    14 - order: [Book.title]
+    14 + order: [Book.title asc]
   rule: query.order_direction
   help: https://jadpo.dev/docs/errors/query.order_direction
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -90,10 +95,15 @@ error: `copies` says no direction
    |             ^^^^^^ `asc` or `desc`?
   reason: Each entry of `order:` says which way it sorts: `asc` from the smallest, `desc` from the largest.
   next: Write `copies asc` or `copies desc` (agent)
+  fix:
+    23 - order: [copies]
+    23 + order: [copies asc]
   rule: query.order_direction
   help: https://jadpo.dev/docs/errors/query.order_direction
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `geo.distance` sorts nearest first only:

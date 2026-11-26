@@ -15,13 +15,14 @@ and always with `CI` set, the check fails at once, rather than when the
 code first reads a missing column, and names the command to run.
 
 Beside another error, outside CI, there is nothing to run yet:
-`jadpo migrate new` stops on that error too. The `next:` line says to fix
-the other errors first, and then either that `jadpo check` writes the
-migration itself or, when the change needs a decision, the command to
-run:
+`jadpo migrate new` stops on that error too. When the change needs no
+decision, the check doesn't report this error at all, since the next
+check writes the migration itself once the other errors are fixed. When
+it needs a decision, the `next:` line says to fix the other errors first,
+then names the command to run:
 
 ```text
-  next: Fix the other errors first: `jadpo check` then writes this migration itself (agent)
+  next: Fix the other errors first, then run `jadpo migrate new add_owner` (agent)
 ```
 
 An error that waits for a person's acceptance, `acceptance.missing` or

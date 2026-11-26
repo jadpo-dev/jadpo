@@ -71,10 +71,15 @@ error: `Todo.deleted_at` names its own entity
   |                  ^^^^^^^^^^^^^^^ written as a query writes it
   reason: A lifecycle's conditions are about the record they are written in, so they name its fields bare: `deleted_at`, not `Todo.deleted_at`.
   next: Write `deleted_at` (agent)
+  fix:
+    6 - visible: Todo.deleted_at == none
+    6 + visible: deleted_at == none
   rule: data.lifecycle_condition
   help: https://jadpo.dev/docs/errors/data.lifecycle_condition
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

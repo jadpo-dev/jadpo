@@ -27,10 +27,15 @@ error: `MAIL-SENDER` can't be a variable name
   |                  ^^^^^^^^^^^^^ not a variable name
   reason: A variable name is capital letters, digits and `_`, starting with a capital letter, so every platform accepts it.
   next: Use `MAIL_SENDER` (agent)
+  fix:
+    3 - binding: "MAIL-SENDER"
+    3 + binding: "MAIL_SENDER"
   rule: configuration.binding_invalid
   help: https://jadpo.dev/docs/errors/configuration.binding_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

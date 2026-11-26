@@ -32,10 +32,15 @@ error: `Int` can't be used where `Stock` is required
   |            ^^^^^ this is `Int`
   reason: Arithmetic works on the representation, so this is a plain `Int`; only `Stock(...)` makes it a `Stock`, checking its rules.
   next: Convert it with `Stock(a + b)` (agent)
+  fix:
+    6 - return a + b
+    6 + return Stock(a + b)
   rule: type.mismatch
   help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -60,10 +65,15 @@ error: `"Frank Herbert"` can't be used where `PersonName` is required
   |            ^^^^^^^^^^^^^^^ the wrong kind of value
   reason: This is text, and `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`.
   next: Write `PersonName { given: "Frank Herbert", family: none }`, and see `jadpo help PersonName` for the type (agent)
+  fix:
+    2 - return "Frank Herbert"
+    2 + return PersonName { given: "Frank Herbert", family: none }
   rule: type.mismatch
   help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A second error with the same reason keeps its place and its own edit, and
@@ -142,10 +152,15 @@ error: `List<Book>` can't be used where `List<BookTitle>` is required
    |            ^^^^^ this is `List<Book>`
   reason: Collections keep their element type, so a `List<Book>` is never a `List<BookTitle>`; each `Book`'s `title` field is a `BookTitle`.
   next: Convert each item with `list.map(books, book -> book.title)` (agent)
+  fix:
+    15 - return books
+    15 + return list.map(books, book -> book.title)
   rule: type.mismatch
   help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ```jadpo check project=e-mismatch-list-fix hidden

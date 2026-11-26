@@ -32,10 +32,15 @@ error: `ProductName` has no fields
   |                 ^^^^^ no such field
   reason: `name` is a `ProductName`, built on `Text`; only objects, inputs, outputs, events, failures and entities have fields.
   next: Use `name` itself (agent)
+  fix:
+    6 - return name.value
+    6 + return name
   rule: type.field_on_non_record
   help: https://jadpo.dev/docs/errors/type.field_on_non_record
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

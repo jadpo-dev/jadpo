@@ -87,10 +87,15 @@ error: `Visitor` has no field `created`
    |                ^^^^^^^ not declared
   reason: `since:` names one of `Visitor`'s `Instant` fields, which are `created_at`. Did you mean `created_at`?
   next: Use `created_at` instead of `created` (agent)
+  fix:
+    15 - since: created
+    15 + since: created_at
   rule: data.retention_since
   help: https://jadpo.dev/docs/errors/data.retention_since
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

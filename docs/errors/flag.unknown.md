@@ -43,10 +43,15 @@ error: `flags.new_chekout` isn't a flag
    |         ^^^^^^^^^^^^^^^^^ no such flag
   reason: `flags { }` declares no flag called `new_chekout`. Did you mean `new_checkout`?
   next: Use `flags.new_checkout` instead of `flags.new_chekout` (agent)
+  fix:
+    15 - if (flags.new_chekout) {
+    15 + if (flags.new_checkout) {
   rule: flag.unknown
   help: https://jadpo.dev/docs/errors/flag.unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

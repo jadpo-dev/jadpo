@@ -35,10 +35,15 @@ error: This condition needs brackets
   |        ^^^^^^^^^^ expected `(` before the condition
   reason: Conditions are always in brackets, `if (total > limit) {`, so the block can't be mistaken for part of the condition.
   next: Write `if (count > 10) {` (agent)
+  fix:
+    8 - if count > 10 {
+    8 + if (count > 10) {
   rule: syntax.condition_brackets
   help: https://jadpo.dev/docs/errors/syntax.condition_brackets
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

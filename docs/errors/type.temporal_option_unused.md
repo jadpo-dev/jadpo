@@ -29,10 +29,15 @@ error: `dst:` means nothing for a `ShopDay`
   |                                      ^^^ `ShopDay` has no clock time
   reason: `dst:` chooses an instant when a local time falls in a daylight-saving gap or overlap; `temporal.add_days` on a `ShopDay` moves a date, which has no clock time, so no such time arises.
   next: Remove `dst: ...` (agent)
+  fix:
+    4 - return temporal.add_days(day, 1, dst: Dst.compatible)
+    4 + return temporal.add_days(day, 1)
   rule: type.temporal_option_unused
   help: https://jadpo.dev/docs/errors/type.temporal_option_unused
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

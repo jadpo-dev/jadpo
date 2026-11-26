@@ -31,10 +31,15 @@ error: `"fr-FR"` isn't written as a locale
   |                               ^^^^^^^ not a `Locale`
   reason: A locale is a name in `Locale`, written `Locale.<tag>` with the tag in lower case and `_` for `-`: `Locale.en_gb` is en-GB. Closed choices are names, not text, so a misspelt one is caught while compiling.
   next: Write `Locale.fr_fr` instead (agent)
+  fix:
+    5 - supported: [Locale.en_gb, "fr-FR"]
+    5 + supported: [Locale.en_gb, Locale.fr_fr]
   rule: type.locale_invalid
   help: https://jadpo.dev/docs/errors/type.locale_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -62,10 +67,15 @@ error: `Locale.fr_fx` isn't a locale
   |                               ^^^^^^^^^^^^ no such locale
   reason: `Locale` has no variant called `fr_fx`; a variant is the locale's tag in lower case with `_` for `-`, such as `en_gb` for en-GB. Did you mean `fr_fr`?
   next: Use `Locale.fr_fr` instead (agent)
+  fix:
+    5 - supported: [Locale.en_gb, Locale.fr_fx]
+    5 + supported: [Locale.en_gb, Locale.fr_fr]
   rule: type.locale_invalid
   help: https://jadpo.dev/docs/errors/type.locale_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

@@ -28,10 +28,15 @@ error: `day` isn't shown `long`
   |          ^^^^^^^^^^^^^^^^^^^ not a style `day` takes
   reason: A format's `day` is shown `ComponentStyle.numeric` or `ComponentStyle.two_digit`; the locale decides the rest, such as the order and the punctuation.
   next: Write `day: ComponentStyle.numeric` (agent)
+  fix:
+    2 - day: ComponentStyle.long
+    2 + day: ComponentStyle.numeric
   rule: type.temporal_format_component_invalid
   help: https://jadpo.dev/docs/errors/type.temporal_format_component_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

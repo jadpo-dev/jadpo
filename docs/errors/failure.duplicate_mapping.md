@@ -40,10 +40,14 @@ error: `max:` is mapped twice
    |         ^^^ mapped again
   reason: Each condition is mapped once, so there is never a question of which failure the caller gets.
   next: Remove one `max:` (agent)
+  fix:
+    13 - max: QuantityTooLarge
   rule: failure.duplicate_mapping
   help: https://jadpo.dev/docs/errors/failure.duplicate_mapping
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -97,10 +101,14 @@ error: `Account.handle:` is mapped twice
    |             ^^^^^^^^^^^^^^ mapped again
   reason: Each condition is mapped once, so there is never a question of which failure the caller gets.
   next: Remove one `Account.handle:` (agent)
+  fix:
+    27 - Account.handle: HandleTaken
   rule: failure.duplicate_mapping
   help: https://jadpo.dev/docs/errors/failure.duplicate_mapping
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

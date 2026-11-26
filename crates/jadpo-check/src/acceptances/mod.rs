@@ -741,6 +741,18 @@ fn missing_acceptance(
 ) -> Diagnostic {
     let (what, why) = said(change, family);
     let subjects: Vec<String> = needs.iter().map(|need| need.subject.clone()).collect();
+    // The question to put to the person, and the entries their agreement
+    // writes, said once for every such error (chunk 10.9a).
+    let question = format!(
+        "{}{}: {}. Do you accept it?",
+        what[..1].to_uppercase(),
+        &what[1..],
+        subjects.join(", ")
+    );
+    let entries: Vec<String> = needs
+        .iter()
+        .map(|need| format!("{}: {change}", need.subject))
+        .collect();
     let span = match family {
         Family::Decline => decline_span(db, project, needs[0])
             .unwrap_or_else(|| place(db, project, path, needs[0].heading.as_deref())),
@@ -766,7 +778,8 @@ fn missing_acceptance(
                 format!("these as `{change}`")
             }
         ))
-        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words");
+        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words")
+        .sign_off(question, entries);
     }
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,
@@ -782,6 +795,7 @@ fn missing_acceptance(
         }
     ))
     .next("Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words")
+    .sign_off(question, entries)
 }
 
 /// The `decline` line a need for a declined security rule is about.

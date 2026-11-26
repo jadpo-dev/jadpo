@@ -43,10 +43,15 @@ error: `provider` has no key `host:`
   |     ^^^^ not a provider key
   reason: `provider { }` has one fixed set of keys: `protocol:`, `hosts:`, `runs:`, `credential:`, `oauth:`, `idempotency:`, `error_code:`, `webhooks:`, `polls:`, `erasure:`, `max_concurrent:`, `settings:`, `imported:`, `reviewed:`, `description:`, `aws:`, `credential_header:` and `headers:`. Did you mean `hosts:`?
   next: Use `hosts:` instead of `host:` (agent)
+  fix:
+    3 - host: "https://api.acme-couriers.example"
+    3 + hosts: "https://api.acme-couriers.example"
   rule: package.provider_invalid
   help: https://jadpo.dev/docs/errors/package.provider_invalid
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -100,10 +105,15 @@ error: `Delivry` in `reviewed:` isn't one of the package's types
    |                    ^^^^^^^ not a type of the package
   reason: `imported:` gives the description the package was imported from, `file:` and `digest:`, `reviewed:`, the package's types the agent has gone through against the provider's documentation, each named once, and `renamed:`, each name in the description code knows by another. The package declares no type `Delivry` in its `types/`.
   next: Use `Delivery` instead of `Delivry` (agent)
+  fix:
+    10 - reviewed: [Delivry]
+    10 + reviewed: [Delivery]
   rule: package.provider_invalid
   help: https://jadpo.dev/docs/errors/package.provider_invalid
 
 check failed: 1 error, 4 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A package written by hand has no `imported:`, so it lists its reviewed types in

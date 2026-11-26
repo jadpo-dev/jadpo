@@ -79,10 +79,15 @@ error: `from:` names `Bok`, which isn't an entity
    |           ^^^ not an entity
   reason: Nothing called `Bok` is declared; a query reads stored records, so `from:` names an entity declared in the domain's `entities/` folder.
   next: Use `from: Book` (agent)
+  fix:
+    13 - from: Bok
+    13 + from: Book
   rule: query.from_not_entity
   help: https://jadpo.dev/docs/errors/query.from_not_entity
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

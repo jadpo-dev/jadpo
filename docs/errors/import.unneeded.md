@@ -55,10 +55,14 @@ error: `loaf_stock` is declared in this test's subject
   |                    ^^^^^^^^^^ needs no import
   reason: A test file sees everything its subject declares without importing it, and `loaf_stock` is in `stock_item.jadpo`.
   next: Remove this line (agent)
+  fix:
+    1 - use menu/actions { loaf_stock }
   rule: import.unneeded
   help: https://jadpo.dev/docs/errors/import.unneeded
 
 check failed: 1 error, 4 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

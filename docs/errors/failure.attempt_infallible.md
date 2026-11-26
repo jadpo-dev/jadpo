@@ -34,10 +34,15 @@ error: `plain(...)` can't fail, so it takes no `attempt`
   |            ^^^^^^^ nothing to pass on
   reason: `plain(...)` lists no failures after `fails`, so it always gives its result; `attempt` marks only calls that can fail.
   next: Remove `attempt` (agent)
+  fix:
+    8 - return attempt plain(n)
+    8 + return plain(n)
   rule: failure.attempt_infallible
   help: https://jadpo.dev/docs/errors/failure.attempt_infallible
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -67,10 +72,15 @@ error: `Quantity(...)` can't fail, so it takes no `attempt`
   |            ^^^^^^^ nothing to pass on
   reason: The declared ranges prove `Quantity(...)` always follows its type's rules, so building it never fails; `attempt` marks only what can.
   next: Remove `attempt` (agent)
+  fix:
+    7 - return attempt Quantity(1)
+    7 + return Quantity(1)
   rule: failure.attempt_infallible
   help: https://jadpo.dev/docs/errors/failure.attempt_infallible
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 Nor can a value that is already there, which isn't a call at all:
@@ -93,10 +103,15 @@ error: `n` can't fail, so it takes no `attempt`
   |            ^^^^^^^ nothing to pass on
   reason: `attempt` marks a call that can fail, and this isn't a call.
   next: Remove `attempt` (agent)
+  fix:
+    4 - return attempt n
+    4 + return n
   rule: failure.attempt_infallible
   help: https://jadpo.dev/docs/errors/failure.attempt_infallible
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

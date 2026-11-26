@@ -32,10 +32,15 @@ error: This parameter list isn't closed
   |           - opened here
   reason: The parameters end with `)`, before `fails`, `->` or the body.
   next: Add `)` after `Count` (agent)
+  fix:
+    5 - function f(x: Count -> Count {
+    5 + function f(x: Count) -> Count {
   rule: syntax.unexpected_token
   help: https://jadpo.dev/docs/errors/syntax.unexpected_token
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

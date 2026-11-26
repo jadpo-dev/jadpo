@@ -29,10 +29,15 @@ error: `hop` isn't an option of `client_address:`
   |         ^^^ unknown option
   reason: `client_address:` takes `source:` and `hops:`, and nothing else; which proxies to trust is a count and not a list. Did you mean `hops`?
   next: Use `hops` instead of `hop` (agent)
+  fix:
+    4 - hop: 1
+    4 + hops: 1
   rule: configuration.client_address_invalid
   help: https://jadpo.dev/docs/errors/configuration.client_address_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -34,10 +34,15 @@ error: `status`'s type is written as a value, `TicketStatus.open`
   |             ^^^^^^^^^^^^^^^^^ a value of `TicketStatus`, not a type
   reason: A field's type says which values it may hold, such as `TicketStatus`; `TicketStatus.open` is one of those values, given where a value is built.
   next: Write `TicketStatus` (agent)
+  fix:
+    7 - status: TicketStatus.open
+    7 + status: TicketStatus
   rule: type.not_a_type
   help: https://jadpo.dev/docs/errors/type.not_a_type
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

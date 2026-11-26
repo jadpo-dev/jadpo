@@ -31,10 +31,15 @@ error: Jadpo writes `none`, not `null`
   |            ^^^^ write `none`
   reason: `null` is a missing value in JavaScript, Java, C# and Kotlin; Jadpo writes it `none`.
   next: Use `none` instead of `null` (agent)
+  fix:
+    6 - return null
+    6 + return none
   rule: type.foreign_value
   help: https://jadpo.dev/docs/errors/type.foreign_value
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

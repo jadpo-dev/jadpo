@@ -69,10 +69,15 @@ error: `translations.shipping.order_shiped` is not a message
   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no such message
   reason: `order_shiped` is not a message or enum `shipping` words. Did you mean `order_shipped`?
   next: Use `translations.shipping.order_shipped` (agent)
+  fix:
+    6 - subject: translations.shipping.order_shiped(name: "Ana", locale: reader_locale)
+    6 + subject: translations.shipping.order_shipped(name: "Ana", locale: reader_locale)
   rule: translation.message_unknown
   help: https://jadpo.dev/docs/errors/translation.message_unknown
 
 check failed: 1 error, 6 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

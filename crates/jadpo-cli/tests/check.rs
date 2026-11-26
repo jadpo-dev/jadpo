@@ -100,10 +100,15 @@ fn problems_print_in_the_error_shape_then_the_summary() {
   |            ^^^^^^ not declared
   reason: Nothing in this project called `dobule` can be called. Did you mean `double`?
   next: Use `double` instead of `dobule` (agent)
+  fix:
+    4 - return dobule(count)
+    4 + return double(count)
   rule: semantic.unknown_callee
   help: https://jadpo.dev/docs/errors/semantic.unknown_callee
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 "
     );
     assert_eq!(output.code, 1);
@@ -126,10 +131,15 @@ fn a_terminal_gets_the_rich_form() {
   reason    Nothing in this project called `dobule` can be called. Did you mean
             `double`?
   next      Use `double` instead of `dobule` (agent)
+  fix
+    4 - return dobule(count)
+    4 + return double(count)
   rule      semantic.unknown_callee
   help      https://jadpo.dev/docs/errors/semantic.unknown_callee
 
 ✗ check failed  1 error · 3 files
+
+→ jadpo fix  applies the edit shown for this error
 "
     );
 }
@@ -495,6 +505,60 @@ fn a_file_that_isnt_jadpo_and_that_nothing_uses_is_an_error() {
             "layout.asset_unreferenced domains/helpline/prompts/recordings/nothing_here/first.json",
             "prompt.section_missing domains/helpline/prompts/old_answer.prompt",
         ],
+        "{}",
+        output.stdout
+    );
+}
+
+/// An error whose repair is an agent's shows it under `fix`, and the one
+/// hint names `jadpo fix`, counting only those (chunk 10.9a): an agent
+/// that never read about `jadpo fix` learns of it when it is useful.
+#[test]
+fn fixable_errors_show_their_edit_and_the_hint_names_jadpo_fix() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("check-fixable");
+    let _ = std::fs::remove_dir_all(&root);
+    let write = |path: &str, text: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        std::fs::write(path, text).expect("write");
+    };
+    write("app.jadpo", "application {}\n");
+    write(
+        "domains/notes/types/label.jadpo",
+        "/// A label.\ntype Label = Object {\n    text: Text\n    note: Text?\n    size: Int\n}\n",
+    );
+    write(
+        "domains/notes/actions/labelled.jadpo",
+        "use notes/types { Label }\n\n/// A label.\naction labelled() -> Label {\n    return Label {\n        text: \"x\"\n        size: 1\n    }\n}\n",
+    );
+    write(
+        "domains/notes/actions/sized.jadpo",
+        "use notes/types { Label }\n\n/// Another.\naction sized() -> Label {\n    return Label {\n        text: \"y\"\n    }\n}\n",
+    );
+    let output = jadpo_cli::run(
+        &["check".to_string()],
+        &jadpo_term::Environment::empty().with_cwd(&root),
+    );
+    assert_eq!(output.code, 1, "{}", output.stdout);
+    assert!(
+        output.stdout.contains(
+            "  next: Add `note: none` to the block (agent)\n  fix:\n    8 + note: none\n  rule: type.missing_field\n"
+        ),
+        "{}",
+        output.stdout
+    );
+    // A required field's value is the author's: no edit, not counted.
+    assert!(
+        output
+            .stdout
+            .contains("  next: Add `note: ...` to the block (agent)\n  rule: type.missing_field\n"),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        output
+            .stdout
+            .ends_with("\nnext: jadpo fix  applies the edit shown for 1 of these 2 errors\n"),
         "{}",
         output.stdout
     );

@@ -60,10 +60,15 @@ error: `success` isn't something a route holds
    |         ^^^^^^^ unknown item
   reason: `success:` is now `status:`, which takes a `SuccessStatus`. A route holds `authentication`, `confirm`, `rate_limit`, `input`, `output`, `sends`, `status`, `cache`, `deadline`, `run` and `settle`.
   next: Use `status` instead of `success` (agent)
+  fix:
+    33 - success: SuccessStatus.created
+    33 + status: SuccessStatus.created
   rule: route.item_unknown
   help: https://jadpo.dev/docs/errors/route.item_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

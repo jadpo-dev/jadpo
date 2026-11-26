@@ -43,10 +43,15 @@ error: `jadp` isn't a group Jadpo reads
   |     ^^^^ no such group
   reason: The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the folder name of a library package the application uses for that package's. Did you mean `jadpo`?
   next: Rename the group to `jadpo` (agent)
+  fix:
+    2 - jadp: {
+    2 + jadpo: {
   rule: translation.group_unknown
   help: https://jadpo.dev/docs/errors/translation.group_unknown
 
 check failed: 1 error, 2 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

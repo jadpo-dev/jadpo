@@ -94,10 +94,15 @@ error: `return` starts a statement, and an arm's result is a value
   |                        ^^^^^^ a statement
   reason: An arm's result is a value, `reject`, `propagate` or a block; a statement such as `return` goes inside the block.
   next: Write the statement in a block: `some(found) -> { return found }` (agent)
+  fix:
+    5 - some(found) -> return found
+    5 + some(found) -> { return found }
   rule: syntax.expected_expression
   help: https://jadpo.dev/docs/errors/syntax.expected_expression
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

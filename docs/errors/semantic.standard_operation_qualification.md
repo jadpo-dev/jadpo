@@ -33,10 +33,15 @@ error: `in_zone` is a standard-library operation
   |                            ^^^^^^^ needs its namespace
   reason: The standard library is always called through its namespace, so the dot says who owns the operation.
   next: Call `temporal.in_zone(...)` (agent)
+  fix:
+    8 - var local: ZonedTime = in_zone(at, zone)
+    8 + var local: ZonedTime = temporal.in_zone(at, zone)
   rule: semantic.standard_operation_qualification
   help: https://jadpo.dev/docs/errors/semantic.standard_operation_qualification
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

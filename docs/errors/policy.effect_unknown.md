@@ -110,6 +110,9 @@ error: `rol` isn't part of a membership
    |         ^^^ not a part of a membership
   reason: A membership holds `scope:`, `member:`, `role:` and, optionally, `requires:`. Did you mean `role`?
   next: Use `role` (agent)
+  fix:
+    32 - rol: role
+    32 + role: role
   rule: policy.effect_unknown
   help: https://jadpo.dev/docs/errors/policy.effect_unknown
 

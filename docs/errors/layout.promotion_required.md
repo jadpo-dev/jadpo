@@ -45,10 +45,23 @@ error: `SnoozeDays` is used beyond this file
   |      ^^^^^^^^^^ used by another file
   reason: A type used by one file lives in it; once another file uses it, it moves to a file of its own in `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
   next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
+  fix:
+    domains/planning/types/snooze_days.jadpo
+    1 + type SnoozeDays = Int {
+    2 +     min: 1
+    3 +     max: 30
+    4 + }
+    1 - type SnoozeDays = Int {
+    2 -     min: 1
+    3 -     max: 30
+    4 - }
+    … 1 more line
   rule: layout.promotion_required
   help: https://jadpo.dev/docs/errors/layout.promotion_required
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -83,10 +96,21 @@ error: `DiscountCode` is used beyond this file
   |      ^^^^^^^^^^^^ used by another file
   reason: A declaration another file uses has a file of its own named after it, so its `use` line says where it is; `DiscountCode` is in `basket.jadpo`, named after another declaration, and moves to `domains/sales/types/`. `domains/sales/actions/apply_code.jadpo` uses it too.
   next: Move `DiscountCode` to `domains/sales/types/discount_code.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
+  fix:
+    domains/sales/types/discount_code.jadpo
+    1 + type DiscountCode = Text {
+    2 +     max_length: 12
+    3 + }
+    1 - type DiscountCode = Text {
+    2 -     max_length: 12
+    3 - }
+    1 + use sales/types { DiscountCode }
   rule: layout.promotion_required
   help: https://jadpo.dev/docs/errors/layout.promotion_required
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `domains/sales/actions/apply_code.jadpo`:
@@ -196,6 +220,17 @@ error: `Parcels` is used beyond this domain
   |             ^^^^^^^ used by another domain
   reason: A message used by one domain lives in its `translations/` folder; once another domain calls it, it moves to `shared/translations/` with its wording. `domains/billing/actions/bill_parcels.jadpo` uses it too.
   next: Move `Parcels` and its wording to `shared/translations/`, or run `jadpo fmt --layout`, which moves them and calls it as `translations.shared.parcels` (agent)
+  fix:
+    shared/translations/parcels.jadpo
+    1 + /// How many parcels an order has.
+    2 + public type Parcels = Message {
+    3 +     count: PluralCount
+    4 + }
+    1 - /// How many parcels an order has.
+    2 - public type Parcels = Message {
+    3 -     count: PluralCount
+    4 - }
+    … 16 more lines
   rule: layout.promotion_required
   help: https://jadpo.dev/docs/errors/layout.promotion_required
 

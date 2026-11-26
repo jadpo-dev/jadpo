@@ -34,10 +34,15 @@ error: `fixed` can't be changed
   |     ^^^^^ assigned here
   reason: `var` names a value that never changes; only a `var mut` can be pointed at a new value.
   next: Declare it `var mut fixed` (agent)
+  fix:
+    4 - var fixed: Choice = initial
+    4 + var mut fixed: Choice = initial
   rule: type.assign_immutable
   help: https://jadpo.dev/docs/errors/type.assign_immutable
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

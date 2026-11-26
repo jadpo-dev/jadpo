@@ -25,10 +25,15 @@ error: `HTMLSnippet` has consecutive capitals
   |      ^^^^^^^^^^^ reads back as `HtmlSnippet`
   reason: A name must convert to its file name and back unchanged: `HTMLSnippet` becomes `html_snippet.jadpo`, which reads back as `HtmlSnippet`.
   next: Rename it `HtmlSnippet` (agent)
+  fix:
+    1 - type HTMLSnippet = Text {
+    1 + type HtmlSnippet = Text {
   rule: naming.round_trip
   help: https://jadpo.dev/docs/errors/naming.round_trip
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
