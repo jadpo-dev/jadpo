@@ -209,6 +209,18 @@ members renaming themselves, leaving a workspace, anonymising a customer,
 the customer's name on tickets (decide), pinning a note, snoozing a
 ticket, saved filters, and opening a ticket from an email.
 
+**A second held-out set.** Roadmap chunk 10.10 adds H31 to H40, the
+`desk-held2` set, run as S7 and S8, written, calibrated and piloted the
+same way and measured on a Jadpo frozen after the 10.9 fixes. The mix is
+six changes to implement, two for the owner to decide and two to decline,
+and four carry a rule that reaches the agent only if it asks. Each owner
+reply settles every conflict its change raises, so a run can't miss by
+running out of replies. They cross: filtering tickets by tag, agents
+deleting customers (decide), urgent tickets answered within the hour, a
+public status page (decline), following tickets, previewing a macro,
+admins managing members (decide), replies locking after fifteen minutes,
+tickets for trainees (decline), and blocking a customer.
+
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
 IDs, errors seen more than twice, the docs read before each recovery, the
