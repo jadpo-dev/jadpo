@@ -1547,6 +1547,39 @@ pub fn reseal_count(table: &str, column: &str) -> String {
     )
 }
 
+/// `EXISTS (SELECT 1 FROM <table> WHERE <table>.<column> =
+/// <outer>.<outer_column> AND <tests>)`, `NOT EXISTS` when `negated`: the
+/// related records a condition asks for (area 6, "Filtering by a related
+/// record"; chunk 10.11c), linked to the row the statement reads, each
+/// test holding.
+pub fn related(
+    table: &str,
+    column: &str,
+    outer: (&str, &str),
+    tests: &[String],
+    negated: bool,
+) -> String {
+    let mut all = vec![format!(
+        "{}.{} = {}.{}",
+        ident(table),
+        ident(column),
+        ident(outer.0),
+        ident(outer.1)
+    )];
+    all.extend(tests.iter().cloned());
+    format!(
+        "{}EXISTS (SELECT 1 FROM {} WHERE {})",
+        if negated { "NOT " } else { "" },
+        ident(table),
+        all.join(" AND ")
+    )
+}
+
+/// Conditions joined by `AND`, or by `OR`, in brackets.
+pub fn joined(parts: &[String], and: bool) -> String {
+    format!("({})", parts.join(if and { " AND " } else { " OR " }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1601,37 +1634,4 @@ mod tests {
         assert!(log.contains(among), "{log}");
         assert!(state.contains("GREATEST(\"set_at\", $2)"), "{state}");
     }
-}
-
-/// `EXISTS (SELECT 1 FROM <table> WHERE <table>.<column> =
-/// <outer>.<outer_column> AND <tests>)`, `NOT EXISTS` when `negated`: the
-/// related records a condition asks for (area 6, "Filtering by a related
-/// record"; chunk 10.11c), linked to the row the statement reads, each
-/// test holding.
-pub fn related(
-    table: &str,
-    column: &str,
-    outer: (&str, &str),
-    tests: &[String],
-    negated: bool,
-) -> String {
-    let mut all = vec![format!(
-        "{}.{} = {}.{}",
-        ident(table),
-        ident(column),
-        ident(outer.0),
-        ident(outer.1)
-    )];
-    all.extend(tests.iter().cloned());
-    format!(
-        "{}EXISTS (SELECT 1 FROM {} WHERE {})",
-        if negated { "NOT " } else { "" },
-        ident(table),
-        all.join(" AND ")
-    )
-}
-
-/// Conditions joined by `AND`, or by `OR`, in brackets.
-pub fn joined(parts: &[String], and: bool) -> String {
-    format!("({})", parts.join(if and { " AND " } else { " OR " }))
 }
