@@ -2665,7 +2665,14 @@ compiler checks each like an output:
   a lookup; so does an action that does the lookup and returns or
   stores the `id`, while each caller, an action or a route, passes the
   key only from its own parameters and passes no part of it again as a
-  value the action stores where those readers read it. Anything a check
+  value the action stores where those readers read it. A find-or-create
+  is a lookup too: a record of the field's entity that the action creates
+  when the lookup decides to, such as a contact added when none has the
+  address, is the record chosen, so its `id` is stored as the found one's
+  is, and what decided its create shows its readers only that no record
+  matched. What it stores is still proved for what each value carries,
+  and the key stored where a role reads it who may not read the field is
+  still a copy. Anything a check
   can't see through, a call included, is held to be a copy. It is a copy, as before, when the value is worked out from what
   the field holds (`text.ends_with(c.email, "@vip.test")`, a length),
   when the key is a literal or anything but the request's

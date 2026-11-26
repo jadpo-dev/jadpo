@@ -769,3 +769,78 @@ fn a_route_passing_the_key_again_as_a_stored_value_is_a_copy() {
     ]);
     asks_for(&found, CHOSEN);
 }
+
+/// Finds the contact with an address, or creates one in the same body,
+/// then stores whichever contact's `id` it has (chunk 10.9e).
+fn find_or_create(name: &str, entity: &str, created: &str) -> String {
+    let lower = entity.to_lowercase();
+    format!(
+        "use desk/entities {{ Case, {entity}, {entity}NotFound, Workspace, WorkspaceNotFound }}
+use desk/types {{ Body }}
+use desk/queries {{ {lower}s_of }}
+
+/// Opens a case for the {lower} with an address, creating one if none has it.
+action {name}(workspace_id: Workspace.id, address: Body, subject: Body) fails WorkspaceNotFound, {entity}NotFound -> Case {{
+    var all: List<{entity}> = {lower}s_of(workspace_id)
+    var found: {entity}? = list.find(all, c -> text.equals_ignoring_case(c.address, address))
+    var mut chosen: {entity}.id? = none
+    match found {{
+        some(existing) -> {{
+            chosen = existing.id
+        }}
+        none -> {{
+            var added: {entity} = attempt {entity}.create {{
+                set: {{
+                    workspace_id: workspace_id
+                    address: {created}
+                }}
+            }}
+            chosen = added.id
+        }}
+    }}
+    return attempt Case.create {{
+        set: {{
+            workspace_id: workspace_id
+            {lower}_id: chosen
+            {other}: none
+            subject: subject
+        }}
+    }}
+}}
+",
+        other = if entity == "Contact" { "person_id" } else { "contact_id" },
+    )
+}
+
+#[test]
+fn a_contact_found_or_created_in_one_body_is_stored_with_no_acceptance() {
+    let action = find_or_create("case_found_or_created", "Contact", "address");
+    let found = diagnostics(&[(
+        "domains/desk/actions/case_found_or_created.jadpo",
+        &action,
+    )]);
+    assert!(found.is_empty(), "{}", shown(&found));
+}
+
+#[test]
+fn a_contact_created_with_a_literal_when_none_matches_is_still_a_lookup() {
+    // Whatever the new contact holds, the readers of `Case.contact_id`
+    // learn only which contact it is.
+    let action = find_or_create("case_found_or_created", "Contact", "\"unknown@desk.test\"");
+    let found = diagnostics(&[(
+        "domains/desk/actions/case_found_or_created.jadpo",
+        &action,
+    )]);
+    assert!(found.is_empty(), "{}", shown(&found));
+}
+
+#[test]
+fn a_find_or_create_storing_the_key_where_the_readers_read_it_is_a_copy() {
+    let action = find_or_create("case_found_or_created", "Contact", "address")
+        .replace("            subject: subject\n", "            subject: address\n");
+    let found = diagnostics(&[(
+        "domains/desk/actions/case_found_or_created.jadpo",
+        &action,
+    )]);
+    asks_for(&found, CHOSEN);
+}

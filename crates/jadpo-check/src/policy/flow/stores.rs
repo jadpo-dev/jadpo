@@ -132,6 +132,9 @@ pub(super) struct Dest {
     target: Vec<Src>,
     refs: Vec<(String, Vec<Src>)>,
     held: Vec<String>,
+    /// A record this body creates (chunk 10.9e): what decided whether
+    /// it is made decides only which record a lookup chose.
+    created: bool,
 }
 
 impl Dest {
@@ -173,6 +176,7 @@ impl Dest {
             target: target.map(|t| values(&t.whole)).unwrap_or_default(),
             refs,
             held: Vec::new(),
+            created: target.is_none(),
         }
     }
 
@@ -213,6 +217,7 @@ impl Dest {
                 .map(|(name, srcs)| (name.clone(), srcs.iter().map(erased).collect()))
                 .collect(),
             held: self.held.clone(),
+            created: self.created,
         }
     }
 
@@ -235,6 +240,7 @@ impl Dest {
                 .map(|(name, srcs)| (name.clone(), over(srcs)))
                 .collect(),
             held: self.held.clone(),
+            created: self.created,
         }
     }
 
@@ -250,6 +256,7 @@ impl Dest {
                 .map(|(name, srcs)| (name.clone(), cut(srcs)))
                 .collect(),
             held: self.held.clone(),
+            created: self.created,
         }
     }
 }
@@ -315,6 +322,10 @@ pub(super) struct Pending {
     from: String,
     into: String,
     subject: String,
+    /// Stored in a record of the source's entity the body creates under
+    /// the lookup (chunk 10.9e): judged only when nothing else the
+    /// lookup chose is, so a find-or-create is one problem, at the `id`.
+    made: bool,
 }
 
 /// A lookup an action stores, kept in its summary for its callers
@@ -917,7 +928,7 @@ impl Walk<'_> {
                     }
                     // A lookup isn't a copy (chunk 10.9c).
                     let chose = if decided {
-                        self.chose(flow, &inner, &prov)
+                        self.chose(flow, dest, &inner, &prov)
                     } else {
                         None
                     };
@@ -961,6 +972,7 @@ impl Walk<'_> {
                                 &qualified(&entity, &from),
                                 &qualified(&dest.entity, field),
                             ),
+                            made: dest.created && dest.entity == entity,
                         });
                         continue;
                     }
@@ -982,7 +994,14 @@ impl Walk<'_> {
     /// lookup is still a copy where they may know the key
     /// ([`Walk::kept_lookups`]). Only in a body walked for its own
     /// callers: an event, a batch's run and its summary have left them.
-    fn chose(&self, flow: &Flow<'_>, src: &Src, prov: &Prov) -> Option<Chose> {
+    ///
+    /// A record of `src`'s entity the body creates under the lookup, as
+    /// a find-or-create does when none matched, is the record chosen
+    /// (chunk 10.9e): its readers learn from it only that no existing
+    /// record matched, which the `id` stored with it shows them anyway.
+    /// What it stores is still proved for what it carries, and the key
+    /// stored where a role reads it who may not read `src` is a copy.
+    fn chose(&self, flow: &Flow<'_>, dest: &Dest, src: &Src, prov: &Prov) -> Option<Chose> {
         let Src::Field {
             entity,
             field,
@@ -1003,8 +1022,11 @@ impl Walk<'_> {
             .map(shallow)
             .filter(|src| !matches!(src, Src::Decided(_)))
             .peekable();
-        values.peek()?;
-        let ids = values.all(|value| match value {
+        let made = dest.created && dest.entity == *entity;
+        if !made {
+            values.peek()?;
+        }
+        let ids = made || values.all(|value| match value {
             Src::Field {
                 entity: of, field, ..
             } => of == *entity && field == "id",
@@ -1030,7 +1052,18 @@ impl Walk<'_> {
     /// a caller passing the key there too, or a key that isn't made only
     /// of its own parameters, makes it a copy where it is called.
     pub(super) fn kept_lookups(&mut self, flow: &Flow<'_>) {
-        for pending in std::mem::take(&mut self.lookups) {
+        let pending = std::mem::take(&mut self.lookups);
+        // A record created under a lookup is judged with the `id` the
+        // lookup chose, where there is one (chunk 10.9e).
+        let chosen: BTreeSet<String> = pending
+            .iter()
+            .filter(|pending| !pending.made)
+            .map(|pending| pending.from.clone())
+            .collect();
+        for pending in pending {
+            if pending.made && chosen.contains(&pending.from) {
+                continue;
+            }
             let Pending {
                 key,
                 mut others,
@@ -1039,6 +1072,7 @@ impl Walk<'_> {
                 from,
                 into,
                 subject,
+                ..
             } = pending;
             // Each part of a parameter this body stores where a role reads
             // it who may not read the field compared.
@@ -1169,6 +1203,7 @@ impl Walk<'_> {
             from: held.from.clone(),
             into: held.into.clone(),
             subject: held.subject.clone(),
+            made: false,
         });
     }
 
