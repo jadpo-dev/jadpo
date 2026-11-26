@@ -200,11 +200,11 @@ impl Reader<'_> {
                 // holds no other related record, search or `geo.` test.
                 let under = std::mem::take(&mut self.under);
                 let refused = self.related_refused.replace(INSIDE);
-                let searched = self.search_refused.replace(INSIDE);
+                let search_place = self.search_refused.replace(INSIDE);
                 let read = self.condition(scope, target, inner, false);
                 self.under = under;
                 self.related_refused = refused;
-                self.search_refused = searched;
+                self.search_refused = search_place;
                 let read = read?;
                 if read.searches() {
                     self.unsupported(

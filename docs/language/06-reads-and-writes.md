@@ -1082,29 +1082,29 @@ CREATE INDEX "note_title_trgm_idx" ON "note" USING gin ((lower("title" COLLATE "
 A condition can ask whether a related record exists:
 `exists(<Entity>.<reference>, <condition>)`. The reference links the two
 entities, and the condition tests the related record's own fields. Here
-a help desk tags tickets through a link entity, `TicketTag`, and lists a
-page of the tickets carrying a tag:
+a help desk tags enquiries through a link entity, `EnquiryTag`, and lists a
+page of the enquiries carrying a tag:
 
 ```jadpo check project=related-filter file=app.jadpo hidden
-use desk/entities { Agent }
+use desk/entities { Deskhand }
 
 application {}
 
 principal {
     user: {
-        subject: Agent.handle
+        subject: Deskhand.handle
     }
 }
 ```
 
-```jadpo check project=related-filter file=domains/desk/entities/agent.jadpo hidden
+```jadpo check project=related-filter file=domains/desk/entities/deskhand.jadpo hidden
 type Handle = Text {
     min_length: 1
     max_length: 40
 }
 
-/// Someone who answers tickets.
-entity Agent {
+/// Someone who answers enquiries.
+entity Deskhand {
     id: Uuid
     handle: Handle {
         unique: true
@@ -1116,16 +1116,16 @@ entity Agent {
 }
 ```
 
-```jadpo check project=related-filter file=domains/desk/entities/ticket.jadpo hidden
-type TicketTitle = Text {
+```jadpo check project=related-filter file=domains/desk/entities/enquiry.jadpo hidden
+type EnquiryTitle = Text {
     min_length: 1
     max_length: 200
 }
 
 /// Something a customer asked for.
-entity Ticket {
+entity Enquiry {
     id: Uuid
-    title: TicketTitle
+    title: EnquiryTitle
 
     policy: {
         read: [Access.authenticated]
@@ -1139,7 +1139,7 @@ type TagName = Text {
     max_length: 40
 }
 
-/// A label tickets are sorted by.
+/// A label enquiries are sorted by.
 entity Tag {
     id: Uuid
     name: TagName
@@ -1150,20 +1150,20 @@ entity Tag {
 }
 ```
 
-```jadpo check project=related-filter file=domains/desk/entities/ticket_tag.jadpo
-use desk/entities { Agent, Tag, Ticket }
+```jadpo check project=related-filter file=domains/desk/entities/enquiry_tag.jadpo
+use desk/entities { Deskhand, Enquiry, Tag }
 
-/// A tag an agent put on a ticket, which only they see, until they take
+/// A tag a deskhand put on an enquiry, which only they see, until they take
 /// it off.
-entity TicketTag {
+entity EnquiryTag {
     id: Uuid
-    ticket_id: Ticket.id {
+    enquiry_id: Enquiry.id {
         on_delete: OnDelete.cascade
     }
     tag_id: Tag.id {
         on_delete: OnDelete.cascade
     }
-    agent_id: Agent.id {
+    deskhand_id: Deskhand.id {
         on_delete: OnDelete.cascade
     }
     removed_at: Instant?
@@ -1173,29 +1173,33 @@ entity TicketTag {
     }
 
     policy: {
-        read: [agent_id]
+        read: [deskhand_id]
     }
 }
 ```
 
-```jadpo check project=related-filter file=domains/desk/types/ticket_row.jadpo hidden
-use desk/entities { Ticket }
+```jadpo check project=related-filter file=domains/desk/types/enquiry_row.jadpo hidden
+use desk/entities { Enquiry }
 
-/// A ticket as a list shows it.
-type TicketRow = Output {
-    pick: [Ticket.id, Ticket.title]
+/// A enquiry as a list shows it.
+type EnquiryRow = Output {
+    pick: [Enquiry.id, Enquiry.title]
 }
 ```
 
-```jadpo check project=related-filter file=domains/desk/queries/tagged.jadpo migrate=initial
-use desk/entities { Tag, Ticket, TicketTag }
-use desk/types { TicketRow }
+```jadpo check project=related-filter file=domains/desk/queries/enquiries_tagged.jadpo migrate=initial
+use desk/entities { Enquiry, EnquiryTag, Tag }
+use desk/types { EnquiryRow }
 
-/// The tickets the caller tagged `tag_id`, a page at a time, by title.
-query tagged(tag_id: Tag.id, after: PageCursor?, caller: Principal.user) -> Page<TicketRow> {
-    from: Ticket
-    where: exists(TicketTag.ticket_id, TicketTag.tag_id == tag_id)
-    order: [Ticket.title asc]
+/// The enquiries the caller tagged `tag_id`, a page at a time, by title.
+query enquiries_tagged(
+    tag_id: Tag.id,
+    after: PageCursor?,
+    caller: Principal.user
+) -> Page<EnquiryRow> {
+    from: Enquiry
+    where: exists(EnquiryTag.enquiry_id, EnquiryTag.tag_id == tag_id)
+    order: [Enquiry.title asc]
     page: {
         size: 2
         after: after
@@ -1203,82 +1207,82 @@ query tagged(tag_id: Tag.id, after: PageCursor?, caller: Principal.user) -> Page
 }
 ```
 
-```jadpo check project=related-filter file=domains/desk/queries/tagged.test.jadpo
-use desk/entities { Agent, Tag, Ticket, TicketTag }
-use desk/types { TicketRow }
+```jadpo check project=related-filter file=domains/desk/queries/enquiries_tagged.test.jadpo
+use desk/entities { Deskhand, Enquiry, EnquiryTag, Tag }
+use desk/types { EnquiryRow }
 
-/// `ticket` tagged `tag` by `agent`.
-fixture tag_ticket(ticket: Ticket, tag: Tag, agent: Agent) -> TicketTag {
-    return make.TicketTag {
-        ticket_id: ticket.id
+/// `enquiry` tagged `tag` by `deskhand`.
+fixture tag_enquiry(enquiry: Enquiry, tag: Tag, deskhand: Deskhand) -> EnquiryTag {
+    return make.EnquiryTag {
+        enquiry_id: enquiry.id
         tag_id: tag.id
-        agent_id: agent.id
+        deskhand_id: deskhand.id
     }
 }
 
-test "a page of the tickets an agent tagged, in title order" {
-    var ann: Agent = make.Agent {
+test "a page of the enquiries a deskhand tagged, in title order" {
+    var ann: Deskhand = make.Deskhand {
         handle: "ann"
     }
-    var bob: Agent = make.Agent {
+    var bob: Deskhand = make.Deskhand {
         handle: "bob"
     }
-    var urgent: Tag = make.Tag {
-        name: "urgent"
+    var pressing: Tag = make.Tag {
+        name: "pressing"
     }
-    var later: Tag = make.Tag {
-        name: "later"
+    var someday: Tag = make.Tag {
+        name: "someday"
     }
-    var lift: Ticket = make.Ticket {
-        title: "Fix the lift"
+    var boiler: Enquiry = make.Enquiry {
+        title: "Fix the boiler"
     }
-    var bins: Ticket = make.Ticket {
-        title: "Empty the bins"
+    var chimney: Enquiry = make.Enquiry {
+        title: "Sweep the chimney"
     }
-    var door: Ticket = make.Ticket {
-        title: "Oil the door"
+    var hedge: Enquiry = make.Enquiry {
+        title: "Trim the hedge"
     }
-    var paint: Ticket = make.Ticket {
-        title: "Paint the hall"
+    var porch: Enquiry = make.Enquiry {
+        title: "Paint the porch"
     }
-    tag_ticket(lift, urgent, ann)
-    tag_ticket(bins, urgent, ann)
-    tag_ticket(door, urgent, ann)
-    tag_ticket(paint, later, ann)
-    tag_ticket(paint, urgent, bob)
-    var first: Page<TicketRow> = tagged(urgent.id, none, Principal.user(ann))
-    assert list.map(first.items, t -> t.title) == ["Empty the bins", "Fix the lift"]
-    var second: Page<TicketRow> = tagged(urgent.id, first.next, Principal.user(ann))
-    assert list.map(second.items, t -> t.title) == ["Oil the door"]
+    tag_enquiry(boiler, pressing, ann)
+    tag_enquiry(chimney, pressing, ann)
+    tag_enquiry(hedge, pressing, ann)
+    tag_enquiry(porch, someday, ann)
+    tag_enquiry(porch, pressing, bob)
+    var first: Page<EnquiryRow> = enquiries_tagged(pressing.id, none, Principal.user(ann))
+    assert list.map(first.items, t -> t.title) == ["Fix the boiler", "Sweep the chimney"]
+    var second: Page<EnquiryRow> = enquiries_tagged(pressing.id, first.next, Principal.user(ann))
+    assert list.map(second.items, t -> t.title) == ["Trim the hedge"]
     assert second.next == none
-    var bobs: Page<TicketRow> = tagged(urgent.id, none, Principal.user(bob))
-    assert list.map(bobs.items, t -> t.title) == ["Paint the hall"]
+    var bobs: Page<EnquiryRow> = enquiries_tagged(pressing.id, none, Principal.user(bob))
+    assert list.map(bobs.items, t -> t.title) == ["Paint the porch"]
 }
 ```
 
 - **The reference.** Either way round: another entity's reference to
   the one the query reads asks for a record that refers here, as
-  `TicketTag.ticket_id` does; one of the query's own entity's references
+  `EnquiryTag.enquiry_id` does; one of the query's own entity's references
   asks for the record it points at, so a list of todos in a project
   called `name` is `exists(Todo.project_id, Project.name == name)`. Only a
-  reference links two records, so `exists(Ticket.title, ...)` is
+  reference links two records, so `exists(Enquiry.title, ...)` is
   `query.condition_unsupported`, naming the references there are.
 - **The condition.** Any condition a query's `where:` takes, on the
   related entity's fields: comparisons, `in`, `== none`, `and`, `or` and
   `not`, and the [operations](#operations-in-conditions) with an exact SQL
   form. Leave it out when any related record will do:
-  `exists(TicketTag.ticket_id)` is a ticket with a tag. A `geo.` test, a
+  `exists(EnquiryTag.enquiry_id)` is an enquiry with a tag. A `geo.` test, a
   search inside text and `matches` stay in a query of their own, since
   Jadpo's code works them out again on the rows a query reads.
-- **None of them.** `not exists(TicketTag.ticket_id)` keeps the tickets
+- **None of them.** `not exists(EnquiryTag.enquiry_id)` keeps the enquiries
   with no tag. `exists` stands anywhere a condition does, under `not`,
   `or` and `and` too, on a query's own `where:` lines and an aggregate
-  query's, so a count of the tickets with a tag is one statement. An
+  query's, so a count of the enquiries with a tag is one statement. An
   include's `where:` and `exists`'s own condition don't take another.
 - **Who sees the related records.** A related record the caller may not
   read, or that the related entity's `visible:` hides, isn't there for
   `exists`, as it isn't for any read. So above, Ann's page holds only the
-  tickets she tagged, and a tag she took off counts for nothing. A call
+  enquiries she tagged, and a tag she took off counts for nothing. A call
   with no caller, a test's or a seed's, runs without policy
   ([Calls with no caller](13-testing.md#calls-with-no-caller)), so it
   sees every link `visible:` lets through. The fields `exists` tests
@@ -1292,7 +1296,7 @@ test "a page of the tickets an agent tagged, in title order" {
 - **Paging and order.** `exists` decides which records a query reads,
   before its order and its page, so a page holds as many as it can and
   its cursor walks every match once. Don't read the related records
-  first and filter with `Ticket.id in` a list of their references: that
+  first and filter with `Enquiry.id in` a list of their references: that
   reads every link, and stops at `limit: every`'s 10,000
   ([Every record that matches](#every-record-that-matches)).
 
@@ -1302,16 +1306,16 @@ derived for it starts with the reference, then the fields the condition
 tests with `==` or `in`, as an include's children's does:
 
 ```sql
--- tagged
+-- enquiries_tagged
 SELECT "id", "title"
-FROM "ticket"
+FROM "enquiry"
 WHERE ($4 IS NULL OR ("title" COLLATE "C", "id") > ($4 COLLATE "C", $5))
-  AND EXISTS (SELECT 1 FROM "ticket_tag" WHERE "ticket_tag"."ticket_id" = "ticket"."id" AND "tag_id" = $1 AND "removed_at" IS NULL AND "ticket_tag"."agent_id" = $2)
+  AND EXISTS (SELECT 1 FROM "enquiry_tag" WHERE "enquiry_tag"."enquiry_id" = "enquiry"."id" AND "tag_id" = $1 AND "removed_at" IS NULL AND "enquiry_tag"."deskhand_id" = $2)
   AND $3
 ORDER BY "title" COLLATE "C" ASC, "id" ASC
 LIMIT 3
 
-CREATE INDEX "ticket_tag_ticket_id_tag_id_idx" ON "ticket_tag" ("ticket_id", "tag_id") WHERE "removed_at" IS NULL;
+CREATE INDEX "enquiry_tag_enquiry_id_tag_id_idx" ON "enquiry_tag" ("enquiry_id", "tag_id") WHERE "removed_at" IS NULL;
 ```
 
 ## Order and pages

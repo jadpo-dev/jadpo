@@ -321,6 +321,8 @@ fn built() -> BTreeSet<String> {
             "operation",
             // A search by words (area 16, chunk B12).
             "search",
+            // A related record, `exists(...)` (chunk 10.11c).
+            "related",
         ]
         .iter()
         .map(|c| format!("query condition {c}")),
@@ -1514,6 +1516,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                         _ => "operation",
                     },
                     Condition::Matches(_) => "search",
+                    Condition::Related(_) => "related",
                 };
                 used.insert(format!("query condition {word}"));
                 match condition {
