@@ -38,7 +38,7 @@ error: `order_by` isn't something a query holds
    |
 15 |     order_by: [Book.id asc]
    |     ^^^^^^^^ not a section
-  reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:`, `missing:`, `include_erased:` and `cache:`. Did you mean `order:`?
+  reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:`, `missing:`, `include_erased:`, `include_hidden:` and `cache:`. Did you mean `order:`?
   next: Use `order:` (agent)
   fix:
     15 - order_by: [Book.id asc]
@@ -86,7 +86,7 @@ error: `distinct` isn't something a query holds
    |
 16 |     distinct: true
    |     ^^^^^^^^ not a section
-  reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:`, `missing:`, `include_erased:` and `cache:`.
+  reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:`, `missing:`, `include_erased:`, `include_hidden:` and `cache:`.
   next: Remove it from `books_titled` (agent)
   rule: query.unknown_section
   help: https://jadpo.dev/docs/errors/query.unknown_section

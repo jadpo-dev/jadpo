@@ -3937,13 +3937,17 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
     use queries::{Include, IncludeKind};
     let queries = queries::query_models(db, project);
     let lookup = Lookup::new(db, project);
-    let mut wanted: Vec<(String, (Vec<String>, usize), String)> = Vec::new();
+    // Each entity, the columns, the query, and whether the read reaches
+    // the records a lifecycle hides (chunk 10.11d), so its index holds
+    // every record.
+    #[allow(clippy::type_complexity)]
+    let mut wanted: Vec<(String, (Vec<String>, usize), String, bool)> = Vec::new();
     use report::wanted_columns as columns;
     #[allow(clippy::type_complexity)]
     fn walk(
         includes: &[Include],
         query: &str,
-        wanted: &mut Vec<(String, (Vec<String>, usize), String)>,
+        wanted: &mut Vec<(String, (Vec<String>, usize), String, bool)>,
     ) {
         for include in includes {
             if include.kind == IncludeKind::Children {
@@ -3952,7 +3956,7 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
                     &include.filter,
                     &include.order,
                 );
-                wanted.push((include.entity.clone(), cols, query.to_string()));
+                wanted.push((include.entity.clone(), cols, query.to_string(), false));
             }
             walk(&include.includes, query, wanted);
         }
@@ -3960,7 +3964,12 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
     for query in &queries.queries {
         let cols = columns(&[], &query.filter, &query.order);
         if !cols.0.is_empty() {
-            wanted.push((query.entity.clone(), cols, query.name.clone()));
+            wanted.push((
+                query.entity.clone(),
+                cols,
+                query.name.clone(),
+                query.include_hidden,
+            ));
         }
         // A related record that refers here is found by its reference,
         // then what its condition tests for equality (chunk 10.11c); one
@@ -3975,11 +3984,14 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
                 found.condition.as_slice(),
                 &[],
             );
-            wanted.push((found.entity.clone(), cols, query.name.clone()));
+            wanted.push((found.entity.clone(), cols, query.name.clone(), found.hidden));
         }
         walk(&query.includes, &query.name, &mut wanted);
     }
-    for (entity_name, (fields, equal), query) in wanted {
+    // A read of every record first, so the index it makes, holding every
+    // record, serves the reads of the visible ones on the same columns.
+    wanted.sort_by_key(|(.., whole)| !*whole);
+    for (entity_name, (fields, equal), query, whole) in wanted {
         let Some(entity) = model.entity(&entity_name) else {
             continue;
         };
@@ -4003,19 +4015,20 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         // An index that starts with these columns already serves the
         // query, and so does a unique key all of whose columns it tests
         // for equality: at most one record matches each value.
-        let covered = report::serving(table, &born, &collate, &tested).is_some();
+        let covered = report::serving(table, &born, &collate, &tested, whole).is_some();
         if covered {
             continue;
         }
         // Every query of an entity with a lifecycle reads only the
         // records its `visible:` lets through, so its index holds only
         // those: a partial index, unless `visible:` reads `clock.now`,
-        // which changes as time passes (area 5, "Indexes").
+        // which changes as time passes (area 5, "Indexes"), or the query
+        // says `include_hidden: true`.
         let predicate = entity
             .lifecycle
             .as_ref()
             .and_then(|lifecycle| lifecycle.visible.as_ref())
-            .filter(|visible| !lifecycle::reads_now(visible))
+            .filter(|visible| !whole && !lifecycle::reads_now(visible))
             .and_then(|visible| {
                 jadpo_sql::condition(&mut jadpo_sql::Fixed, entity, visible, false)
             });

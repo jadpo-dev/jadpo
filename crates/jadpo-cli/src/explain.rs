@@ -365,6 +365,15 @@ pub fn explain(call: &Call) -> Reply {
             if let Some(purge) = purge {
                 rows.push(("purge".to_string(), purge.clone()));
             }
+            // The queries that read what it hides, so a person sees a
+            // route giving binned records (chunk 10.11d).
+            let readers = hidden_readers(db, project, &node.name);
+            if !readers.is_empty() {
+                rows.push((
+                    "hidden".to_string(),
+                    format!("read by {}", readers.join(", ")),
+                ));
+            }
         }
         let mut grants: Vec<(usize, String, String)> = children
             .iter()
@@ -454,6 +463,10 @@ pub fn explain(call: &Call) -> Reply {
             if route.run.query { "query" } else { "runs" },
             route.run.name
         ));
+        // A route giving records a lifecycle hides says so (chunk 10.11d).
+        if route.run.query && all_hidden_readers(db, project).contains(&route.run.name) {
+            text.push_str("  includes hidden records");
+        }
         match route.authentication {
             jadpo_std::http::Authentication::Public => text.push_str("  no sign-in"),
             jadpo_std::http::Authentication::Fresh => text.push_str("  fresh sign-in"),
@@ -820,6 +833,42 @@ fn first_line(text: &str) -> String {
 
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The queries that say `include_hidden: true` for `entity`, on the query
+/// or inside `exists(...)` (area 6, "Records a lifecycle hides"), by name.
+fn hidden_readers(db: &dyn jadpo_db::Db, project: jadpo_db::Project, entity: &str) -> Vec<String> {
+    hidden_reads(db, project, Some(entity))
+        .into_iter()
+        .collect()
+}
+
+/// Every query saying `include_hidden: true` for any entity.
+fn all_hidden_readers(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> BTreeSet<String> {
+    hidden_reads(db, project, None)
+}
+
+fn hidden_reads(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    entity: Option<&str>,
+) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    let of = |name: &str| entity.is_none_or(|entity| entity == name);
+    for query in &jadpo_check::data::queries::query_models(db, project).queries {
+        let mut related = Vec::new();
+        for line in &query.filter {
+            line.related(&mut related);
+        }
+        if (query.include_hidden && of(&query.entity))
+            || related
+                .iter()
+                .any(|found| found.hidden && of(&found.entity))
+        {
+            out.insert(query.name.clone());
+        }
+    }
+    out
 }
 
 #[cfg(test)]

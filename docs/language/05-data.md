@@ -1067,9 +1067,12 @@ action restore_note(note_id: Note.id) fails NoteNotFound -> Note {
   they may not change is, so one user can't restore another's, and a
   helpdesk agent who may edit tickets but not delete them can't take one
   out of the bin.
-- **Nothing else reaches them.** Reads, lists, counts, includes and every
-  other transition still leave hidden records out. A restore returns the
-  record it brought back, now visible.
+- **Nothing else changes them.** Every other transition still leaves
+  hidden records out, and so do reads, lists, counts and includes, unless
+  a query says `include_hidden: true`, as a bin view of what a restore
+  can bring back does
+  ([Records a lifecycle hides](06-reads-and-writes.md#records-a-lifecycle-hides)).
+  A restore returns the record it brought back, now visible.
 - **Said where it is written.** `reaches:` takes only `hidden`, and only in
   a lifecycle with `visible:`, since otherwise nothing is hidden
   (`data.lifecycle_section`). Its own `when:`, if it has one, can refuse a
@@ -1161,8 +1164,9 @@ reference's own index goes once a query's index starts with its column.
 
 - **Partial indexes.** The index a query needs on an entity with a
   lifecycle holds only the records `visible:` lets queries see
-  (`WHERE "deleted_at" IS NULL`). The exception is a `visible:` that reads
-  `clock.now`, which changes as time passes. A reference's own index then
+  (`WHERE "deleted_at" IS NULL`). The exceptions are a `visible:` that
+  reads `clock.now`, which changes as time passes, and a query that says
+  `include_hidden: true`, which reads every record. A reference's own index then
   stays, since deleting the record it points at still finds hidden
   records.
 - **Sorted text.** A text field a query sorts by is indexed in code-point

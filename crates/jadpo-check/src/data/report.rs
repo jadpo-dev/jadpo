@@ -130,6 +130,7 @@ pub(crate) fn serving(
     born: &[String],
     collate: &[String],
     tested: &[String],
+    whole: bool,
 ) -> Option<String> {
     let serves = |existing: &[String], sorted: &[String]| {
         existing.len() >= born.len()
@@ -156,8 +157,12 @@ pub(crate) fn serving(
             table
                 .indexes
                 .iter()
+                // A read of every record, `include_hidden: true`'s,
+                // isn't served by an index of only some (chunk 10.11d).
                 .find(|(_, index)| {
-                    index.expression.is_none() && serves(&index.columns, &index.collate)
+                    index.expression.is_none()
+                        && !(whole && index.predicate.is_some())
+                        && serves(&index.columns, &index.collate)
                 })
                 .map(|(name, _)| name.clone())
         })
@@ -219,7 +224,7 @@ pub fn reads(db: &dyn Db, project: Project) -> Vec<StatementRead> {
                 .unwrap_or_default(),
             rows,
             most,
-            index: reader.index(&query.entity, &wanted, equal),
+            index: reader.index_of(&query.entity, &wanted, equal, query.include_hidden),
         });
         reader.includes(&query.entity, &query.includes, &[], &mut out);
     }
@@ -244,6 +249,17 @@ impl Reader<'_> {
 
     /// The key or index serving a read of `entity` by the fields `wanted`.
     fn index(&self, entity: &str, wanted: &[String], equal: usize) -> Option<String> {
+        self.index_of(entity, wanted, equal, false)
+    }
+
+    /// [`Self::index`], for a read of every record when `whole`.
+    fn index_of(
+        &self,
+        entity: &str,
+        wanted: &[String],
+        equal: usize,
+        whole: bool,
+    ) -> Option<String> {
         let entity = self.model.entity(entity)?;
         let table = self.table(entity)?;
         let columns = index_columns(self.lookup, entity, wanted, equal);
@@ -253,7 +269,7 @@ impl Reader<'_> {
             .unwrap_or_default();
         let found = columns
             .filter(|(born, _, _)| !born.is_empty())
-            .and_then(|(born, collate, tested)| serving(table, &born, &collate, &tested));
+            .and_then(|(born, collate, tested)| serving(table, &born, &collate, &tested, whole));
         // A search, an operation or a nearest-neighbour order is served by
         // an index of its own, made for this query.
         found.or_else(|| {

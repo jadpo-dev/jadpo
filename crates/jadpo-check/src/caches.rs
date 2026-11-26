@@ -601,6 +601,7 @@ pub fn record_lookup<'q>(
         || query.distance.is_some()
         || query.geometry.is_some()
         || query.include_erased
+        || query.include_hidden
         || query.limit.is_some()
         || query.after.is_some()
         || query.order.iter().any(|order| !order.added)

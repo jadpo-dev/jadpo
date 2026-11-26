@@ -57,7 +57,7 @@ pub(crate) use vectors::{metric, vector_type};
 pub use aggregates::{AggregateKind, Entry, EntryOrder, GroupKey, Grouping};
 
 /// The sections a query declaration holds (area 6, "Named queries").
-pub const SECTIONS: [&str; 13] = [
+pub const SECTIONS: [&str; 14] = [
     "from",
     "geometry",
     "where",
@@ -70,6 +70,7 @@ pub const SECTIONS: [&str; 13] = [
     "include",
     "missing",
     "include_erased",
+    "include_hidden",
     "cache",
 ];
 
@@ -371,6 +372,10 @@ pub struct QueryModel {
     /// P4b): it finds the people erasure keeps a record of too, reading
     /// nothing of them but what it kept.
     pub include_erased: bool,
+    /// `include_hidden: true` (area 6, "Records a lifecycle hides"; chunk
+    /// 10.11d): it finds the records its entity's lifecycle hides too,
+    /// such as those in the bin, under its policy still.
+    pub include_hidden: bool,
 }
 
 /// Every query of a project, without positions: for what reads them all,
@@ -653,14 +658,44 @@ fn unparen(expr: &Expr) -> Expr {
     current
 }
 
-/// The archived compiler's section names, and the ones they became.
+/// The archived compiler's section names, and the ones they became, and
+/// the words reached for to read what a lifecycle hides (chunk 10.11d).
 fn renamed(written: &str) -> Option<&'static str> {
+    if hidden_guess(written) {
+        return Some(related::HIDDEN);
+    }
     match written {
         "order_by" => Some("order"),
         "and" => Some("where"),
         "project" => Some("include"),
         _ => None,
     }
+}
+
+/// Whether a section's name is a guess at `include_hidden:`: soft-deleted,
+/// binned, archived or hidden records asked for in other words.
+fn hidden_guess(written: &str) -> bool {
+    let words: Vec<&str> = written.split('_').collect();
+    let asks = matches!(
+        words.first().copied(),
+        Some("include" | "includes" | "including" | "with" | "show" | "see" | "all")
+    );
+    let hidden = words.iter().skip(1).any(|word| {
+        matches!(
+            *word,
+            "hidden"
+                | "deleted"
+                | "binned"
+                | "bin"
+                | "trashed"
+                | "trash"
+                | "archived"
+                | "removed"
+                | "soft"
+                | "invisible"
+        )
+    });
+    asks && hidden && written != related::HIDDEN
 }
 
 /// The first two words of a declaration or entry, to name it by.

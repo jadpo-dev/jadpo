@@ -224,8 +224,11 @@ handles. Instead, read into a type with the same fields and no rule, then
 build the type with the rule from it in code, inside an `attempt`.
 
 Records the entity's [lifecycle](05-data.md#lifecycle) hides, such as
-soft-deleted todos, are left out of every query. So is the record kept of
-a person who has been erased, unless the query says `include_erased: true`
+soft-deleted todos, are left out of every query, unless the query says
+`include_hidden: true`
+([Records a lifecycle hides](#records-a-lifecycle-hides)). So is the
+record kept of a person who has been erased, unless the query says
+`include_erased: true`
 ([The person's own record](15-personal-data.md#the-persons-own-record)).
 
 A query writes nothing and calls no actions
@@ -1181,7 +1184,7 @@ entity EnquiryTag {
 ```jadpo check project=related-filter file=domains/desk/types/enquiry_row.jadpo hidden
 use desk/entities { Enquiry }
 
-/// A enquiry as a list shows it.
+/// An enquiry as a list shows it.
 type EnquiryRow = Output {
     pick: [Enquiry.id, Enquiry.title]
 }
@@ -1281,7 +1284,9 @@ test "a page of the enquiries a deskhand tagged, in title order" {
   include's `where:` and `exists`'s own condition don't take another.
 - **Who sees the related records.** A related record the caller may not
   read, or that the related entity's `visible:` hides, isn't there for
-  `exists`, as it isn't for any read. So above, Ann's page holds only the
+  `exists`, as it isn't for any read, unless `include_hidden: true` comes
+  last inside it, which counts the hidden ones too
+  ([Records a lifecycle hides](#records-a-lifecycle-hides)). So above, Ann's page holds only the
   enquiries she tagged, and a tag she took off counts for nothing. A call
   with no caller, a test's or a seed's, runs without policy
   ([Calls with no caller](13-testing.md#calls-with-no-caller)), so it
@@ -1317,6 +1322,197 @@ LIMIT 3
 
 CREATE INDEX "enquiry_tag_enquiry_id_tag_id_idx" ON "enquiry_tag" ("enquiry_id", "tag_id") WHERE "removed_at" IS NULL;
 ```
+
+## Records a lifecycle hides
+<!-- topic: records-a-lifecycle-hides -->
+
+A query leaves out the records its entity's
+[lifecycle](05-data.md#lifecycle) hides, such as enquiries in the bin.
+`include_hidden: true` says it reads them too, beside the visible ones.
+A bin view is that with a condition on the field the lifecycle sets, and
+a guard that must count binned records says it inside `exists(...)`:
+
+```jadpo check project=binned-records file=app.jadpo hidden
+use desk/entities { Deskhand }
+
+application {}
+
+principal {
+    user: {
+        subject: Deskhand.handle
+    }
+}
+```
+
+```jadpo check project=binned-records file=domains/desk/entities/deskhand.jadpo hidden
+type Handle = Text {
+    min_length: 1
+    max_length: 40
+}
+
+/// Someone who answers enquiries.
+entity Deskhand {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=binned-records file=domains/desk/entities/customer.jadpo hidden
+type CustomerName = Text {
+    min_length: 1
+    max_length: 80
+}
+
+/// Someone the desk answers.
+entity Customer {
+    id: Uuid
+    name: CustomerName
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.authenticated]
+        delete: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=binned-records file=domains/desk/entities/enquiry.jadpo
+use desk/entities { Customer, Deskhand }
+
+type EnquiryTitle = Text {
+    min_length: 1
+    max_length: 200
+}
+
+/// Something a customer asked for, kept in the bin for 30 days.
+entity Enquiry {
+    id: Uuid
+    title: EnquiryTitle
+    customer_id: Customer.id {
+        on_delete: OnDelete.restricted
+    }
+    deskhand_id: Deskhand.id {
+        on_delete: OnDelete.restricted
+    }
+    binned_at: Instant?
+
+    lifecycle: {
+        visible: binned_at == none
+        transitions: {
+            delete: {
+                when: binned_at == none
+                set: {
+                    binned_at: clock.now
+                }
+            }
+            restore: {
+                reaches: hidden
+                set: {
+                    binned_at: none
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: binned_at
+        }
+    }
+
+    policy: {
+        create: [Access.authenticated]
+        read: [deskhand_id]
+        update: [deskhand_id]
+        delete: [deskhand_id]
+    }
+}
+```
+
+```jadpo check project=binned-records file=domains/desk/types/enquiry_row.jadpo hidden
+use desk/entities { Enquiry }
+
+/// An enquiry as a list shows it.
+type EnquiryRow = Output {
+    pick: [Enquiry.id, Enquiry.title]
+}
+```
+
+```jadpo check project=binned-records file=domains/desk/types/customer_row.jadpo hidden
+use desk/entities { Customer }
+
+/// A customer as a list shows them.
+type CustomerRow = Output {
+    pick: [Customer.id, Customer.name]
+}
+```
+
+```jadpo check project=binned-records file=domains/desk/queries/binned_enquiries.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryRow }
+
+/// The caller's enquiries in the bin, which `Enquiry.restore` brings back.
+query binned_enquiries(caller: Principal.user) -> List<EnquiryRow> {
+    from: Enquiry
+    where: Enquiry.binned_at != none
+    order: [Enquiry.title asc]
+    limit: 50
+    include_hidden: true
+}
+```
+
+```jadpo check project=binned-records file=domains/desk/queries/without_enquiries.jadpo migrate=initial
+use desk/entities { Customer, Enquiry }
+use desk/types { CustomerRow }
+
+/// The customer, while they have no enquiries at all, binned ones included.
+query without_enquiries(customer_id: Customer.id) -> CustomerRow? {
+    from: Customer
+    where: Customer.id == customer_id
+    where: not exists(Enquiry.customer_id, include_hidden: true)
+}
+```
+
+- **Only what the lifecycle hides.** `include_hidden: true` leaves out
+  the entity's `visible:` and nothing else. Its read policy still holds
+  in full, so above, a deskhand's bin holds only their own enquiries, and a
+  call with no caller runs without policy, as every read does
+  ([Calls with no caller](13-testing.md#calls-with-no-caller)). A
+  person's record that erasure kept stays out: only `include_erased:
+  true` reaches that ([The person's own record](15-personal-data.md#the-persons-own-record)),
+  and a query may say both.
+- **Where it is said.** On a query, for the records `from:` reads, a
+  list's, a page's, one record's or an aggregate's; and last inside
+  `exists(...)`, for the related records:
+  `exists(Enquiry.customer_id, include_hidden: true)`. An include's
+  children still leave hidden records out, and a parent is read whether
+  its lifecycle hides it or not
+  ([Children and parents](#children-and-parents)). It takes only `true`
+  (`type.setting_value`), and only for an entity whose lifecycle has a
+  `visible:` ([`query.include_hidden_unused`](../errors/query.include_hidden_unused.md)).
+- **Bringing one back.** A query reads hidden records; only a transition
+  marked `reaches: hidden` changes one
+  ([Restoring a hidden record](05-data.md#restoring-a-hidden-record)), so
+  a bin view lists what `Enquiry.restore` can bring back.
+- **A delete a binned record blocks.** A `restricted` reference holds
+  whether the record holding it is hidden or not, so above, deleting a
+  customer with only binned enquiries is refused with the conflict its
+  `conflict:` maps, until purge removes them
+  ([Conflicts](#conflicts)). The guard query says the same thing first,
+  so an action can answer before it tries.
+- **Shown where it is read.** `jadpo explain` lists, beside the entity's
+  lifecycle, each query that reads its hidden records, and marks each
+  route that runs one.
+- **Its index.** The index a query saying `include_hidden: true` needs
+  holds every record, not only those `visible:` lets through
+  ([How the derived indexes are chosen](05-data.md#how-the-derived-indexes-are-chosen)).
+
+A guess at another spelling, `include_deleted:` or `include_binned:`, is
+`query.unknown_section`, whose `next:` names `include_hidden:`.
 
 ## Order and pages
 <!-- topic: order-and-pages -->
@@ -4302,6 +4498,7 @@ triggers it and the compiler's actual output.
 - [`query.include_unknown`](../errors/query.include_unknown.md)
 - [`query.include_result`](../errors/query.include_result.md)
 - [`query.include_depth`](../errors/query.include_depth.md)
+- [`query.include_hidden_unused`](../errors/query.include_hidden_unused.md)
 ### Groups and aggregates
 
 - [`query.group_key`](../errors/query.group_key.md)

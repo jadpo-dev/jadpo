@@ -382,8 +382,14 @@ impl Formatter {
     /// one blank line where the source had any. The comments that open the
     /// file, up to its first blank line, stay above the `use` lines.
     fn file(&mut self, node: &SyntaxNode, snippet: bool) -> Doc {
-        let (mut uses, items): (Vec<SyntaxNode>, Vec<SyntaxNode>) =
-            node.children().partition(|child| child.kind() == USE_DECL);
+        // A snippet's bare `seed` or `test` stands as a name only while
+        // something other than a declaration follows it; moving its `use`
+        // lines up would join it to the declaration after them, so they
+        // stay where they are.
+        let keep_order = snippet && node.children().any(|child| bare_contextual_word(&child));
+        let (mut uses, items): (Vec<SyntaxNode>, Vec<SyntaxNode>) = node
+            .children()
+            .partition(|child| !keep_order && child.kind() == USE_DECL);
         let mut docs = Vec::new();
         if !uses.is_empty() {
             uses.sort_by_key(imports::rank);
@@ -675,4 +681,22 @@ impl Formatter {
         }
         group(concat([open, indent(concat(inner)), Doc::SoftLine, close]))
     }
+}
+
+/// Whether `node` is an expression statement that is only a word a
+/// declaration may start with (`seed`, `test`), which reads as that
+/// declaration when one follows it.
+fn bare_contextual_word(node: &SyntaxNode) -> bool {
+    if node.kind() != EXPR_STMT {
+        return false;
+    }
+    let mut tokens = node
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia());
+    matches!(
+        (tokens.next(), tokens.next()),
+        (Some(word), None)
+            if jadpo_syntax::CONTEXTUAL_DECLARATIONS.contains(&word.text())
+    )
 }

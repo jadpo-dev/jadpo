@@ -898,6 +898,8 @@ rules! {
         "A query that finds erased people reads more than their `id` and the fields erasure keeps of them";
     QUERY_INCLUDE_ERASED_UNUSED: "query.include_erased_unused", area 15, Error, Agent,
         "A query says `include_erased: true` on an entity that keeps nothing of an erased person";
+    QUERY_INCLUDE_HIDDEN_UNUSED: "query.include_hidden_unused", area 6, Error, Agent,
+        "A query says `include_hidden: true` for an entity no lifecycle hides records of";
     QUERY_INCLUDE_RESULT: "query.include_result", area 6, Error, Agent,
         "A query's result type has no field of the right shape to hold what an include reads";
     QUERY_INCLUDE_UNKNOWN: "query.include_unknown", area 6, Error, Agent,
