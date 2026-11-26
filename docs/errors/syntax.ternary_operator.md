@@ -33,10 +33,18 @@ error: Jadpo chooses a value with `match`, not `? :`
   |                       ^ write a `match`
   reason: `condition ? a : b` chooses a value in JavaScript, Java, C#, Kotlin and Swift; Jadpo chooses between two values with a `match` on the condition.
   next: Write `match (count > 10)` with the arms `true -> "large"` and `false -> "small"` (agent)
+  fix:
+     8 - return count > 10 ? "large" : "small"
+     8 + return match (count > 10) {
+     9 +     true -> "large"
+    10 +     false -> "small"
+    11 + }
   rule: syntax.ternary_operator
   help: https://jadpo.dev/docs/errors/syntax.ternary_operator
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

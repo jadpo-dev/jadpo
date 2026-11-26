@@ -33,10 +33,15 @@ error: Jadpo writes `and`, not `&&`
   |                      ^^ write `and`
   reason: `&&`, `||` and `!` are the logical operators of JavaScript, Rust, Go, Java, C#, Kotlin and Swift; Jadpo writes them as words: `and`, `or` and `not`.
   next: Use `and` instead of `&&` (agent)
+  fix:
+    8 - return Done(open && paid)
+    8 + return Done(open and paid)
   rule: syntax.logical_operator
   help: https://jadpo.dev/docs/errors/syntax.logical_operator
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -44,10 +44,15 @@ error: `avg` isn't an aggregate
    |                      ^^^ not an aggregate
   reason: An aggregate is `count()`, `sum(F)`, `min(F)`, `max(F)` or `average(F, scale:, rounding:)`, each `F` a field of `Book`. Did you mean `average`?
   next: Use `average` (agent)
+  fix:
+    17 - mean_leaves: avg(Book.leaves, scale: 1, rounding: Rounding.half_up)
+    17 + mean_leaves: average(Book.leaves, scale: 1, rounding: Rounding.half_up)
   rule: query.aggregate_unknown
   help: https://jadpo.dev/docs/errors/query.aggregate_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

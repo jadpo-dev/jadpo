@@ -60,10 +60,15 @@ error: `ScheduleTrigger.cron` isn't a schedule trigger
   |                  ^^^^^^^^^^^^^^^^^^^^ not a `ScheduleTrigger`
   reason: A native deployable ticks on the server's own timer, `ScheduleTrigger.native`, or when another scheduler runs its `tick` command, `ScheduleTrigger.external`; a Worker always ticks on Cloudflare's cron.
   next: Use `ScheduleTrigger.external` instead (agent)
+  fix:
+    3 - trigger: ScheduleTrigger.cron
+    3 + trigger: ScheduleTrigger.external
   rule: schedule.settings_invalid
   help: https://jadpo.dev/docs/errors/schedule.settings_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

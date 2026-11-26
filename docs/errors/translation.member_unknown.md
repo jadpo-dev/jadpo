@@ -101,10 +101,15 @@ error: `text_directions` words nothing of Jadpo's
   |         ^^^^^^^^^^^^^^^ no such message of Jadpo's
   reason: `jadpo: { }` words Jadpo's own messages, by their names; `jadpo translations builtin` lists the ones this application can show. `text_directions` is none of them. Did you mean `text_direction`?
   next: Rename the member to `text_direction` (agent)
+  fix:
+    3 - text_directions: {
+    3 + text_direction: {
   rule: translation.member_unknown
   help: https://jadpo.dev/docs/errors/translation.member_unknown
 
 check failed: 1 error, 2 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A member of a package's group in the root file has to be one of that

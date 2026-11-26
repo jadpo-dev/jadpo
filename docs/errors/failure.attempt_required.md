@@ -38,10 +38,15 @@ error: `child` can fail, and nothing handles it
    |            ^^^^^^^^^^^ can fail with `Refused`
   reason: A call that can fail says so where it is made: `attempt` passes its failures on to the caller's `fails` list, and `match` handles each one.
   next: Start the statement with `attempt`, or `match` on `child(...)` and handle `Refused` (agent)
+  fix:
+    12 - return child(note)
+    12 + return attempt child(note)
   rule: failure.attempt_required
   help: https://jadpo.dev/docs/errors/failure.attempt_required
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

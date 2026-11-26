@@ -34,10 +34,15 @@ error: Jadpo compares with `==`, not `===`
   |                       ^^^ write `==`
   reason: `===` and `!==` compare without converting types in JavaScript and TypeScript; Jadpo's `==` and `!=` never convert between types, so there is no stricter form to ask for.
   next: Use `==` instead of `===` (agent)
+  fix:
+    8 - return Done(count === 0)
+    8 + return Done(count == 0)
   rule: syntax.equality_operator
   help: https://jadpo.dev/docs/errors/syntax.equality_operator
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -66,10 +71,15 @@ error: Jadpo compares with `== none`, not `IS NULL`
   |                       ^^^^^^^ write `== none`
   reason: `IS NULL` and `IS NOT NULL` test for a missing value in SQL; Jadpo compares with `none` as with any other value.
   next: Use `== none` instead of `IS NULL` (agent)
+  fix:
+    6 - return Blank(note IS NULL)
+    6 + return Blank(note == none)
   rule: syntax.equality_operator
   help: https://jadpo.dev/docs/errors/syntax.equality_operator
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

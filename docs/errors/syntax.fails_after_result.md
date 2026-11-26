@@ -38,10 +38,15 @@ error: `fails` goes before `->`
    |                                             ^^^^^^^^^^^^^^^^ after the result type
   reason: A signature says what can fail before what it returns: `fails A, B -> Result`.
   next: Move `fails TitleBlank` before `->` (agent)
+  fix:
+    10 - function check_title(title: Title) -> Title fails TitleBlank {
+    10 + function check_title(title: Title) fails TitleBlank -> Title {
   rule: syntax.fails_after_result
   help: https://jadpo.dev/docs/errors/syntax.fails_after_result
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

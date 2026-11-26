@@ -60,10 +60,15 @@ error: `serve` isn't a setting of a deployable
   |             ^^^^^ not a setting
   reason: A deployable takes `serves:`, the APIs it serves, `runs:`, the background work it runs, and `target:`, what it is built for. Did you mean `serves`?
   next: Use `serves` instead of `serve` (agent)
+  fix:
+    4 - serve: [main]
+    4 + serves: [main]
   rule: deployable.invalid
   help: https://jadpo.dev/docs/errors/deployable.invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 So is an entry listed twice:
@@ -87,10 +92,15 @@ error: `kiosk`'s `serves:` lists `main` twice
   |                            ^^^^ listed again
   reason: Each entry of `serves:` is listed once.
   next: Remove the second `main` (agent)
+  fix:
+    4 - serves: [main, main]
+    4 + serves: [main, ]
   rule: deployable.invalid
   help: https://jadpo.dev/docs/errors/deployable.invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 And a `deployables:` with nothing in it, which would build nothing:

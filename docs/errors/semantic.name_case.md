@@ -32,10 +32,15 @@ error: Function `orderTotal` isn't written in lower_snake_case
   |          ^^^^^^^^^^ should be `order_total`
   reason: Types, entities and route groups are written in UpperCamelCase; functions, actions, queries, fields, variables and the rest in lower_snake_case.
   next: Rename `orderTotal` to `order_total`, here and where it's used (agent)
+  fix:
+    5 - function orderTotal(subtotal: Stock) -> Stock {
+    5 + function order_total(subtotal: Stock) -> Stock {
   rule: semantic.name_case
   help: https://jadpo.dev/docs/errors/semantic.name_case
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -57,10 +62,15 @@ error: Type `order_total` isn't written in UpperCamelCase
   |      ^^^^^^^^^^^ should be `OrderTotal`
   reason: Types, entities and route groups are written in UpperCamelCase; functions, actions, queries, fields, variables and the rest in lower_snake_case.
   next: Rename `order_total` to `OrderTotal`, here and where it's used (agent)
+  fix:
+    1 - type order_total = Int {
+    1 + type OrderTotal = Int {
   rule: semantic.name_case
   help: https://jadpo.dev/docs/errors/semantic.name_case
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A domain's name is its folder's name, so a folder in the wrong case has to

@@ -44,10 +44,15 @@ error: Jadpo writes `attempt`, not `try`
    |                         ^^^ write `attempt`
   reason: `try` marks a call that can fail in Swift; Jadpo writes `attempt`, which passes the call's failures on to the caller.
   next: Use `attempt` instead of `try` (agent)
+  fix:
+    17 - var result: Count = try counted_or_missing(count)
+    17 + var result: Count = attempt counted_or_missing(count)
   rule: syntax.try_catch
   help: https://jadpo.dev/docs/errors/syntax.try_catch
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -130,10 +135,15 @@ error: Jadpo writes `attempt`, not `?`
    |                                                  ^ write `attempt` before the call
   reason: `?` after a call passes its failure on in Rust; Jadpo writes `attempt` before the call.
   next: Write `attempt counted_or_missing(count)` (agent)
+  fix:
+    17 - var result: Count = counted_or_missing(count)?
+    17 + var result: Count = attempt counted_or_missing(count)
   rule: syntax.try_catch
   help: https://jadpo.dev/docs/errors/syntax.try_catch
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

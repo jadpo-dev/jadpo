@@ -429,6 +429,61 @@ fn each_change_that_needs_a_person_fails_until_an_added_acceptance_gives_a_reaso
     );
 }
 
+/// Every error only a person can clear is said once, at the end, with the
+/// question to put and the entries their agreement writes, so an agent asks
+/// the owner once; each error's own step points there (chunk 10.9a: agents
+/// spent 11k tokens a session in `acceptance.missing` loops).
+#[test]
+fn every_sign_off_is_asked_once_with_its_entries() {
+    let root = library("sign-off");
+    change(&root);
+    let output = jadpo(&root, &["check"]);
+    assert_eq!(output.code, 1, "{}", output.stdout);
+    assert_eq!(
+        output
+            .stdout
+            .matches("next: Ask your user, with the other questions below (human)")
+            .count(),
+        5,
+        "{}",
+        output.stdout
+    );
+    let block = output
+        .stdout
+        .split("decision: 5 errors only your user can clear\n")
+        .nth(1)
+        .expect("one sign-off block");
+    assert!(
+        block.starts_with(
+            "  ask: Widening who can do what needs a person: lending.Book.read. Do you accept it?\n"
+        ),
+        "{block}"
+    );
+    assert!(
+        block.contains(
+            "  accept:\n    lending.Book.read: PolicyChange.widened\n    \"main GET /books\": PolicyChange.route_public\n"
+        ),
+        "{block}"
+    );
+    assert!(
+        block.contains("(human)\n\ncheck failed: 5 errors"),
+        "{block}"
+    );
+    // `--json` gives the same, and the steps stay whole.
+    let json = jadpo(&root, &["check", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert_eq!(
+        document["data"]["sign_off"][2]["entries"],
+        serde_json::json!(["main.BookView.title: ApiChange.output_field_removed"])
+    );
+    assert!(
+        document["diagnostics"][0]["next"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("Stop and ask your user")
+    );
+}
+
 /// Each diagnostic's rule and `next.text`, as `jadpo check --json` gives
 /// them.
 fn next_steps(root: &Path) -> Vec<(String, String)> {

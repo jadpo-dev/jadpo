@@ -39,10 +39,15 @@ error: `DeliveryState` has no variant `snet`
    |                       ^^^^ not a variant
   reason: `DeliveryState`'s variants are `pending`, `sent` and `failed`. Did you mean `sent`?
   next: Use `DeliveryState.sent` (agent)
+  fix:
+    12 - DeliveryState.snet -> "Sent"
+    12 + DeliveryState.sent -> "Sent"
   rule: type.match_unknown_variant
   help: https://jadpo.dev/docs/errors/type.match_unknown_variant
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

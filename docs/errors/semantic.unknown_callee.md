@@ -65,10 +65,15 @@ error: `doubld` isn't a function, action or query
    |            ^^^^^^ not declared
   reason: Nothing in this project called `doubld` can be called. Did you mean `doubled`?
   next: Use `doubled` instead of `doubld` (agent)
+  fix:
+    10 - return doubld(count)
+    10 + return doubled(count)
   rule: semantic.unknown_callee
   help: https://jadpo.dev/docs/errors/semantic.unknown_callee
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 Another domain's action is called through that domain, so the call says
@@ -96,10 +101,15 @@ error: `snooze_todo` belongs to domain `planning`
   |     ^^^^^^^^^^^ needs its domain
   reason: Your own domain's actions, queries and fixtures are called bare; another domain's are called through it, so each call says which domain it reaches.
   next: Call `planning.snooze_todo(...)` (agent)
+  fix:
+    2 - snooze_todo()
+    2 + planning.snooze_todo()
   rule: semantic.unknown_callee
   help: https://jadpo.dev/docs/errors/semantic.unknown_callee
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 An entity has only the operations the language generates for it:

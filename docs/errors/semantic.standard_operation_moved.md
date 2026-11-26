@@ -35,10 +35,15 @@ error: `temporal.format` is now `text.format`
   |            ^^^^^^^^^^^^^^^ moved
   reason: The standard library has one name for each operation; `temporal.format` moved to `text.format`, which takes the same values.
   next: Write `text.format` (agent)
+  fix:
+    4 - return temporal.format(
+    4 + return text.format(
   rule: semantic.standard_operation_moved
   help: https://jadpo.dev/docs/errors/semantic.standard_operation_moved
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -70,10 +75,15 @@ error: `collection.count` is now `list.count`
    |                       ^^^^^^^^^^^^^^^^ moved
   reason: The standard library has one namespace for each type an operation works on, so `collection.` became `list.`, `set.` and `map.`; `bakings` is a list.
   next: Write `list.count` (agent)
+  fix:
+    10 - return BatchCount(collection.count(bakings))
+    10 + return BatchCount(list.count(bakings))
   rule: semantic.standard_operation_moved
   help: https://jadpo.dev/docs/errors/semantic.standard_operation_moved
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

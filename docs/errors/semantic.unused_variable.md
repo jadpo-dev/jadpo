@@ -74,10 +74,15 @@ error: `paid` is never used
    |                             ^^^^ never read
   reason: A value nobody reads is never bound to a name; a pattern without brackets matches the case without naming its data.
   next: Remove `(paid)` from the pattern (agent)
+  fix:
+    15 - PaymentOutcome.paid(paid) -> true
+    15 + PaymentOutcome.paid -> true
   rule: semantic.unused_variable
   help: https://jadpo.dev/docs/errors/semantic.unused_variable
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A `for` loop whose body never reads its item is the error too, and its

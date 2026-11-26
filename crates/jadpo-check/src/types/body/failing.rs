@@ -362,16 +362,24 @@ impl Body<'_> {
             }
             Fallible::Fails(names) => {
                 let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
-                Diagnostic::new(
+                let problem = Diagnostic::new(
                     &rule::FAILURE_ATTEMPT_REQUIRED,
                     format!("`{written}` can fail, and nothing handles it"),
                 )
-                .at(span, format!("can fail with {}", crate::and_list(&listed)))
+                .at(span.clone(), format!("can fail with {}", crate::and_list(&listed)))
                 .reason("A call that can fail says so where it is made: `attempt` passes its failures on to the caller's `fails` list, and `match` handles each one.")
                 .next(format!(
                     "Start the statement with `attempt`, or `match` on `{written}(...)` and handle {}",
                     crate::and_list(&listed)
-                ))
+                ));
+                // A call a statement starts with takes `attempt` in front
+                // of it, which `jadpo fix` writes (chunk 10.9a); the
+                // caller's `fails` list is the next fix's.
+                if starts_statement(call) {
+                    problem.edit(Span::new(self.path, span.start, span.start), "attempt ")
+                } else {
+                    problem
+                }
             }
             Fallible::Construction(breakable) if self.is_standard(call) => {
                 let first = breakable.first().cloned().unwrap_or_default();
@@ -2036,4 +2044,20 @@ fn write_matched(node: &jadpo_syntax::SyntaxNode) -> bool {
         .and_then(ast::MatchExpr::cast)
         .and_then(|matched| matched.expr())
         .is_some_and(|subject| subject.syntax() == &at)
+}
+
+/// Whether `call` is the whole value a statement starts with: a `var`'s,
+/// an assignment's, a `return`'s or a statement of its own, where
+/// `attempt` may go in front of it (area 3, "Statements").
+fn starts_statement(call: &ast::CallExpr) -> bool {
+    use jadpo_syntax::SyntaxKind;
+    call.syntax().parent().is_some_and(|parent| {
+        matches!(
+            parent.kind(),
+            SyntaxKind::VAR_STMT
+                | SyntaxKind::ASSIGN_STMT
+                | SyntaxKind::RETURN_STMT
+                | SyntaxKind::EXPR_STMT
+        )
+    })
 }

@@ -32,10 +32,15 @@ error: Jadpo has no `export`
   | ^^^^^^ remove `export`
   reason: `export` makes a name visible to other files in JavaScript and TypeScript, and `pub` outside its module in Rust; every Jadpo declaration is visible across its domain, and `public` opens it to other domains.
   next: Remove `export` (agent)
+  fix:
+    5 - export function same(count: Count) -> Count {
+    5 + function same(count: Count) -> Count {
   rule: syntax.export_keyword
   help: https://jadpo.dev/docs/errors/syntax.export_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

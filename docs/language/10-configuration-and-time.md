@@ -3155,10 +3155,15 @@ error: `postcodes` words package `Postcodes`, which is held in two versions
   |     ^^^^^^^^^ which version?
   reason: While two versions of a package are held side by side, the application words each under its folder name and version, as its names carry the version: `postcodes_v2: { }` for `Postcodes.v2` and `postcodes_v3: { }` for `Postcodes.v3`. This group was written while one version was held, so it words the earlier one unless it says otherwise.
   next: Rename the group to `postcodes_v2`, or to the other version's key if it words that one (agent)
+  fix:
+    2 - postcodes: {
+    2 + postcodes_v2: {
   rule: translation.group_unknown
   help: https://jadpo.dev/docs/errors/translation.group_unknown
 
 check failed: 1 error, 9 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ### Packages' text: groups, calls and the surface

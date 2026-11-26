@@ -169,6 +169,19 @@ new project's public write or personal data anyone may read, passes and is said 
 `notice_list`
 ([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 
+Errors that need a person's agreement, `acceptance.missing` and a copy
+of a restricted field among them, are said together once, before the
+summary: a `decision` with an `ask` line for each question to put to
+the person, the `accept` entries their agreement writes, ready to paste,
+and the next step, theirs. Each such error's own `next:` points there,
+so an agent asks the owner once. `--json` gives them in `data.sign_off`,
+each with its `rule`, `question` and `entries`, and keeps every error's
+`next` whole. When some errors carry an automatic fix, the one hint after
+the summary names it, counting only those:
+`next: jadpo fix  applies the edits shown for 3 of these 5 errors`;
+`data.automatic_fixes` counts them. A migration the next check writes
+itself once the other errors are fixed isn't reported beside them at all.
+
 ### `jadpo fmt`
 
 `jadpo fmt` formats every file. It fixes each file's imports first, then
@@ -1246,7 +1259,7 @@ leaves for a person or an agent to settle.
 | `jadpo acceptance new` | Drafts a person's acceptance of the changes that need one |
 | `jadpo approval` | Writes the report a reviewer reads: what a change does, decisions first |
 | `jadpo declines list` / `clear` | Lists or removes your declines |
-| `jadpo fix` | Applies the fix you pick for a finding |
+| `jadpo fix` | Applies every automatic fix, or the one you pick for a finding |
 | `jadpo suggest` | Hints where code could use a standard type or operation |
 
 ### `jadpo api update`
@@ -1339,15 +1352,33 @@ outside the project, is `cli.declines_arguments`.
 
 ### `jadpo fix`
 
-Applies the fix you pick for a finding, through the same code as the
-editor's quick fix. Its first use is a release of Jadpo that adds a
-standard type your app already names ([A release that adds a standard
-type](19-standard-library.md#a-release-that-adds-a-standard-type)).
+Applies fixes through the same code as the editor's quick fix.
 
-- Alone, it lists each `type.standard_clash` and `type.standard_exists`
-  finding with the fixes it takes.
-- `jadpo fix <name> swap` and `jadpo fix <name> rename <NewName>` list
+- Alone, it applies every edit `jadpo check`'s errors carry that is an
+  agent's to make and leaves no choice, the ones each error shows under
+  `fix`. It checks again after each round, since one fix can bring the
+  next to light: `attempt` written in front of a call, then the `fails`
+  list it needs. It lists what it changed, file by file, a row per error
+  with its line and the step it made, then `✓ Fixed 3 errors in 2 files`,
+  and names `jadpo check` while errors are left. A round that would stop
+  a file parsing is put back. With nothing to apply, it lists each
+  `type.standard_clash` and `type.standard_exists` finding with the fixes
+  it takes.
+- A real choice stays a command of its own: `jadpo fix <name> swap` and
+  `jadpo fix <name> rename <NewName>`, for a release of Jadpo that adds a
+  standard type your app already names ([A release that adds a standard
+  type](19-standard-library.md#a-release-that-adds-a-standard-type)), list
   what changed, file by file.
+
+**`jadpo fix` never applies anything that needs a person.** It never
+writes an acceptance or a decline, never widens who can read or write
+anything, and never settles a migration's decision, such as a backfill or
+a drop that loses data. An error whose next step is `(human)`, every
+`acceptance.*` error, a security rule's, and every edit of a `policy.`,
+`privacy.`, `visibility.`, `identity.`, `migration.`, `record.` or
+`decline.` rule, or of a file in `acceptances/`, `database/` or a
+`.jadpo_record`, is left as it is, however mechanical its edit looks.
+`jadpo check` never counts them in its hint.
 
 A fix whose result would add an error changes nothing and shows the
 error. A swap of a type already stored or on the wire also brings the
@@ -1355,8 +1386,9 @@ records it changes up to date and writes its data migration, then names
 `jadpo acceptance new` for the acceptances a person gives
 ([Swap to the standard type](19-standard-library.md#swap-to-the-standard-type)).
 A name with nothing to fix, a fix it doesn't take, or a name already
-taken is `cli.fix_arguments`. It takes `--json`. Its rename isn't
-`jadpo rename`: it writes no identity line.
+taken is `cli.fix_arguments`. It takes `--json`: alone, `data` holds
+`fixed`, each with its `path`, `line`, `rule` and `change`, and
+`errorsLeft`. Its rename isn't `jadpo rename`: it writes no identity line.
 
 ### `jadpo suggest`
 
@@ -2676,7 +2708,12 @@ that allow it, [declined](01-project-layout-and-modules.md#keeping-code-as-it-is
 - Paths are relative to the project.
 - The two impact lines appear only when they say something.
 - An obvious repair carries its edit, so the editor and agents can apply
-  it.
+  it. The terminal shows an agent's edit under `fix`, after `next`, as the
+  lines it changes, `-` as they were and `+` as they become, and `jadpo
+  fix` applies them all ([`jadpo fix`](#jadpo-fix)).
+- A next step of more than a line that the same rule gave an earlier
+  error, word for word, reads ``As the first `rule` above``, as a repeated
+  reason does; `--full` and `--json` give it whole.
 - The help link is the address of the error's own page on the site,
   `https://jadpo.dev/docs/errors/<rule>`, which has an example of the
   rule.

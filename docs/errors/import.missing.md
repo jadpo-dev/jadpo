@@ -40,10 +40,15 @@ error: `Stock` isn't imported
   |                         ^^^^^ not imported
   reason: Every name a file uses that it doesn't declare comes in on a `use` line, so a reader sees where it lives; `Stock` is a type in `shared/types/stock.jadpo`.
   next: Add `use shared/types { Stock }`, or run `jadpo fmt`, which adds every missing import (agent)
+  fix:
+    1 + use shared/types { Stock }
+    2 +
   rule: import.missing
   help: https://jadpo.dev/docs/errors/import.missing
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

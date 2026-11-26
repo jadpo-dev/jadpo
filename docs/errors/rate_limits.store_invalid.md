@@ -65,10 +65,15 @@ error: `store: limit` isn't a connection
   |                ^^^^^ no such connection
   reason: Rate limits are counted in one store the servers or a Worker's instances share: a Redis connection (`Driver.redis`), or on Workers Cloudflare's rate-limiting binding (`Driver.cloudflare_rate_limits`). `rate_limits: { store: <connection> }` names it.
   next: Use `limits` instead of `limit` (agent)
+  fix:
+    9 - store: limit
+    9 + store: limits
   rule: rate_limits.store_invalid
   help: https://jadpo.dev/docs/errors/rate_limits.store_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `rate_limits:` holds `store:` and nothing else, is declared once, and needs a

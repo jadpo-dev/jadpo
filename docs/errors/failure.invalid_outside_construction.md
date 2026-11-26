@@ -46,10 +46,14 @@ error: `check_note(...)` isn't a construction, so `invalid:` covers nothing
    |         ^^^^^^^ not a construction
   reason: `check_note(...)` fails with the failures its `fails` list names; `invalid:` is the catch-all only for the rules a construction's value can break, never for another call's failures.
   next: Remove `invalid: ...`; `attempt` passes `check_note(...)`'s failures on, and `match` turns one into another (agent)
+  fix:
+    20 - invalid: NoteInvalid
   rule: failure.invalid_outside_construction
   help: https://jadpo.dev/docs/errors/failure.invalid_outside_construction
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -84,10 +88,14 @@ error: `Note.get(...)` isn't a construction, so `invalid:` covers nothing
    |         ^^^^^^^ not a construction
   reason: `Note.get(...)` is an entity's operation, which maps each of its own conditions, such as `missing:` or `conflict:`, with an arm; `invalid:` is the catch-all only for the rules a construction's value can break.
   next: Remove `invalid: ...`, and map each condition the operation has with its own arm (agent)
+  fix:
+    11 - invalid: NoteNotFound
   rule: failure.invalid_outside_construction
   help: https://jadpo.dev/docs/errors/failure.invalid_outside_construction
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A write maps each rule it can break in `conflict:`:
@@ -136,10 +144,14 @@ error: `Account.create` isn't a construction, so `invalid:` covers nothing
    |         ^^^^^^^ not a construction
   reason: `Account.create` is an entity's write: each rule it can break is mapped in `conflict:`, keyed by the rule; `invalid:` is the catch-all only for the rules a construction's value can break.
   next: Remove `invalid: ...`, and map each rule in `conflict:` (agent)
+  fix:
+    28 - invalid: HandleBad
   rule: failure.invalid_outside_construction
   help: https://jadpo.dev/docs/errors/failure.invalid_outside_construction
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

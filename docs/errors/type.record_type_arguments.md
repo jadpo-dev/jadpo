@@ -36,10 +36,15 @@ error: `Feature<Point, Pin>` is written `Feature { ... }`
   |            ^^^^^^^^^^^^^^^^^^^ type arguments on a record
   reason: A record names its type alone. Its type arguments come from the type its place expects, or else from its values, so there is one way to write a `Feature`.
   next: Write `Feature { ... }`, with `Feature<Point, Pin>` on the `var` or the return type if its values don't say (agent)
+  fix:
+    6 - return Feature<Point, Pin> {
+    6 + return Feature {
   rule: type.record_type_arguments
   help: https://jadpo.dev/docs/errors/type.record_type_arguments
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make the fix itself.

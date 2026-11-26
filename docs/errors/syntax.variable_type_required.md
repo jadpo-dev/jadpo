@@ -34,10 +34,15 @@ error: `price` needs a type
   |         ^^^^^ expected `: Type` after the name
   reason: Every variable states its type, so a reader sees it where the value is introduced.
   next: Write `var price: ItemPrice = 0.00` (agent)
+  fix:
+    7 - var price = ItemPrice(0.00)
+    7 + var price: ItemPrice = 0.00
   rule: syntax.variable_type_required
   help: https://jadpo.dev/docs/errors/syntax.variable_type_required
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -32,10 +32,15 @@ error: Jadpo has no `,` between members
   |               ^ remove `,`
   reason: Commas separate fields in JavaScript, TypeScript, Rust, Go, Swift and JSON; each Jadpo member is on its own line, and the formatter puts it there.
   next: Remove `,` (agent)
+  fix:
+    6 - low: Stock,
+    6 + low: Stock
   rule: syntax.member_comma
   help: https://jadpo.dev/docs/errors/syntax.member_comma
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

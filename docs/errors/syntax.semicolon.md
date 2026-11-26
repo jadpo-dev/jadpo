@@ -30,10 +30,15 @@ error: Jadpo has no `;`
   |                 ^ remove `;`
   reason: `;` ends a statement in JavaScript, Rust, Go, Java, C#, Kotlin, Swift and SQL; a Jadpo statement or member ends at the end of its line.
   next: Remove `;` (agent)
+  fix:
+    6 - return count;
+    6 + return count
   rule: syntax.semicolon
   help: https://jadpo.dev/docs/errors/syntax.semicolon
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

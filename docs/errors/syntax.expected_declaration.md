@@ -24,10 +24,15 @@ error: `Count` doesn't start a declaration
   | ^^^^^ expected a declaration
   reason: A file holds declarations, such as `type`, `function`, `action`, `query` and `entity`, each starting a line.
   next: Start the declaration with `type`: `type Count = ...` (agent)
+  fix:
+    1 - Count = Int
+    1 + type Count = Int
   rule: syntax.expected_declaration
   help: https://jadpo.dev/docs/errors/syntax.expected_declaration
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -54,10 +59,15 @@ error: `var` doesn't start a declaration
   | ^^^ expected a declaration
   reason: `var` names a value inside a body; at the top of a file a fixed value is a `constant`.
   next: Write `constant vat_rate: VatRate = 0.2000` (agent)
+  fix:
+    5 - var vat_rate: VatRate = 0.2000
+    5 + constant vat_rate: VatRate = 0.2000
   rule: syntax.expected_declaration
   help: https://jadpo.dev/docs/errors/syntax.expected_declaration
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `public` with nothing after it is this error too, because it marks a

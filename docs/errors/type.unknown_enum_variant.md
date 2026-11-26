@@ -32,10 +32,15 @@ error: `TicketStatus` has no variant `opne`
   |                         ^^^^ not a variant
   reason: `TicketStatus`'s variants are `open` and `closed`. Did you mean `open`?
   next: Use `TicketStatus.open` (agent)
+  fix:
+    7 - return TicketStatus.opne
+    7 + return TicketStatus.open
   rule: type.unknown_enum_variant
   help: https://jadpo.dev/docs/errors/type.unknown_enum_variant
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

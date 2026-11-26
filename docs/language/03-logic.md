@@ -280,10 +280,15 @@ error: `constant` doesn't start a statement
   |     ^^^^^^^^ write `var`
   reason: A constant lives at the top of a file or in a library; inside a body a value that never changes is a `var`.
   next: Use `var` instead of `constant` (agent)
+  fix:
+    6 - constant small_batch: Stock = 250
+    6 + var small_batch: Stock = 250
   rule: syntax.expected_statement
   help: https://jadpo.dev/docs/errors/syntax.expected_statement
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ```jadpo check project=e-constant-mut expect=syntax.expected_name
@@ -302,10 +307,15 @@ error: A constant can't be `mut`
   |          ^^^ remove `mut`
   reason: A constant never changes, so it has no mutable form; a value that changes is a `var mut` inside a body.
   next: Remove `mut` (agent)
+  fix:
+    5 - constant mut small_batch: Stock = 250
+    5 + constant small_batch: Stock = 250
   rule: syntax.expected_name
   help: https://jadpo.dev/docs/errors/syntax.expected_name
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ```jadpo check project=e-const-keyword expect=syntax.variable_keyword
@@ -324,10 +334,15 @@ error: Jadpo writes `constant`, not `const`
   | ^^^^^ write `constant`
   reason: `const` declares a value that never changes in JavaScript, TypeScript, Rust, Go and C#; at the top of a Jadpo file a fixed value is `constant name: Type = value`.
   next: Use `constant` instead of `const` (agent)
+  fix:
+    5 - const small_batch: Stock = 250
+    5 + constant small_batch: Stock = 250
   rule: syntax.variable_keyword
   help: https://jadpo.dev/docs/errors/syntax.variable_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ```jadpo check project=e-constant-built-in expect=type.primitive_signature
@@ -1013,10 +1028,15 @@ error: `Map<Loaf, Stock>` can't be looped over
    |                 ^^^^^ this is `Map<Loaf, Stock>`
   reason: `for` loops over a `List` or a `Set`; a map is walked through its keys, a `Set<Loaf>`, and each key's value read with `map.get`.
   next: Loop over `map.keys(stock)` (agent)
+  fix:
+    11 - for loaf in stock {
+    11 + for loaf in map.keys(stock) {
   rule: type.mismatch
   help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ### No outside calls inside a loop

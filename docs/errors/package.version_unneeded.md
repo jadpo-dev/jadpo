@@ -52,10 +52,15 @@ error: `Postcodes` is held in one version, so its names don't carry it
   |                                         ^^^ not needed
   reason: A name carries its package's version only while two versions sit side by side, to say which one it means; with one version of `Postcodes` held, `Postcodes.UkPostcode` is the one way to write it.
   next: Write `Postcodes.UkPostcode` (agent)
+  fix:
+    4 - action keep_postcode(postcode: Postcodes.v3.UkPostcode) -> Postcodes.UkPostcode {
+    4 + action keep_postcode(postcode: Postcodes.UkPostcode) -> Postcodes.UkPostcode {
   rule: package.version_unneeded
   help: https://jadpo.dev/docs/errors/package.version_unneeded
 
 check failed: 1 error, 4 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

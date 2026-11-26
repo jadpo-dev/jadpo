@@ -35,10 +35,15 @@ error: Jadpo names an argument with `:`, not `=`
    |                                                             ^ write `:`
   reason: `name = value` names an argument in Python, Kotlin and C#; Jadpo writes `name: value`.
   next: Use `:` instead of `=` (agent)
+  fix:
+    11 - return ItemPrice(decimal.divide(total, people, rounding = Rounding.half_even))
+    11 + return ItemPrice(decimal.divide(total, people, rounding: Rounding.half_even))
   rule: syntax.named_argument_equals
   help: https://jadpo.dev/docs/errors/syntax.named_argument_equals
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

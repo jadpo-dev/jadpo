@@ -32,10 +32,15 @@ error: `config.mail_sendr` isn't a setting
   |            ^^^^^^^^^^^^^^^^^ no such setting
   reason: `config { }` declares no setting called `mail_sendr`. Did you mean `mail_sender`?
   next: Use `config.mail_sender` instead of `config.mail_sendr` (agent)
+  fix:
+    8 - return config.mail_sendr
+    8 + return config.mail_sender
   rule: configuration.field_unknown
   help: https://jadpo.dev/docs/errors/configuration.field_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -75,10 +80,15 @@ error: `lable` isn't a setting
    |         ^^^^^ no such setting
   reason: `config { }` declares no setting called `lable`, so a test has nothing to change. Did you mean `label`?
   next: Use `label` instead of `lable` (agent)
+  fix:
+    17 - lable: "other"
+    17 + label: "other"
   rule: configuration.field_unknown
   help: https://jadpo.dev/docs/errors/configuration.field_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A project with no `config { }` at all has no settings to read:

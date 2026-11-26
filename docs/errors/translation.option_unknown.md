@@ -30,10 +30,15 @@ error: `reviews` isn't an option of `translations`
   |         ^^^^^^^ unknown option
   reason: `translations:` in `application` takes `review:` and nothing else. Did you mean `review`?
   next: Use `review` instead of `reviews` (agent)
+  fix:
+    3 - reviews: TranslationReview.required
+    3 + review: TranslationReview.required
   rule: translation.option_unknown
   help: https://jadpo.dev/docs/errors/translation.option_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -35,10 +35,15 @@ error: Jadpo has no `await`
    |            ^^^^^ remove `await`
   reason: `async` and `await` mark code that waits for a result in JavaScript, TypeScript, Python, Rust, C# and Swift; a Jadpo call always gives its result when it returns, so there is nothing to mark.
   next: Remove `await` (agent)
+  fix:
+    10 - return await same(count)
+    10 + return same(count)
   rule: syntax.async_await
   help: https://jadpo.dev/docs/errors/syntax.async_await
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

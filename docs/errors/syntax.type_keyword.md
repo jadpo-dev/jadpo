@@ -32,10 +32,15 @@ error: Jadpo writes `type GridCell = Object`, not `struct GridCell`
   | ^^^^^^^^^^^^^^^ write `type GridCell = Object`
   reason: `struct` declares a record in Rust, Go, Swift and C#, `interface` an object's shape in TypeScript, and `enum` a list of cases in most languages; every Jadpo type is `type Name = Base { ... }`, with `Object` or `Enum` as the base.
   next: Write `type GridCell = Object` (agent)
+  fix:
+    5 - struct GridCell {
+    5 + type GridCell = Object {
   rule: syntax.type_keyword
   help: https://jadpo.dev/docs/errors/syntax.type_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -60,10 +65,15 @@ error: Jadpo writes `type TicketStatus = Enum`, not `enum TicketStatus`
   | ^^^^^^^^^^^^^^^^^ write `type TicketStatus = Enum`
   reason: `struct` declares a record in Rust, Go, Swift and C#, `interface` an object's shape in TypeScript, and `enum` a list of cases in most languages; every Jadpo type is `type Name = Base { ... }`, with `Object` or `Enum` as the base.
   next: Write `type TicketStatus = Enum` (agent)
+  fix:
+    1 - enum TicketStatus {
+    1 + type TicketStatus = Enum {
   rule: syntax.type_keyword
   help: https://jadpo.dev/docs/errors/syntax.type_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `interface`, and Go's `type GridCell struct {`, are the same error as

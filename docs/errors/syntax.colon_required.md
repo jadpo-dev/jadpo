@@ -27,10 +27,15 @@ error: `format` needs a colon before its value
   |     ^^^^^^ expected `:` after `format`
   reason: Every member inside braces is `name: value`, with a colon even when the value is a block.
   next: Write `format: TextFormat.email` (agent)
+  fix:
+    2 - format TextFormat.email
+    2 + format: TextFormat.email
   rule: syntax.colon_required
   help: https://jadpo.dev/docs/errors/syntax.colon_required
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -54,10 +59,15 @@ error: Jadpo writes `min:`, not `min =`
   |         ^ write `:`
   reason: `name = value` sets a field in C# and Kotlin and a case's value in TypeScript; every member inside braces is `name: value`.
   next: Use `:` instead of `=` (agent)
+  fix:
+    2 - min = 0
+    2 + min: 0
   rule: syntax.colon_required
   help: https://jadpo.dev/docs/errors/syntax.colon_required
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A field of a record written as its name alone is this error too, because
@@ -89,10 +99,15 @@ error: `left` needs a value
    |         ^^^^ expected `name: value`
   reason: Every field in braces is written `name: value`; Jadpo has no shorthand that repeats the name.
   next: Write `left: left` (agent)
+  fix:
+    11 - left
+    11 + left: left
   rule: syntax.colon_required
   help: https://jadpo.dev/docs/errors/syntax.colon_required
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

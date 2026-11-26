@@ -29,10 +29,15 @@ error: `TicketStatus.open` is given a label
   |           ^^^^^^ a label
   reason: Enums have no display labels: a variant is a name, or a name with a block of its fields. Wording for readers lives in the domain's translations, which give each value of `TicketStatus` its wording in every locale.
   next: Write `open` alone, and give its wording in the domain's translations: `ticket_status: { open: "Open" }` (agent)
+  fix:
+    2 - open: "Open"
+    2 + open
   rule: type.enum_label
   help: https://jadpo.dev/docs/errors/type.enum_label
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

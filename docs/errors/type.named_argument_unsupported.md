@@ -34,10 +34,15 @@ error: `add` takes its arguments in order, without names
   |                ^^^^ named
   reason: Named arguments exist only for standard-library operations; your own callables are called positionally, in the order of their parameters.
   next: Remove the argument names (agent)
+  fix:
+    8 - return add(left: 1, right: 2)
+    8 + return add(1, 2)
   rule: type.named_argument_unsupported
   help: https://jadpo.dev/docs/errors/type.named_argument_unsupported
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

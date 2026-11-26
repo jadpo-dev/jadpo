@@ -35,10 +35,15 @@ error: `Listing.subtitle` already permits `none`
    |               ^^^^^^^^^^^^^^^^^ nullable twice
   reason: `Listing.subtitle` takes `none` from its declared type; a second `?` adds nothing.
   next: Remove the extra `?` (agent)
+  fix:
+    10 - subtitle: Listing.subtitle?
+    10 + subtitle: Listing.subtitle
   rule: type.redundant_nullability
   help: https://jadpo.dev/docs/errors/type.redundant_nullability
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

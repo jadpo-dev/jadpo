@@ -40,10 +40,15 @@ error: `Book` has no field `titel`
    |                 ^^^^^ not declared
   reason: `Book`'s fields are `id`, `title`, `subtitle` and `available`. Did you mean `title`?
   next: Use `title` instead of `titel` (agent)
+  fix:
+    14 - where: Book.titel == title
+    14 + where: Book.title == title
   rule: query.unknown_field
   help: https://jadpo.dev/docs/errors/query.unknown_field
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

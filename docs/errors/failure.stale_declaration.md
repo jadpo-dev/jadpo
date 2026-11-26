@@ -34,10 +34,15 @@ error: `Refused` can never leave `complete`
   |                                   ^^^^^^^ never raised or passed on
   reason: Nothing in `complete` rejects `Refused` or passes it on from a call, and `fails` lists exactly the failures that can leave, so callers aren't made to handle one that never happens.
   next: Remove `Refused` from `fails` (agent)
+  fix:
+    7 - action complete(note: Note) fails Refused -> Note {
+    7 + action complete(note: Note) -> Note {
   rule: failure.stale_declaration
   help: https://jadpo.dev/docs/errors/failure.stale_declaration
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

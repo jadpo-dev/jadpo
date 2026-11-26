@@ -38,10 +38,15 @@ error: Jadpo writes `->`, not `=>`
    |                           ^^ write `->`
   reason: `=>` ends a match arm's pattern in Rust, Scala, C# and PHP; a Jadpo arm uses `->`, the same arrow as a result type.
   next: Use `->` instead of `=>` (agent)
+  fix:
+    12 - TicketStatus.open => 1
+    12 + TicketStatus.open -> 1
   rule: syntax.match_arrow
   help: https://jadpo.dev/docs/errors/syntax.match_arrow
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

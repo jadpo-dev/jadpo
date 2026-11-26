@@ -31,10 +31,15 @@ error: `list.count` has no argument `itmes`
   |                             ^^^^^ not a parameter
   reason: Its one argument is `items`.
   next: Use `items:` instead of `itmes:` (agent)
+  fix:
+    6 - return Stock(list.count(itmes: lines))
+    6 + return Stock(list.count(items: lines))
   rule: type.named_argument_unknown
   help: https://jadpo.dev/docs/errors/type.named_argument_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

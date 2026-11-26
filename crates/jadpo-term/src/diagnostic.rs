@@ -1,6 +1,28 @@
 //! Diagnostics on the grid: headline, location, code frame, then area 14's
 //! fields in its order (`reason`, `next`, `impact`, `rule`, `help`), with
 //! the names in use after `next` when a rename needs them (area 1).
+//!
+//! An agent's next step that carries edits shows them under `fix`, after
+//! `next` (chunk 10.9a, designed with impeccable's shape pass against the
+//! CLI design language, run unattended, so its assumptions are marked):
+//!
+//! - *Job.* An agent in a failing check reads each error once and applies
+//!   its repair without opening a docs page or the file. Mode: operate.
+//!   The repair is what `--json` already gives as `next.edits`; the text
+//!   shows the same edit as the lines it changes.
+//! - `fix` is a change list, so it uses `-` and `+` in their colours,
+//!   indented under the label as `in use` is, never at column 0: each
+//!   changed line's number, muted, its mark, then the line as written, the
+//!   lines' common indent left out. The old lines come first, then the new.
+//!   An edit to another file than the error's names that file first, muted
+//!   as a path in a list is. A line no longer there has `-` alone; a line
+//!   added has `+` alone.
+//! - At most eight lines are shown (assumption: an automatic fix touches a
+//!   line or two; a longer one is a move, which `jadpo fix` makes), then
+//!   `… N more lines`; `--json` holds the whole edit.
+//! - A step said again (same rule, the same next step of more than a
+//!   line) reads ``As the first `rule` above``, as a repeated reason does,
+//!   keeping its owner; its own `fix` stays, since its place differs.
 
 use jadpo_diag::{Decider, Diagnostic, Label};
 
@@ -43,7 +65,29 @@ pub struct DiagnosticView {
     /// It says what an earlier diagnostic of its rule says, so it points
     /// back instead of giving the reason and the link again.
     repeat: bool,
+    /// Its next step is an earlier one's, word for word, so it points back.
+    next_repeat: bool,
+    /// The lines its edits change (chunk 10.9a).
+    fix: Vec<FixLine>,
 }
+
+/// One line of a `fix` field.
+#[derive(Clone, Debug)]
+enum FixLine {
+    /// The file the following lines are in, when it isn't the error's.
+    File(String),
+    /// A line as it was (`-`) or as the edit leaves it (`+`).
+    Line {
+        number: usize,
+        added: bool,
+        text: String,
+    },
+    /// How many lines were left out.
+    More(usize),
+}
+
+/// The most lines a `fix` field shows.
+const FIX_LINES: usize = 8;
 
 impl DiagnosticView {
     pub fn new(diagnostic: &Diagnostic, sources: &dyn Sources) -> DiagnosticView {
@@ -102,6 +146,8 @@ impl DiagnosticView {
             rule: diagnostic.rule.id.to_string(),
             help: diagnostic.help(),
             repeat: diagnostic.repeat_of.is_some(),
+            next_repeat: diagnostic.next_repeat_of.is_some(),
+            fix: fix_lines(diagnostic, sources, root),
         }
     }
 
@@ -123,12 +169,15 @@ impl DiagnosticView {
             lines.extend(field("reason", vec![raw(said.as_str())], style));
         }
         if let Some((text, decides)) = &self.next {
-            lines.extend(field(
-                "next",
-                vec![raw(text.as_str()), decider(*decides)],
-                style,
-            ));
+            let said = format!("As the first `{}` above", self.rule);
+            let text = if self.next_repeat {
+                said.as_str()
+            } else {
+                text.as_str()
+            };
+            lines.extend(field("next", vec![raw(text), decider(*decides)], style));
         }
+        lines.extend(self.fix_lines(style));
         lines.extend(self.in_use_lines(style));
         if let Some(impact) = &self.impact {
             lines.extend(field("impact", vec![raw(impact.as_str())], style));
@@ -191,6 +240,67 @@ impl DiagnosticView {
             };
             line.extend(row(entry));
             lines.push(line);
+        }
+        lines
+    }
+
+    /// The `fix` field: under the label, each line indented as `in use`'s
+    /// plain rows are, its number muted and its mark in its colour.
+    fn fix_lines(&self, style: &Style) -> Vec<Line> {
+        if self.fix.is_empty() {
+            return Vec::new();
+        }
+        let rich = style.mode == Mode::Rich;
+        let digits = self
+            .fix
+            .iter()
+            .filter_map(|line| match line {
+                FixLine::Line { number, .. } => Some(number.to_string().len()),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(1);
+        let mut lines = vec![if rich {
+            vec![raw("  "), paint(Token::Muted, "fix")]
+        } else {
+            vec![raw("  fix:")]
+        }];
+        for line in &self.fix {
+            lines.push(match line {
+                FixLine::File(path) => vec![raw("    "), paint(Token::Muted, path.as_str())],
+                FixLine::Line {
+                    number,
+                    added,
+                    text,
+                } => {
+                    let (mark, token) = if *added {
+                        ("+", Token::Success)
+                    } else {
+                        ("-", Token::Failure)
+                    };
+                    let mut line = vec![
+                        raw("    "),
+                        paint(Token::Muted, format!("{number:>digits$}")),
+                        raw(" "),
+                        paint(token, mark),
+                    ];
+                    if !text.is_empty() {
+                        line.push(raw(format!(" {}", visible(text))));
+                    }
+                    line
+                }
+                FixLine::More(left) => vec![
+                    raw("    "),
+                    paint(
+                        Token::Muted,
+                        format!(
+                            "{} {left} more {}",
+                            Symbol::Cut.text(style.symbols),
+                            if *left == 1 { "line" } else { "lines" }
+                        ),
+                    ),
+                ],
+            });
         }
         lines
     }
@@ -275,4 +385,107 @@ fn add_mark(frame: &mut Vec<FrameLine>, text: &str, label: &Label, primary: bool
             marks: vec![mark],
         }),
     }
+}
+
+/// The lines an agent's next step's edits change, each file's edits
+/// applied together: nothing for a person's step or one without edits.
+fn fix_lines(diagnostic: &Diagnostic, sources: &dyn Sources, root: Option<&str>) -> Vec<FixLine> {
+    let Some(next) = &diagnostic.next else {
+        return Vec::new();
+    };
+    if next.edits.is_empty() || next.decides != Decider::Agent {
+        return Vec::new();
+    }
+    let home = diagnostic
+        .primary
+        .as_ref()
+        .map(|label| label.span.path.as_str());
+    let mut paths: Vec<&str> = Vec::new();
+    for edit in &next.edits {
+        if !paths.contains(&edit.span.path.as_str()) {
+            paths.push(edit.span.path.as_str());
+        }
+    }
+    let mut out = Vec::new();
+    for path in paths {
+        let before = sources.source(path).unwrap_or("");
+        let mut edits: Vec<&jadpo_diag::Edit> = next
+            .edits
+            .iter()
+            .filter(|edit| edit.span.path == path)
+            .collect();
+        edits.sort_by_key(|edit| std::cmp::Reverse((edit.span.start, edit.span.end)));
+        let mut after = before.to_string();
+        for edit in edits {
+            let (start, end) = (edit.span.start as usize, edit.span.end as usize);
+            if start > end
+                || end > after.len()
+                || !after.is_char_boundary(start)
+                || !after.is_char_boundary(end)
+            {
+                return Vec::new();
+            }
+            after.replace_range(start..end, &edit.replacement);
+        }
+        let old: Vec<&str> = before.lines().collect();
+        let new: Vec<&str> = after.lines().collect();
+        let mut top = 0;
+        while top < old.len() && top < new.len() && old[top] == new[top] {
+            top += 1;
+        }
+        let mut tail = 0;
+        while tail < old.len() - top
+            && tail < new.len() - top
+            && old[old.len() - 1 - tail] == new[new.len() - 1 - tail]
+        {
+            tail += 1;
+        }
+        let removed = &old[top..old.len() - tail];
+        let added = &new[top..new.len() - tail];
+        if removed.is_empty() && added.is_empty() {
+            continue;
+        }
+        if home != Some(path) {
+            out.push(FixLine::File(crate::sources::shown_path(root, path)));
+        }
+        // The lines' common indent is left out, as it says nothing.
+        let indent = removed
+            .iter()
+            .chain(added)
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.len() - line.trim_start().len())
+            .min()
+            .unwrap_or(0);
+        let cut = |line: &str| line.get(indent..).unwrap_or(line.trim_start()).to_string();
+        for (index, line) in removed.iter().enumerate() {
+            out.push(FixLine::Line {
+                number: top + index + 1,
+                added: false,
+                text: cut(line),
+            });
+        }
+        for (index, line) in added.iter().enumerate() {
+            out.push(FixLine::Line {
+                number: top + index + 1,
+                added: true,
+                text: cut(line),
+            });
+        }
+    }
+    let shown = out
+        .iter()
+        .filter(|line| matches!(line, FixLine::Line { .. }))
+        .count();
+    if shown > FIX_LINES {
+        let mut kept = 0;
+        out.retain(|line| match line {
+            FixLine::Line { .. } => {
+                kept += 1;
+                kept <= FIX_LINES
+            }
+            _ => kept < FIX_LINES,
+        });
+        out.push(FixLine::More(shown - FIX_LINES));
+    }
+    out
 }

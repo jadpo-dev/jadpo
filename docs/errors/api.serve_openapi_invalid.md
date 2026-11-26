@@ -32,10 +32,15 @@ error: `"no"` isn't `true` or `false`
   |                            ^^^^ not a `Bool`
   reason: `serve_openapi:` says whether the API serves its OpenAPI document at `<prefix>/openapi.json`: `false` turns it off, and `true`, the default, can be left out.
   next: Write `serve_openapi: false`, or leave `serve_openapi:` out (agent)
+  fix:
+    5 - serve_openapi: "no"
+    5 + serve_openapi: false
   rule: api.serve_openapi_invalid
   help: https://jadpo.dev/docs/errors/api.serve_openapi_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

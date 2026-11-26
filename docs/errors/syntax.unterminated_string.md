@@ -26,10 +26,15 @@ error: This string isn't closed
   |              ^^^^ no closing `"` on this line
   reason: A string starts and ends with `"` on the same line.
   next: Add `"` where the string ends (agent)
+  fix:
+    2 - pattern: "abc
+    2 + pattern: "abc"
   rule: syntax.unterminated_string
   help: https://jadpo.dev/docs/errors/syntax.unterminated_string
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

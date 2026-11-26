@@ -37,10 +37,14 @@ error: A package's index can't hold `requires:`
   |     ^^^^^^^^^^^^^^^^^^^^^^^^ not an index key
   reason: Packages have no dependencies: a package that needs another's code carries a copy, so installing one is one folder and one line in the lock.
   next: Remove `requires:`, and copy what the package needs into it (agent)
+  fix:
+    5 - requires: [Postcodes.v2]
   rule: package.index_invalid
   help: https://jadpo.dev/docs/errors/package.index_invalid
 
 check failed: 1 error, 2 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

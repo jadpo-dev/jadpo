@@ -37,10 +37,15 @@ error: Jadpo writes `else if`, not `elif`
    |       ^^^^ write `else if`
   reason: `elif` continues an `if` in Python, `elsif` in Ruby and `elseif` in PHP and Lua; Jadpo writes `else if`.
   next: Use `else if` instead of `elif` (agent)
+  fix:
+    10 - } elif (count > 10) {
+    10 + } else if (count > 10) {
   rule: syntax.else_if
   help: https://jadpo.dev/docs/errors/syntax.else_if
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

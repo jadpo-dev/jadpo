@@ -33,10 +33,15 @@ error: `Refused` is listed twice after `fails`
   |                                  ------- first listed here
   reason: `fails` lists each failure that can leave once.
   next: Remove the second `Refused` (agent)
+  fix:
+    7 - action execute(note: Note) fails Refused, Refused -> Note {
+    7 + action execute(note: Note) fails Refused -> Note {
   rule: failure.duplicate_declaration
   help: https://jadpo.dev/docs/errors/failure.duplicate_declaration
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -35,10 +35,15 @@ error: Jadpo writes `todo -> todo.title`, not `todo => todo.title`
    |                            ^^^^^^^ write `todo -> todo.title`
   reason: `x => e` is an arrow function in JavaScript, TypeScript and C#, `lambda x: e` in Python and `|x| e` in Rust; a Jadpo inline function is `item -> expression`.
   next: Write `todo -> todo.title` (agent)
+  fix:
+    10 - return list.map(todos, todo => todo.title)
+    10 + return list.map(todos, todo -> todo.title)
   rule: syntax.inline_function_arrow
   help: https://jadpo.dev/docs/errors/syntax.inline_function_arrow
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -83,6 +83,13 @@ pub fn fix(call: &Call) -> Reply {
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_needed("fix");
     };
+    // Alone, it applies every automatic edit first (chunk 10.9a); with
+    // none, it lists the findings that take a fix by name.
+    if call.arguments.is_empty()
+        && let Some(reply) = crate::fix_all::fix_all(call, &root)
+    {
+        return reply;
+    }
     let mut loaded = jadpo_db::load(&root);
     // A swap of a type on the wire needs a person's acceptance, judged
     // against the before side as `jadpo check` judges it (chunk Q7).

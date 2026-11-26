@@ -61,10 +61,15 @@ error: `CREATE` isn't a method a route is written with
    |     ^^^^^^ not a route method
   reason: Routes are written with `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
   next: Use `POST` instead of `CREATE` (agent)
+  fix:
+    30 - CREATE / {
+    30 + POST / {
   rule: syntax.expected_http_method
   help: https://jadpo.dev/docs/errors/syntax.expected_http_method
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -30,10 +30,15 @@ error: Jadpo writes `function`, not `fn`
   | ^^ write `function`
   reason: `fn` declares a function in Rust; Jadpo starts one with `function`, or `action` when it reads or writes stored data.
   next: Use `function` instead of `fn` (agent)
+  fix:
+    5 - fn same(count: Count) -> Count {
+    5 + function same(count: Count) -> Count {
   rule: syntax.function_keyword
   help: https://jadpo.dev/docs/errors/syntax.function_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
