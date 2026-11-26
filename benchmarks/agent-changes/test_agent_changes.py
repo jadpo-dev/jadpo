@@ -318,9 +318,11 @@ class Helpdesk(unittest.TestCase):
 
     def test_fresh_changes_are_their_own_set(self):
         self.assertEqual(harness.SETS['desk-fresh'], ('H11', 'H12', 'H13', 'H14', 'H15', 'H16', 'H17', 'H18', 'H19', 'H20'))
-        self.assertEqual(set(harness.SETS['desk']) | set(harness.SETS['desk-fresh']) | set(harness.SETS['desk-held']),
-                         set(desk_changes.BY_ID))
+        self.assertEqual(set(harness.SETS['desk']) | set(harness.SETS['desk-fresh']) | set(harness.SETS['desk-held'])
+                         | set(harness.SETS['desk-held2']), set(desk_changes.BY_ID))
         self.assertFalse(set(harness.SETS['desk-held']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])))
+        self.assertFalse(set(harness.SETS['desk-held2']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])
+                                                           | set(harness.SETS['desk-held'])))
         self.assertEqual(harness.set_of('H11'), 'desk-fresh')
         self.assertEqual(desk_changes.SESSIONS['S3'] + desk_changes.SESSIONS['S4'], desk_changes.FRESH)
 
@@ -339,7 +341,8 @@ class Helpdesk(unittest.TestCase):
         for change in desk_changes.CHANGES:
             with self.subTest(change.id):
                 self.assertTrue(set(desk_changes.PROBES) <= set(change.tests))
-                self.assertTrue(any(t.kind == 'behaviour' for t in change.tests))
+                # A decline keeps the current behaviour: it has safety tests only.
+                self.assertEqual(any(t.kind == 'behaviour' for t in change.tests), change.disposition != 'decline')
                 self.assertTrue(any(t.kind == 'safety' and t not in desk_changes.PROBES for t in change.tests))
                 self.assertTrue(change.shortcut and change.detection and change.owner_answer)
                 self.assertEqual(harness.regression_cases(change), [])
