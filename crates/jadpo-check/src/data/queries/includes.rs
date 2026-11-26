@@ -276,8 +276,10 @@ impl Reader<'_> {
         if kind != IncludeKind::Parent {
             for (present, member) in &sections.filters {
                 self.search_refused = Some("an include's `where:`");
+                self.related_refused = Some("an include's `where:`");
                 let read = self.filter_line(scope, target, member, *present);
                 self.search_refused = None;
+                self.related_refused = None;
                 // A `geo.` condition's records are rechecked in code as
                 // the include runs, as a query's are (chunk Q4).
                 filter.extend(read);

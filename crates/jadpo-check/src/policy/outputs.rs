@@ -281,6 +281,7 @@ fn query(
     }
     conditions(
         &prover,
+        line.as_ref(),
         &model.entity,
         &model.filter,
         sorted,
@@ -600,6 +601,7 @@ fn walk(
                 };
                 conditions(
                     prover,
+                    line,
                     &inner.entity,
                     &inner.filter,
                     written(&inner.order),
@@ -636,9 +638,15 @@ fn written(order: &[OrderField]) -> Vec<String> {
 
 /// Every field `filter` tests and `sorted` sorts by, on records of
 /// `entity` a caller reached as `reached`, that they aren't proved to
-/// read: one problem per field and section, in the order written.
+/// read: one problem per field and section, in the order written. A
+/// related record's fields (chunk 10.11c) are tested on the records of its
+/// entity a caller reaches, as an include's children are: the reference
+/// that links them on the records that hold it, the related record's
+/// condition on its own.
+#[allow(clippy::too_many_arguments)]
 fn conditions(
     prover: &Prover<'_>,
+    line: Option<&Way>,
     entity: &str,
     filter: &[Condition],
     sorted: Vec<String>,
@@ -647,13 +655,20 @@ fn conditions(
     out: &mut Vec<Unproved>,
 ) {
     let mut tested: Vec<String> = Vec::new();
+    let mut related = Vec::new();
     for condition in filter {
         let mut fields = std::collections::BTreeSet::new();
         condition.fields(&mut fields);
+        condition.related(&mut related);
         for field in fields {
             if !tested.contains(&field) {
                 tested.push(field);
             }
+        }
+    }
+    for found in &related {
+        if found.parent && !tested.contains(&found.via) {
+            tested.push(found.via.clone());
         }
     }
     let fields = tested
@@ -674,6 +689,27 @@ fn conditions(
                 include: include.to_vec(),
                 reached: reached.clone(),
             });
+        }
+    }
+    for found in related {
+        let next = Prover::lined(line, prover.read(&found.entity));
+        let mut fields = std::collections::BTreeSet::new();
+        if !found.parent {
+            fields.insert(found.via.clone());
+        }
+        if let Some(inner) = &found.condition {
+            inner.fields(&mut fields);
+        }
+        for field in fields {
+            if !prover.field_proved(&found.entity, &field, &next) {
+                out.push(Unproved::Condition {
+                    entity: found.entity.clone(),
+                    field,
+                    order: false,
+                    include: include.to_vec(),
+                    reached: next.clone(),
+                });
+            }
         }
     }
 }

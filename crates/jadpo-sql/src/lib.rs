@@ -38,8 +38,9 @@ pub mod statement;
 pub mod table;
 
 pub use condition::{
-    Bind, Call, CallArg, Column, Columns, Compare, Condition, Fixed, Kept, Lowering, Part, Search,
-    Test, Value, compares_parts, condition, lowering, ordered_parts, orders_by_parts, value,
+    Bind, Call, CallArg, Column, Columns, Compare, Condition, Fixed, Kept, Lowering, Part, Related,
+    Search, Test, Value, compares_parts, condition, lowering, ordered_parts, orders_by_parts,
+    value,
 };
 
 /// An identifier, always quoted: a table called `user` or `order` is a

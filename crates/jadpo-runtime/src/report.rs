@@ -377,7 +377,7 @@ impl Report {
                     "`{written}` reads every record that matches with `limit: every`, at most {}, and more matched; it gave back none of them rather than some, and nothing the action wrote was kept.",
                     jadpo_std::read::thousands(*most)
                 ),
-                "Narrow the query's `where:`, or read the records a page at a time with `Page<T>`, or walk them in a batch".to_string(),
+                "Narrow the query's `where:` (a related record is tested there with `exists(<Entity>.<reference>, <condition>)`, not a list of ids read first), or read the records a page at a time with `Page<T>`, or walk them in a batch".to_string(),
                 "agent",
             ),
             FaultKind::Diverged(what) => (

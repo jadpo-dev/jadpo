@@ -104,6 +104,16 @@ writes in one action. Use `Page<T>` or a batch only when the request
 says to page or the set can grow past 10,000. The details are in
 https://jadpo.dev/docs/every-record-that-matches.md.
 
+## Filtering by a related record
+
+To keep the records that have, or lack, a related record, such as the
+tickets with a tag kept in a link entity, write the test in the query's
+own `where:`: `exists(TicketTag.ticket_id, TicketTag.tag_id == tag_id)`,
+or `not exists(...)`. It works with `Page<T>` and `order:`, and the
+related entity's policy and `visible:` apply. Don't read the related
+records first and filter with `in` a list of their ids. The details are
+in https://jadpo.dev/docs/filtering-by-a-related-record.md.
+
 ## Working beside other agents
 
 When other agents work on the same project at the same time, each in its

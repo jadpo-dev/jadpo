@@ -1076,6 +1076,248 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE INDEX "note_title_trgm_idx" ON "note" USING gin ((lower("title" COLLATE "C")) gin_trgm_ops);
 ```
 
+## Filtering by a related record
+<!-- topic: filtering-by-a-related-record -->
+
+A condition can ask whether a related record exists:
+`exists(<Entity>.<reference>, <condition>)`. The reference links the two
+entities, and the condition tests the related record's own fields. Here
+a help desk tags enquiries through a link entity, `EnquiryTag`, and lists a
+page of the enquiries carrying a tag:
+
+```jadpo check project=related-filter file=app.jadpo hidden
+use desk/entities { Deskhand }
+
+application {}
+
+principal {
+    user: {
+        subject: Deskhand.handle
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/deskhand.jadpo hidden
+type Handle = Text {
+    min_length: 1
+    max_length: 40
+}
+
+/// Someone who answers enquiries.
+entity Deskhand {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/enquiry.jadpo hidden
+type EnquiryTitle = Text {
+    min_length: 1
+    max_length: 200
+}
+
+/// Something a customer asked for.
+entity Enquiry {
+    id: Uuid
+    title: EnquiryTitle
+
+    policy: {
+        read: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/tag.jadpo hidden
+type TagName = Text {
+    min_length: 1
+    max_length: 40
+}
+
+/// A label enquiries are sorted by.
+entity Tag {
+    id: Uuid
+    name: TagName
+
+    policy: {
+        read: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/entities/enquiry_tag.jadpo
+use desk/entities { Deskhand, Enquiry, Tag }
+
+/// A tag a deskhand put on an enquiry, which only they see, until they take
+/// it off.
+entity EnquiryTag {
+    id: Uuid
+    enquiry_id: Enquiry.id {
+        on_delete: OnDelete.cascade
+    }
+    tag_id: Tag.id {
+        on_delete: OnDelete.cascade
+    }
+    deskhand_id: Deskhand.id {
+        on_delete: OnDelete.cascade
+    }
+    removed_at: Instant?
+
+    lifecycle: {
+        visible: removed_at == none
+    }
+
+    policy: {
+        read: [deskhand_id]
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/types/enquiry_row.jadpo hidden
+use desk/entities { Enquiry }
+
+/// A enquiry as a list shows it.
+type EnquiryRow = Output {
+    pick: [Enquiry.id, Enquiry.title]
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/queries/enquiries_tagged.jadpo migrate=initial
+use desk/entities { Enquiry, EnquiryTag, Tag }
+use desk/types { EnquiryRow }
+
+/// The enquiries the caller tagged `tag_id`, a page at a time, by title.
+query enquiries_tagged(
+    tag_id: Tag.id,
+    after: PageCursor?,
+    caller: Principal.user
+) -> Page<EnquiryRow> {
+    from: Enquiry
+    where: exists(EnquiryTag.enquiry_id, EnquiryTag.tag_id == tag_id)
+    order: [Enquiry.title asc]
+    page: {
+        size: 2
+        after: after
+    }
+}
+```
+
+```jadpo check project=related-filter file=domains/desk/queries/enquiries_tagged.test.jadpo
+use desk/entities { Deskhand, Enquiry, EnquiryTag, Tag }
+use desk/types { EnquiryRow }
+
+/// `enquiry` tagged `tag` by `deskhand`.
+fixture tag_enquiry(enquiry: Enquiry, tag: Tag, deskhand: Deskhand) -> EnquiryTag {
+    return make.EnquiryTag {
+        enquiry_id: enquiry.id
+        tag_id: tag.id
+        deskhand_id: deskhand.id
+    }
+}
+
+test "a page of the enquiries a deskhand tagged, in title order" {
+    var ann: Deskhand = make.Deskhand {
+        handle: "ann"
+    }
+    var bob: Deskhand = make.Deskhand {
+        handle: "bob"
+    }
+    var pressing: Tag = make.Tag {
+        name: "pressing"
+    }
+    var someday: Tag = make.Tag {
+        name: "someday"
+    }
+    var boiler: Enquiry = make.Enquiry {
+        title: "Fix the boiler"
+    }
+    var chimney: Enquiry = make.Enquiry {
+        title: "Sweep the chimney"
+    }
+    var hedge: Enquiry = make.Enquiry {
+        title: "Trim the hedge"
+    }
+    var porch: Enquiry = make.Enquiry {
+        title: "Paint the porch"
+    }
+    tag_enquiry(boiler, pressing, ann)
+    tag_enquiry(chimney, pressing, ann)
+    tag_enquiry(hedge, pressing, ann)
+    tag_enquiry(porch, someday, ann)
+    tag_enquiry(porch, pressing, bob)
+    var first: Page<EnquiryRow> = enquiries_tagged(pressing.id, none, Principal.user(ann))
+    assert list.map(first.items, t -> t.title) == ["Fix the boiler", "Sweep the chimney"]
+    var second: Page<EnquiryRow> = enquiries_tagged(pressing.id, first.next, Principal.user(ann))
+    assert list.map(second.items, t -> t.title) == ["Trim the hedge"]
+    assert second.next == none
+    var bobs: Page<EnquiryRow> = enquiries_tagged(pressing.id, none, Principal.user(bob))
+    assert list.map(bobs.items, t -> t.title) == ["Paint the porch"]
+}
+```
+
+- **The reference.** Either way round: another entity's reference to
+  the one the query reads asks for a record that refers here, as
+  `EnquiryTag.enquiry_id` does; one of the query's own entity's references
+  asks for the record it points at, so a list of todos in a project
+  called `name` is `exists(Todo.project_id, Project.name == name)`. Only a
+  reference links two records, so `exists(Enquiry.title, ...)` is
+  `query.condition_unsupported`, naming the references there are.
+- **The condition.** Any condition a query's `where:` takes, on the
+  related entity's fields: comparisons, `in`, `== none`, `and`, `or` and
+  `not`, and the [operations](#operations-in-conditions) with an exact SQL
+  form. Leave it out when any related record will do:
+  `exists(EnquiryTag.enquiry_id)` is an enquiry with a tag. A `geo.` test, a
+  search inside text and `matches` stay in a query of their own, since
+  Jadpo's code works them out again on the rows a query reads.
+- **None of them.** `not exists(EnquiryTag.enquiry_id)` keeps the enquiries
+  with no tag. `exists` stands anywhere a condition does, under `not`,
+  `or` and `and` too, on a query's own `where:` lines and an aggregate
+  query's, so a count of the enquiries with a tag is one statement. An
+  include's `where:` and `exists`'s own condition don't take another.
+- **Who sees the related records.** A related record the caller may not
+  read, or that the related entity's `visible:` hides, isn't there for
+  `exists`, as it isn't for any read. So above, Ann's page holds only the
+  enquiries she tagged, and a tag she took off counts for nothing. A call
+  with no caller, a test's or a seed's, runs without policy
+  ([Calls with no caller](13-testing.md#calls-with-no-caller)), so it
+  sees every link `visible:` lets through. The fields `exists` tests
+  show their values, as any condition's do, so each must be one everyone
+  the related entity's `read:` lets in may read
+  ([What else shows a field](09-policy.md#what-else-shows-a-field)):
+  otherwise `policy.output_field_unproved` names it.
+- **What it can't link.** An entity with itself, another store's or a
+  Redis entity, and another domain's, whose records come from its public
+  queries (`query.condition_unsupported`).
+- **Paging and order.** `exists` decides which records a query reads,
+  before its order and its page, so a page holds as many as it can and
+  its cursor walks every match once. Don't read the related records
+  first and filter with `Enquiry.id in` a list of their references: that
+  reads every link, and stops at `limit: every`'s 10,000
+  ([Every record that matches](#every-record-that-matches)).
+
+The statement (`jadpo sql`) is one `EXISTS` holding the link, the
+condition, the related entity's `visible:` and its policy, and the index
+derived for it starts with the reference, then the fields the condition
+tests with `==` or `in`, as an include's children's does:
+
+```sql
+-- enquiries_tagged
+SELECT "id", "title"
+FROM "enquiry"
+WHERE ($4 IS NULL OR ("title" COLLATE "C", "id") > ($4 COLLATE "C", $5))
+  AND EXISTS (SELECT 1 FROM "enquiry_tag" WHERE "enquiry_tag"."enquiry_id" = "enquiry"."id" AND "tag_id" = $1 AND "removed_at" IS NULL AND "enquiry_tag"."deskhand_id" = $2)
+  AND $3
+ORDER BY "title" COLLATE "C" ASC, "id" ASC
+LIMIT 3
+
+CREATE INDEX "enquiry_tag_enquiry_id_tag_id_idx" ON "enquiry_tag" ("enquiry_id", "tag_id") WHERE "removed_at" IS NULL;
+```
+
 ## Order and pages
 <!-- topic: order-and-pages -->
 

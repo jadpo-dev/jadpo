@@ -295,6 +295,33 @@ query todos_by_title(owner_id: User.id, after: PageCursor?) -> Page<TodoView> {
     }
 }
 
+type ProjectCard = Output {
+    pick: [Project.id, Project.name]
+}
+
+/// A page of the projects with an open todo the caller may read (chunk
+/// 10.11c): an `EXISTS` under `Todo`'s policy, which a call without a
+/// caller runs without.
+query projects_with_open_todos(after: PageCursor?) -> Page<ProjectCard> {
+    from: Project
+    where: exists(Todo.project_id, Todo.status == TodoStatus.open)
+    order: [Project.name asc]
+    page: {
+        size: 20
+        after: after
+    }
+}
+
+/// The todos in a project called `name`, through their own reference,
+/// that no comment refers to.
+query quiet_todos_in(name: Project.name) -> List<TodoView> {
+    from: Todo
+    where: exists(Todo.project_id, Project.name == name)
+    where: not exists(Comment.todo_id)
+    order: [Todo.created_at asc]
+    limit: 50
+}
+
 /// Includes: a parent with its unique child, and children ordered and
 /// limited per record, each with its parent.
 query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoardView {

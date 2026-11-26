@@ -96,6 +96,56 @@ error: `Author.name` isn't a field of `Book`
 check failed: 1 error, 1 file
 ```
 
+When the other entity is linked to this one by a reference, the field
+belongs in a condition on the related record, and the fix writes it:
+
+main.jadpo:
+
+```jadpo check project=e-unknown-field-related expect=query.unknown_field
+type Title = Text {
+    max_length: 80
+}
+
+entity Author {
+    id: Uuid
+    name: Title
+}
+
+entity Book {
+    id: Uuid
+    author_id: Author.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+}
+
+query books_by(name: Title) -> List<Book> {
+    from: Book
+    where: Author.name == name
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+```text output
+error: `Author.name` isn't a field of `Book`
+ --> main.jadpo:20:12
+   |
+20 |     where: Author.name == name
+   |            ^^^^^^ not `Book`
+  reason: This part of the query reads `Book` records, and `Author` is another entity. A condition on a related record is written `exists(<Entity>.<reference>, <condition>)`, which keeps the `Book` records a matching `Author` is linked to (`jadpo help topic filtering-by-a-related-record`).
+  next: Write `exists(Book.author_id, Author.name == name)` (agent)
+  fix:
+    20 - where: Author.name == name
+    20 + where: exists(Book.author_id, Author.name == name)
+  rule: query.unknown_field
+  help: https://jadpo.dev/docs/errors/query.unknown_field
+
+check failed: 1 error, 1 file
+
+next: jadpo fix  fixes this error for you, then checks again
+```
+
 ## How to fix it
 
 **If the name is misspelt**, use the field's own name:
@@ -125,6 +175,43 @@ query books_titled(title: Book.title) -> List<Book> {
 ```
 
 The query now tests `Book`'s `title`.
+
+**If the other entity is linked to this one**, test the related record
+with `exists`, naming the reference that links them:
+
+```jadpo fragment
+    where: exists(Book.author_id, Author.name == name)
+```
+
+```jadpo check project=e-unknown-field-fix-related hidden
+type Title = Text {
+    max_length: 80
+}
+
+entity Author {
+    id: Uuid
+    name: Title
+}
+
+entity Book {
+    id: Uuid
+    author_id: Author.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+}
+
+query books_by(name: Title) -> List<Book> {
+    from: Book
+    where: exists(Book.author_id, Author.name == name)
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+The query now keeps the books whose author is called `name`, in one
+statement, however many authors and books there are
+([Filtering by a related record](../language/06-reads-and-writes.md#filtering-by-a-related-record)).
 
 **If you meant a field of another entity**, read that entity in a query of its own:
 
@@ -159,4 +246,5 @@ Each author's `id` can then be passed to a query of `Book` that tests a referenc
 ## Related
 
 - [Filters](../language/06-reads-and-writes.md#filters)
+- [Filtering by a related record](../language/06-reads-and-writes.md#filtering-by-a-related-record)
 - [Children and parents](../language/06-reads-and-writes.md#children-and-parents)

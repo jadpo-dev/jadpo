@@ -354,6 +354,7 @@ topics = [
   "named-queries",
   "filters",
   "searching-inside-text",
+  "filtering-by-a-related-record",
   "order-and-pages",
   "every-record-that-matches",
   "counts-sums-and-groups",
