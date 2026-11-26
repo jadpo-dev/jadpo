@@ -41,6 +41,8 @@ Each prints the command's usage, flags and examples.
 jadpo help topic lifecycle
 ```
 
+It prints that one topic, offline.
+
 ## Related
 
 - [Commands for debugging, editors and help](../language/14-tooling.md#commands-for-debugging-editors-and-help)

@@ -36,11 +36,15 @@ error: `jadpo explain` takes no arguments
 jadpo explain
 ```
 
+It prints the app's access, entities, routes, background work, acceptances and the docs topics it uses.
+
 **If you want one declaration**, with its fields, signature and edges, name it to `jadpo inspect` instead:
 
 ```sh
 jadpo inspect Ticket
 ```
+
+It prints where the declaration is, its fields or signature, and what it uses and is used by.
 
 ## Related
 

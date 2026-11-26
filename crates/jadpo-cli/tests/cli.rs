@@ -71,6 +71,7 @@ Data
 
 Look things up
   routes        List every route
+  explain       Print a digest of the app
   inspect       Print the project map, or one node
   impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show, record, usage
@@ -163,6 +164,7 @@ Data
 
 Look things up
   routes        List every route
+  explain       Print a digest of the app
   inspect       Print the project map, or one node
   impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show · record · usage
@@ -356,6 +358,7 @@ fn help_json_is_the_whole_command_reference() {
             "seed",
             "sql",
             "routes",
+            "explain",
             "inspect",
             "impact",
             "ai",
@@ -838,6 +841,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "seed\tFill the development database from a seed",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
+            "explain\tPrint a digest of the app",
             "inspect\tPrint the project map, or one node",
             "impact\tList what a change to a name reaches",
             "ai\tShow prompts, record, usage",
