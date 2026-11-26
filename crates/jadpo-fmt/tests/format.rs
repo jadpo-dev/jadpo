@@ -627,5 +627,8 @@ fn reserved_words_as_fields_and_variants_keep_their_places() {
 fn a_bare_seed_keeps_the_use_lines_after_it() {
     let text = "seed\nuse x\n\npolicy {\n    a: 1\n}\n";
     assert_eq!(format_snippet(text).expect("formats"), text);
-    assert_eq!(format_snippet("y\nuse x\n").expect("formats"), "use x\n\ny\n");
+    assert_eq!(
+        format_snippet("y\nuse x\n").expect("formats"),
+        "use x\n\ny\n"
+    );
 }
