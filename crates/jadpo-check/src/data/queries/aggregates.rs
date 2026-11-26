@@ -401,6 +401,7 @@ impl Reader<'_> {
             }),
             geometry: None,
             include_erased: false,
+            include_hidden: false,
         })
     }
 

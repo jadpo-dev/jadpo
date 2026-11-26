@@ -16,11 +16,42 @@ pub(super) fn is_exists(call: &ast::CallExpr) -> bool {
     matches!(call.expr(), Some(Expr::NameRef(name)) if tree::name_ref_text(&name).as_deref() == Some(EXISTS))
 }
 
+/// The setting that lets a read reach the records a lifecycle hides
+/// (chunk 10.11d), on a query and inside `exists(...)`.
+pub(crate) const HIDDEN: &str = "include_hidden";
+
+/// Whether a lifecycle hides some of `entity`'s records: it has a
+/// `visible:`.
+pub(crate) fn hides(entity: &EntityModel) -> bool {
+    entity
+        .lifecycle
+        .as_ref()
+        .is_some_and(|lifecycle| lifecycle.visible.is_some())
+}
+
+/// `include_hidden:` given anything but `true`.
+pub(super) fn hidden_not_true(at: Span) -> Diagnostic {
+    Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`include_hidden:` takes only `true`")
+        .at(at, "not `true`")
+        .reason("`include_hidden: true` says a read also finds the records its entity's lifecycle hides, such as those in the bin; a read that leaves them out, as every read does, leaves the setting out.")
+        .next("Write `include_hidden: true`, or remove it")
+}
+
+/// `include_hidden: true` where no lifecycle hides anything.
+pub(super) fn hidden_unused(message: String, at: Span, entity: &str, next: &str) -> Diagnostic {
+    Diagnostic::new(&rule::QUERY_INCLUDE_HIDDEN_UNUSED, message)
+        .at(at, "nothing to include")
+        .reason(format!(
+            "`include_hidden: true` reaches the records a lifecycle's `visible:` leaves out, and `{entity}` has no lifecycle with a `visible:`, so every record of it is already read. A person's record erasure kept is reached by `include_erased: true` instead."
+        ))
+        .next(next.to_string())
+}
+
 /// Where a related record's own condition stands, which holds no other.
 pub(super) const INSIDE: &str = "a related record's condition";
 
 /// How a related record's condition is written, for a reason.
-const SHAPE: &str = "A related record is tested with `exists(<Entity>.<reference>, <condition>)`: the reference that links the two entities, then a condition on the related entity's own fields, which may be left out when any related record will do (`jadpo help topic filtering-by-a-related-record`).";
+const SHAPE: &str = "A related record is tested with `exists(<Entity>.<reference>, <condition>)`: the reference that links the two entities, then a condition on the related entity's own fields, which may be left out when any related record will do, and last `include_hidden: true` when the records a lifecycle hides count too (`jadpo help topic filtering-by-a-related-record`).";
 
 /// The references that link `entity` with `other`, either way, as written.
 pub(super) fn links(entity: &EntityModel, other: &EntityModel) -> Vec<String> {
@@ -69,11 +100,37 @@ impl Reader<'_> {
             .into_iter()
             .flat_map(|list| list.args())
             .collect();
-        let positional: Vec<Expr> = args.iter().filter_map(ast::Arg::expr).collect();
-        if args.iter().any(|arg| arg.name().is_some())
-            || positional.is_empty()
+        // `include_hidden: true`, last, counts the related records a
+        // lifecycle hides too (chunk 10.11d); nothing else is named.
+        let named: Vec<&ast::Arg> = args.iter().filter(|arg| arg.name().is_some()).collect();
+        let hidden_arg = match named.as_slice() {
+            [] => None,
+            [arg]
+                if args
+                    .last()
+                    .is_some_and(|last| last.syntax() == arg.syntax())
+                    && arg.name().and_then(|n| tree::name_text(&n)).as_deref() == Some(HIDDEN) =>
+            {
+                Some(*arg)
+            }
+            _ => {
+                self.unsupported(
+                    scope,
+                    whole,
+                    SHAPE.to_string(),
+                    "Write `exists(<Entity>.<reference>, <condition>)`, with `include_hidden: true` last to count the records a lifecycle hides".to_string(),
+                );
+                return None;
+            }
+        };
+        let positional: Vec<Expr> = args
+            .iter()
+            .filter(|arg| arg.name().is_none())
+            .filter_map(ast::Arg::expr)
+            .collect();
+        if positional.is_empty()
             || positional.len() > 2
-            || positional.len() != args.len()
+            || positional.len() + named.len() != args.len()
         {
             self.unsupported(
                 scope,
@@ -219,12 +276,52 @@ impl Reader<'_> {
             }
             None => None,
         };
+        let hidden = match hidden_arg {
+            Some(arg) => self.related_hidden(scope, target, arg)?,
+            None => false,
+        };
         Some(Condition::Related(Box::new(Related {
             entity: target.name.clone(),
             via: via.name.clone(),
             parent,
             condition,
+            hidden,
         })))
+    }
+
+    /// `include_hidden: true` inside `exists(...)` (chunk 10.11d): only
+    /// `true`, and only for a related entity whose lifecycle hides
+    /// records.
+    fn related_hidden(
+        &mut self,
+        scope: &Scope<'_>,
+        target: &EntityModel,
+        arg: &ast::Arg,
+    ) -> Option<bool> {
+        let at = arg.expr().map_or_else(
+            || node_span(scope.path, arg.syntax()),
+            |value| Self::span(scope.path, &value),
+        );
+        if !arg.expr().is_some_and(|value| {
+            crate::types::Const::from_expr(&value) == crate::types::Const::Bool(true)
+        }) {
+            self.out.push(hidden_not_true(at));
+            return None;
+        }
+        if !hides(target) {
+            let key = arg.name().map_or(at, |name| Self::span(scope.path, &name));
+            self.out.push(hidden_unused(
+                format!(
+                    "`exists` includes hidden `{}` records, and no lifecycle hides a `{}`",
+                    target.name, target.name
+                ),
+                key,
+                &target.name,
+                "Remove `include_hidden: true` from `exists(...)`",
+            ));
+            return None;
+        }
+        Some(true)
     }
 
     /// The domain an entity is declared in, when it is in one.

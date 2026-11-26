@@ -898,7 +898,13 @@ so policy needs `delete` on it and the isolation decision reads it as
 loading a record (`Loads::Erases`), at repeatable read. A query's
 `include_erased: true` is read onto `QueryModel::include_erased`, and
 `Reader::include_erased` refuses what it may not read
-(`query.include_erased_reads`, `query.include_erased_unused`).
+(`query.include_erased_reads`, `query.include_erased_unused`). A query's
+`include_hidden: true` is read onto `QueryModel::include_hidden`, and one
+last inside `exists(...)` onto `Related::hidden` (area 6, "Records a
+lifecycle hides"); `Reach::Every` leaves the lifecycle's `visible:` out of
+`Planner::access` and keeps the policy and the erased-record test, and
+`Reach::EveryErased` is both settings. Such a read's derived index holds
+every record, and `report::serving` doesn't count a partial index for it.
 
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,

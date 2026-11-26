@@ -187,6 +187,9 @@ pub struct Related {
     /// What the related record must meet, on its own fields; `None` when
     /// any record that refers here will do.
     pub condition: Option<Condition>,
+    /// `include_hidden: true` (chunk 10.11d): the related records its
+    /// lifecycle hides count too, under its policy still.
+    pub hidden: bool,
 }
 
 impl Condition {

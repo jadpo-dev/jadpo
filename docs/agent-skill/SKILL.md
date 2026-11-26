@@ -114,6 +114,16 @@ related entity's policy and `visible:` apply. Don't read the related
 records first and filter with `in` a list of their ids. The details are
 in https://jadpo.dev/docs/filtering-by-a-related-record.md.
 
+## Records in the bin
+
+A query leaves out what an entity's lifecycle hides, such as soft-deleted
+or binned records. To read them too, for a bin view or a guard, say
+`include_hidden: true` on the query, or last inside `exists(...)`:
+`not exists(Ticket.customer_id, include_hidden: true)` is "no tickets,
+binned ones included". Read policy still applies, and erased people stay
+out. The details are in
+https://jadpo.dev/docs/records-a-lifecycle-hides.md.
+
 ## Working beside other agents
 
 When other agents work on the same project at the same time, each in its

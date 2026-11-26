@@ -71,11 +71,7 @@ impl Planner<'_> {
             policed: related,
             open: related_open,
         } = self.filter(&mut statement, entity, &query.filter)?;
-        let reach = if query.include_erased {
-            Reach::Erased
-        } else {
-            Reach::Read
-        };
+        let reach = Reach::of_query(query.include_erased, query.include_hidden);
         conditions.extend(self.access(&mut statement, entity, reach)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
         // With `geo.` conditions (chunk Q4), the records are found first and

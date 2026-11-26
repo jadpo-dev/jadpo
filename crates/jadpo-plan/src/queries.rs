@@ -92,6 +92,27 @@ pub(crate) enum Reach {
     /// A transition saying `reaches: hidden` (area 5, "Restoring a hidden
     /// record"): only the records `visible:` hides are found.
     Hidden,
+    /// A query, or a related record `exists` asks for, saying
+    /// `include_hidden: true` (area 6, "Records a lifecycle hides"; chunk
+    /// 10.11d): every record, whatever `visible:` says, except a person's
+    /// record erasure kept.
+    Every,
+    /// A query saying both `include_hidden: true` and `include_erased:
+    /// true`: every record, those erasure kept among them.
+    EveryErased,
+}
+
+impl Reach {
+    /// How a query saying `include_erased:` and `include_hidden:` as
+    /// given reads its own entity.
+    pub(crate) fn of_query(erased: bool, hidden: bool) -> Reach {
+        match (erased, hidden) {
+            (true, true) => Reach::EveryErased,
+            (true, false) => Reach::Erased,
+            (false, true) => Reach::Every,
+            (false, false) => Reach::Read,
+        }
+    }
 }
 
 /// Builds the plans of a project's queries and entities.
@@ -567,11 +588,7 @@ impl Planner<'_> {
         if let Some((_, _, column, _)) = &nearest {
             conditions.push(jadpo_sql::condition::present(column));
         }
-        let reach = if query.include_erased {
-            Reach::Erased
-        } else {
-            Reach::Read
-        };
+        let reach = Reach::of_query(query.include_erased, query.include_hidden);
         conditions.extend(self.access(&mut statement, entity, reach)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
         let size = match &query.limit {
@@ -1103,7 +1120,8 @@ impl Planner<'_> {
     /// the reference still holds (area 6, "Children and parents"). A
     /// person's record erasure kept is hidden everywhere, a parent included,
     /// except from a query that asks for it (`Reach::Erased`; area 15, "The
-    /// person's own record").
+    /// person's own record"). A read saying `include_hidden: true`
+    /// (`Reach::Every`) leaves `visible:` out and keeps the rest.
     pub(crate) fn access(
         &self,
         bind: &mut dyn Bind,
@@ -1111,13 +1129,13 @@ impl Planner<'_> {
         reach: Reach,
     ) -> Option<Vec<String>> {
         let mut out = Vec::new();
-        if reach != Reach::Parent
+        if !matches!(reach, Reach::Parent | Reach::Every | Reach::EveryErased)
             && let Some(visible) = entity.lifecycle.as_ref().and_then(|l| l.visible.as_ref())
         {
             let hidden = reach == Reach::Hidden;
             out.push(jadpo_sql::condition(bind, entity, visible, hidden)?);
         }
-        if reach != Reach::Erased && entity.keeps_erased() {
+        if !matches!(reach, Reach::Erased | Reach::EveryErased) && entity.keeps_erased() {
             out.push(text::not_erased());
         }
         Some(out)

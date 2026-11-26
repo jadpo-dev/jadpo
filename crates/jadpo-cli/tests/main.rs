@@ -94,6 +94,7 @@ mod geo_layers;
 mod geo_queries;
 mod geography;
 mod github_sign_in;
+mod hidden_records;
 mod http;
 mod inspect;
 mod installing;

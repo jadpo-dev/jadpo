@@ -31,7 +31,63 @@ impl<'a> Reader<'a> {
         if let Some(member) = written {
             model.include_erased = self.include_erased(symbol.path.as_str(), &model, &member);
         }
+        let hidden = list
+            .iter()
+            .flat_map(|list| list.member_items())
+            .find_map(|item| match item {
+                MemberItem::Member(member)
+                    if member
+                        .member_key()
+                        .and_then(|key| key.names().next())
+                        .and_then(|name| tree::name_text(&name))
+                        .as_deref()
+                        == Some(related::HIDDEN) =>
+                {
+                    Some(member)
+                }
+                _ => None,
+            });
+        if let Some(member) = hidden {
+            model.include_hidden = self.include_hidden(symbol.path.as_str(), &model, &member);
+        }
         Some(model)
+    }
+
+    /// `include_hidden: true` (area 6, "Records a lifecycle hides"; chunk
+    /// 10.11d): the query finds the records its entity's lifecycle hides
+    /// too, under its policy still, and never a person erasure kept a
+    /// record of. Only `true`, and only where a lifecycle hides something.
+    fn include_hidden(&mut self, path: &str, model: &QueryModel, member: &ast::Member) -> bool {
+        let key = member
+            .member_key()
+            .map_or_else(|| Span::new(path, 0, 0), |key| Self::span(path, &key));
+        let value = member.value();
+        if !value
+            .as_ref()
+            .is_some_and(|value| Const::from_expr(value) == Const::Bool(true))
+        {
+            let at = value
+                .as_ref()
+                .map_or_else(|| key.clone(), |value| Self::span(path, value));
+            self.out.push(related::hidden_not_true(at));
+            return false;
+        }
+        let Some(found) = self.entities.get(&model.entity) else {
+            return false;
+        };
+        if !related::hides(found) {
+            self.out.push(related::hidden_unused(
+                format!(
+                    "`{}` includes hidden records, and no lifecycle hides a `{}`",
+                    model.name, model.entity
+                ),
+                key,
+                &model.entity,
+                "Remove `include_hidden: true`",
+            ));
+            return false;
+        }
+        true
     }
 
     /// `include_erased: true` (area 15, "The person's own record"; chunk
@@ -78,7 +134,13 @@ impl<'a> Reader<'a> {
                 .reason(format!(
                     "Erasing a `{entity}` deletes their whole record, since none of its fields says `erase: Erasure.retained`, so nothing is left for `include_erased:` to find."
                 ))
-                .next("Remove `include_erased: true`"),
+                .next(if related::hides(found) {
+                    // Records its lifecycle hides, such as those in the
+                    // bin, are `include_hidden:`'s (chunk 10.11d).
+                    "Write `include_hidden: true` in its place to read the records its lifecycle hides, or remove the line"
+                } else {
+                    "Remove `include_erased: true`"
+                }),
             );
             return false;
         }
@@ -436,6 +498,7 @@ impl<'a> Reader<'a> {
             grouping: None,
             geometry,
             include_erased: false,
+            include_hidden: false,
         })
     }
 
@@ -498,9 +561,12 @@ impl<'a> Reader<'a> {
                 MemberItem::Elision(_) | MemberItem::RuleMember(_) => continue,
             };
             let span = node_span(path, &node);
-            let near = nearest(&written, known.iter().copied())
+            // A guess at `include_hidden:` is named before a near spelling,
+            // which would be `include_erased:` (chunk 10.11d).
+            let near = renamed(&written)
+                .filter(|near| *near != related::HIDDEN || known.contains(near))
                 .map(str::to_string)
-                .or_else(|| renamed(&written).map(str::to_string));
+                .or_else(|| nearest(&written, known.iter().copied()).map(str::to_string));
             if let Some(near) = &near {
                 out.suggested.insert(near.clone());
             }

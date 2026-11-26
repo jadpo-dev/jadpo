@@ -104,7 +104,14 @@ impl Planner<'_> {
         if let Some(inner) = &related.condition {
             tests.push(self.condition(statement, target, inner, false)?);
         }
-        tests.extend(self.access(statement, target, Reach::Read)?);
+        // `include_hidden: true` counts the records its lifecycle hides,
+        // under its policy still (chunk 10.11d).
+        let reach = if related.hidden {
+            Reach::Every
+        } else {
+            Reach::Read
+        };
+        tests.extend(self.access(statement, target, reach)?);
         if policed {
             let policy = self.policy(statement, target, Effect::Read, &Row::Table)?;
             if policy != ANYONE {

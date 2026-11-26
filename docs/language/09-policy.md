@@ -2603,7 +2603,10 @@ compiler checks each like an output:
   condition or order. A transition's `when:` is a write's condition:
   refusing a record shows what it tests. A lifecycle's `visible:` is a
   condition on every read of its entity, so it tests only fields everyone
-  the entity's `read:` lets in may read. A condition on a related record,
+  the entity's `read:` lets in may read. A query saying
+  `include_hidden: true` leaves `visible:` out and keeps every grant, so
+  it reads hidden records only where the caller may read them
+  ([Records a lifecycle hides](06-reads-and-writes.md#records-a-lifecycle-hides)). A condition on a related record,
   `exists(...)`, reads only the related records the caller may read and
   `visible:` shows, and tests only fields everyone the related entity's
   `read:` lets in may read, as an include's children do
