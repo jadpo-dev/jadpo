@@ -595,7 +595,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--all",
                 value: None,
-                description: "Format every file, not only those edited since the last commit",
+                description: "Format every file, not only edited ones",
                 values: &[],
             },
             Flag {

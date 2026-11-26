@@ -379,7 +379,7 @@ Arguments
   [path]        A file or folder instead of the whole project
 
 Flags
-  --all         Format every file, not only those edited since the last commit
+  --all         Format every file, not only edited ones
   --check       Report unformatted files and change nothing
   --layout      Also make the moves promotion asks for
 
