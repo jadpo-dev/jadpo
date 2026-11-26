@@ -40,7 +40,7 @@ your project: it looks upwards for `app.jadpo`.
 |---|---|
 | `jadpo new <name>` | Starts a project in a new folder, with a starter route and its test |
 | `jadpo check` | Checks the project, and writes the records and migration a change needs |
-| `jadpo fmt` | Formats your files, and adds, removes and sorts their `use` lines |
+| `jadpo fmt` | Formats the files edited since the last commit (`--all`: every file), and adds, removes and sorts their `use` lines |
 | `jadpo test` | Runs the tests. Tests that use the database need PostgreSQL installed |
 | `jadpo migrate new <purpose>` | Writes a migration that needs a decision |
 | `jadpo api update` | Updates the committed record of your API |
@@ -86,9 +86,11 @@ Every error has the same parts:
 - `next:` says what to do. `(human)` at its end tells your agent to stop
   and ask you, since the choice is yours (who can see data, what a setting
   holds). `(agent)` means your agent fixes it alone. A passing check's
-  `notice:` is no stop: carry on, and tell your user what it said. Nor is
-  a detail the request leaves open: your agent picks a reading, notes it
-  and carries on, and before any stop backs out what waits on you.
+  `notice:` is no stop: carry on, and tell your user what it said. A
+  rule your project writes down, or one the request leaves open (who may,
+  which records, a deadline's edge, missing data, a limit), is yours: your
+  agent asks once, every open point together, and picks only wording,
+  names and order itself. Before any stop it backs out what waits on you.
 - `rule:` is the error's name. Its page,
   `https://jadpo.dev/docs/errors/<rule>`, explains it when the reason and
   next step aren't enough.

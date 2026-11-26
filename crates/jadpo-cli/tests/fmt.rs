@@ -69,6 +69,77 @@ fn fmt_finds_the_project_from_a_subfolder_and_formats_every_file() {
     assert_eq!(again.stdout, "formatted: 2 unchanged\n");
 }
 
+fn git(root: &Path, args: &[&str]) {
+    let done = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
+        .args(args)
+        .output()
+        .expect("git");
+    assert!(
+        done.status.success(),
+        "{}",
+        String::from_utf8_lossy(&done.stderr)
+    );
+}
+
+/// In a project with a commit, `jadpo fmt` formats only the files edited
+/// since it, staged, unstaged or new, and says so; `--all` formats every
+/// file, and `--check` still reads every file, as CI runs it (chunk
+/// 10.11a).
+#[test]
+fn fmt_formats_only_what_changed_since_the_last_commit() {
+    let root = project("changed");
+    write(
+        &root,
+        "domains/planning/types/total.jadpo",
+        "type Total = Int { min: 0 }\n",
+    );
+    git(&root, &["init", "-q"]);
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-q", "-m", "start"]);
+    write(
+        &root,
+        "domains/planning/types/total.jadpo",
+        "type Total = Int { min: 1 }\n",
+    );
+    write(
+        &root,
+        "domains/planning/types/extra.jadpo",
+        "type Extra = Int { min: 2 }\n",
+    );
+    let output = jadpo(&root, &["fmt"]);
+    assert_eq!(output.stderr, "");
+    assert_eq!(
+        output.stdout,
+        "formatted: 2 files edited since the last commit, 2 changed\n\nnext: jadpo fmt --all  formats every file\n"
+    );
+    assert_eq!(read(&root, COUNT), MESSY_COUNT, "a file not edited is left");
+    assert_eq!(
+        read(&root, "domains/planning/types/total.jadpo"),
+        "type Total = Int {\n    min: 1\n}\n"
+    );
+    let json = jadpo(&root, &["fmt", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert_eq!(document["data"]["scope"], "changed");
+    assert_eq!(
+        jadpo(&root, &["fmt", "--check"]).code,
+        1,
+        "--check reads every file"
+    );
+    let all = jadpo(&root, &["fmt", "--all"]);
+    assert_eq!(all.stdout, "formatted: 1 changed, 3 unchanged\n");
+    assert_eq!(read(&root, COUNT), TIDY_COUNT);
+    // With nothing edited, nothing is formatted.
+    git(&root, &["add", "."]);
+    git(&root, &["commit", "-q", "-m", "tidy"]);
+    assert_eq!(
+        jadpo(&root, &["fmt"]).stdout,
+        "nothing to format: no file edited since the last commit\n\nnext: jadpo fmt --all  formats every file\n"
+    );
+}
+
 #[test]
 fn format_is_a_synonym() {
     let root = project("synonym");
@@ -92,7 +163,7 @@ fn check_reports_each_unformatted_file_and_changes_nothing() {
 1 | type Count = Int { min: 0 }
   |                    ^ the formatter changes this line
   reason: `jadpo fmt` lays this file out differently from here on.
-  next: Run `jadpo fmt` to format it (agent)
+  next: Run `jadpo fmt --all` to format it (agent)
   fix:
     1 - type Count = Int { min: 0 }
     1 + type Count = Int {
@@ -238,6 +309,7 @@ fn json_lists_every_file_with_its_status() {
         document["data"],
         serde_json::json!({
             "check": true,
+            "scope": "all",
             "files": [
                 {"path": "app.jadpo", "status": "unchanged"},
                 {"path": COUNT, "status": "unformatted"}
@@ -297,7 +369,8 @@ blank lines and one member per line. In a project it first fixes each file's
 --layout it also moves each declaration another file uses into a file of its
 own, as layout.promotion_required asks. With --check, change nothing and fail if
 any file would change. Without a path, the project is found by walking up to
-app.jadpo.
+app.jadpo, and in a project with a commit only the files edited since it are
+formatted; --all, --check and --layout read every file.
 
 Usage
   jadpo fmt [path]
@@ -306,6 +379,7 @@ Arguments
   [path]        A file or folder instead of the whole project
 
 Flags
+  --all         Format every file, not only those edited since the last commit
   --check       Report unformatted files and change nothing
   --layout      Also make the moves promotion asks for
 
@@ -316,8 +390,11 @@ On every command
   --color       Choose when to use colour     auto, always, never
 
 Examples
-  Format the project you are in
+  Format the files edited since the last commit
     jadpo fmt
+
+  Format every file in the project
+    jadpo fmt --all
 
   Make the moves layout.promotion_required asks for, then format
     jadpo fmt --layout

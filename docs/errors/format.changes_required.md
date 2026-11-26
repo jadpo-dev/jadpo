@@ -52,7 +52,7 @@ error: This file isn't formatted
 3 |   max_length: 200
   |   ^ the formatter changes this line
   reason: `jadpo fmt` lays this file out differently from here on.
-  next: Run `jadpo fmt` to format it (agent)
+  next: Run `jadpo fmt --all` to format it (agent)
   fix:
     3 - max_length: 200
     3 +   max_length: 200
@@ -70,11 +70,12 @@ fmt failed: 1 not formatted, 2 already formatted
 it:
 
 ```sh
-jadpo fmt
+jadpo fmt --all
 ```
 
 Every file is rewritten in the one layout, and `jadpo fmt --check` then
-passes. An editor with the Jadpo extension formats each file as it
+passes. `jadpo fmt` alone, in a project with a commit, formats only the
+files edited since it. An editor with the Jadpo extension formats each file as it
 saves it.
 
 ## Related
