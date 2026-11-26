@@ -1134,6 +1134,89 @@ record with one, and the cursor holds `none` for them, so paging walks
 through them too, each once. `order: [Todo.due_at asc]` gives the soonest
 due first and undated todos last, then by `id`.
 
+### A field from a related record on a page's items
+
+A page's items are the query's result type, so a field is added to them
+as to any result: a field of the entity by its name, or a related record
+through `include:`. A related record is always a nested field, never a
+flat one: a todo's project name is `project: ProjectLabel?`, filled by
+`include: { project: Todo.project_id }`, not `project_name:`. This page
+of todos shows each one's project:
+
+```jadpo check project=page-items file=planning.jadpo hidden
+type ProjectName = Text {
+    max_length: 80
+}
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity User {
+    id: Uuid
+}
+
+entity Project {
+    id: Uuid
+    name: ProjectName
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id? {
+        on_delete: OnDelete.cleared
+    }
+    title: TodoTitle
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+```
+
+```jadpo check project=page-items file=project_label.jadpo
+// domains/planning/types/project_label.jadpo
+type ProjectLabel = Output {
+    pick: [Project.id, Project.name]
+}
+```
+
+```jadpo check project=page-items file=todo_row.jadpo
+// domains/planning/types/todo_row.jadpo
+type TodoRow = Output {
+    pick: [Todo.id, Todo.title]
+    project: ProjectLabel?  // the included project, none when it has none
+}
+```
+
+```jadpo check project=page-items file=todo_page.jadpo
+// domains/planning/queries/todo_page.jadpo
+query todo_page(owner_id: User.id, after: PageCursor?) -> Page<TodoRow> {
+    from: Todo
+    where: Todo.owner_id == owner_id
+    order: [Todo.created_at desc]
+    page: {
+        size: 25
+        after: after
+    }
+    include: {
+        project: Todo.project_id
+    }
+}
+```
+
+The include's name is the field's: `project:` under `include:` fills
+`TodoRow.project`. An optional reference gives an optional record. The
+include costs one more database query for the whole page, not one per
+item ([Children and parents](#children-and-parents)). Every query that
+returns the item type needs the same include, and an action that builds
+the type gives the field too, so when only the page should show the
+project, give the page its own item type. Who may read the included
+record is checked as for any output: a role its `read:` doesn't let in
+gets a type without it ([Fields shown by role](09-policy.md#fields-shown-by-role)).
+
 ### What can be sorted
 
 Text sorts by code point, as Jadpo compares it, whatever the database's

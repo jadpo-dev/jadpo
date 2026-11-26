@@ -74,6 +74,7 @@ mod lists;
 mod locales;
 mod logic;
 mod lookup;
+mod lookups;
 mod magic_links;
 mod mail_packages;
 mod maths;

@@ -31,8 +31,8 @@ use jadpo_std::http::PrincipalKind;
 use jadpo_std::write::WriteOp;
 
 use super::{
-    DEPTH, Flow, Origin, Prov, Run, Src, Walk, erased, field_name, retold, shallow, tenancy_of,
-    widen,
+    DEPTH, Flow, Origin, Prov, Run, Src, Test, Walk, erased, field_name, retold, shallow,
+    tenancy_of, widen,
 };
 use crate::policy::proof::{Fact, Facts, Reached, Way};
 use crate::policy::{Effect, Grant};
@@ -301,6 +301,69 @@ enum Rel {
     Tenant(String, String),
     /// Any other record.
     Other,
+}
+
+/// A lookup a body stores that isn't yet known to be one (chunk 10.9c):
+/// the key's parts of parameters, the other parts stored where a role
+/// reads them who may not read `source`, the field compared, and the
+/// problem it is should its key show.
+pub(super) struct Pending {
+    key: Vec<(usize, Vec<String>)>,
+    others: Vec<(usize, Vec<String>)>,
+    source: Src,
+    problem: Diagnostic,
+    from: String,
+    into: String,
+    subject: String,
+}
+
+/// A lookup an action stores, kept in its summary for its callers
+/// (chunk 10.9c): each is checked where it is called, by an action
+/// ([`Walk::passed_lookup`]) or a route ([`route_lookups`]), and is a copy
+/// there unless the key passed is the caller's own parameters and none of
+/// it is passed again as one of `others`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Held {
+    pub(super) key: Vec<(usize, Vec<String>)>,
+    pub(super) others: Vec<(usize, Vec<String>)>,
+    source: Src,
+    pub(super) from: String,
+    pub(super) into: String,
+    pub(super) subject: String,
+}
+
+impl Held {
+    pub(super) fn widened(mut self) -> Held {
+        for (_, path) in self.key.iter_mut().chain(self.others.iter_mut()) {
+            path.truncate(DEPTH);
+        }
+        self
+    }
+}
+
+/// Whether two parts of parameters may hold the same value: the same
+/// parameter, one path inside the other.
+pub(super) fn overlaps(a: &(usize, Vec<String>), b: &(usize, Vec<String>)) -> bool {
+    a.0 == b.0 && (a.1.starts_with(&b.1) || b.1.starts_with(&a.1))
+}
+
+/// What a lookup a body stores tells apart (chunk 10.9c).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Chose {
+    /// By equality with this key, made of parameters.
+    Matched(Vec<Src>),
+    /// By which turn of a loop made it.
+    Turn,
+}
+
+/// The part of a parameter a store's value holds: not one that only
+/// decided it, as a lookup's key decides the `id` it chose.
+fn stored_param(src: &Src) -> Option<(usize, Vec<String>)> {
+    match src {
+        Src::Param(at, path) => Some((*at, path.clone())),
+        Src::Deep(inner) => stored_param(inner),
+        _ => None,
+    }
 }
 
 /// The parameter a store's value is part of.
@@ -852,10 +915,21 @@ impl Walk<'_> {
                     if self.copy_accepted(flow, &entity, &from, dest, field) {
                         continue;
                     }
-                    if decided && !self.kept.insert((entity.clone(), from.clone())) {
+                    // A lookup isn't a copy (chunk 10.9c).
+                    let chose = if decided {
+                        self.chose(flow, &inner, &prov)
+                    } else {
+                        None
+                    };
+                    if matches!(chose, Some(Chose::Turn)) {
                         continue;
                     }
-                    reported = true;
+                    if chose.is_none()
+                        && decided
+                        && !self.kept.insert((entity.clone(), from.clone()))
+                    {
+                        continue;
+                    }
                     let span = match at {
                         At::Site(site) => self.span(site),
                         At::Span(span) => span.clone(),
@@ -863,11 +937,285 @@ impl Walk<'_> {
                     let problem = self.unstored(
                         flow, dest, field, span, &entity, &from, who, decided, callee,
                     );
+                    if let Some(Chose::Matched(key)) = chose {
+                        let qualified = |entity: &str, field: &str| {
+                            format!(
+                                "{}.{field}",
+                                crate::policy::report::qualified(&flow.lookup, entity)
+                            )
+                        };
+                        self.lookups.push(Pending {
+                            key: key
+                                .iter()
+                                .filter_map(|part| match part {
+                                    Src::Param(at, path) => Some((*at, path.clone())),
+                                    _ => None,
+                                })
+                                .collect(),
+                            others: Vec::new(),
+                            source: inner.clone(),
+                            problem,
+                            from: format!("{entity}.{from}"),
+                            into: format!("{}.{field}", dest.entity),
+                            subject: crate::acceptances::copies::subject(
+                                &qualified(&entity, &from),
+                                &qualified(&dest.entity, field),
+                            ),
+                        });
+                        continue;
+                    }
+                    reported = true;
                     self.problems.push(problem);
                 }
                 _ => {}
             }
         }
+    }
+
+    /// Whether `src`, a field that decided the value `prov`, only chose
+    /// which record's `id` it is (chunk 10.9c, area 9 "What else shows a
+    /// field"): each value it holds is an `id` of `src`'s entity, every
+    /// caller may read `src`, as if it were sent them, and `src` decided
+    /// it by equality with a key of parameters, or only by which turn of
+    /// a loop over its records made it. Its readers then learn which
+    /// existing record was chosen, which they read in the `id` anyway; a
+    /// lookup is still a copy where they may know the key
+    /// ([`Walk::kept_lookups`]). Only in a body walked for its own
+    /// callers: an event, a batch's run and its summary have left them.
+    fn chose(&self, flow: &Flow<'_>, src: &Src, prov: &Prov) -> Option<Chose> {
+        let Src::Field {
+            entity,
+            field,
+            reached,
+            test,
+            ..
+        } = src
+        else {
+            return None;
+        };
+        if matches!(test, Test::Value) || self.event.is_some() || self.run.is_some() || self.summary
+        {
+            return None;
+        }
+        let mut values = prov
+            .flat()
+            .into_iter()
+            .map(shallow)
+            .filter(|src| !matches!(src, Src::Decided(_)))
+            .peekable();
+        values.peek()?;
+        let ids = values.all(|value| match value {
+            Src::Field {
+                entity: of, field, ..
+            } => of == *entity && field == "id",
+            Src::Record { entity: of, .. } => of == *entity,
+            _ => false,
+        });
+        if !ids || !flow.prover.field_proved(entity, field, reached) {
+            return None;
+        }
+        Some(match test {
+            Test::Matched(key) => Chose::Matched(key.clone()),
+            _ => Chose::Turn,
+        })
+    }
+
+    /// The lookups this body stores whose key it also stores where
+    /// someone reads it whose role may not read the field it was compared
+    /// with: they would learn which record holds what (chunk 10.9c). Each
+    /// is still a copy, which only a person may approve.
+    ///
+    /// Every other lookup is kept for its callers ([`Held`]), with the
+    /// other parts of parameters it stores where such a role reads them:
+    /// a caller passing the key there too, or a key that isn't made only
+    /// of its own parameters, makes it a copy where it is called.
+    pub(super) fn kept_lookups(&mut self, flow: &Flow<'_>) {
+        for pending in std::mem::take(&mut self.lookups) {
+            let Pending {
+                key,
+                mut others,
+                source,
+                mut problem,
+                from,
+                into,
+                subject,
+            } = pending;
+            // Each part of a parameter this body stores where a role reads
+            // it who may not read the field compared.
+            let mut shown: Vec<((usize, Vec<String>), String, String)> = Vec::new();
+            for store in &self.stores {
+                let Some(part) = stored_param(&store.value) else {
+                    continue;
+                };
+                let readers = readers(flow, &store.dest.entity, &store.field);
+                if self
+                    .unread_by(flow, &store.dest, &readers, &source)
+                    .is_some_and(|(_, _, unread)| unread.cause == Cause::Role)
+                {
+                    shown.push((part, store.dest.entity.clone(), store.field.clone()));
+                }
+            }
+            let found = shown.iter().find_map(|(part, entity, field)| {
+                key.iter()
+                    .find(|own| overlaps(own, part))
+                    .map(|own| (own.0, own.1.clone(), entity.clone(), field.clone()))
+            });
+            let Some((at, path, entity, field)) = found else {
+                for (part, _, _) in shown {
+                    if !others.contains(&part) {
+                        others.push(part);
+                    }
+                }
+                let held = Held {
+                    key,
+                    others,
+                    source: erased(&source),
+                    from,
+                    into,
+                    subject,
+                };
+                if !self.held.contains(&held) {
+                    self.held.push(held);
+                }
+                continue;
+            };
+            let name = self
+                .body
+                .params
+                .get(at)
+                .map(|param| self.body.local(*param).name.clone())
+                .unwrap_or_default();
+            let key = std::iter::once(name)
+                .chain(path)
+                .collect::<Vec<_>>()
+                .join(".");
+            let reason = problem.reason.take().unwrap_or_default();
+            problem.reason = Some(format!(
+                "{reason} It decided which record by equality, but `{key}`, which it was compared with, is stored in `{entity}.{field}`, which they may read, so they learn which record holds it."
+            ));
+            self.problems.push(problem);
+        }
+    }
+
+    /// A lookup `callee` keeps for its callers ([`Held`]), called at
+    /// `site` with `provs` (chunk 10.9c): a copy unless the key passed is
+    /// made only of this body's parameters, written as them (`loose` are
+    /// the arguments that aren't), and none of it is passed again where
+    /// `callee` stores it for the readers. Otherwise kept, with the key as
+    /// this body has it, for its own stores and its callers.
+    pub(super) fn passed_lookup(
+        &mut self,
+        site: SiteId,
+        callee: &str,
+        held: &Held,
+        provs: &[Prov],
+        loose: &BTreeSet<usize>,
+    ) {
+        let parts = |part: &(usize, Vec<String>)| -> Option<Vec<(usize, Vec<String>)>> {
+            let given = provs.get(part.0)?.at(&part.1);
+            let mut out = Vec::new();
+            for src in given.flat() {
+                match shallow(src) {
+                    Src::Param(at, path) => {
+                        if !out.contains(&(at, path.clone())) {
+                            out.push((at, path));
+                        }
+                    }
+                    Src::Decided(_) => {}
+                    _ => return None,
+                }
+            }
+            Some(out)
+        };
+        let mut key = Vec::new();
+        let mut known = self.event.is_some() || self.run.is_some() || self.summary;
+        for part in &held.key {
+            match parts(part) {
+                Some(given) if !loose.contains(&part.0) && !given.is_empty() => {
+                    for part in given {
+                        if !key.contains(&part) {
+                            key.push(part);
+                        }
+                    }
+                }
+                _ => known = true,
+            }
+        }
+        let mut others = Vec::new();
+        for part in &held.others {
+            if let Some(given) = parts(part) {
+                for part in given {
+                    if !others.contains(&part) {
+                        others.push(part);
+                    }
+                }
+            }
+        }
+        let again = key
+            .iter()
+            .any(|own| others.iter().any(|other| overlaps(own, other)));
+        let problem = self.passed_lookup_problem(site, callee, held, known, again);
+        if known || again {
+            if self.report {
+                self.problems.push(problem);
+            }
+            return;
+        }
+        self.lookups.push(Pending {
+            key,
+            others,
+            source: held.source.clone(),
+            problem,
+            from: held.from.clone(),
+            into: held.into.clone(),
+            subject: held.subject.clone(),
+        });
+    }
+
+    /// The problem with a lookup `callee` stores, passed a key at `site`
+    /// that the readers of what it stores may know: `known`, when it isn't
+    /// made only of this body's parameters, `again`, when it is also
+    /// passed where `callee` stores it for them.
+    fn passed_lookup_problem(
+        &self,
+        site: SiteId,
+        callee: &str,
+        held: &Held,
+        known: bool,
+        again: bool,
+    ) -> Diagnostic {
+        let Held {
+            from,
+            into,
+            subject,
+            ..
+        } = held;
+        let field = into.rsplit('.').next().unwrap_or_default();
+        let why = if known {
+            "this key isn't made only of its caller's parameters, so they may know it"
+        } else if again {
+            "the same value is passed again where it stores it for them to read"
+        } else {
+            "nothing here shows the key is stored nowhere they read"
+        };
+        Diagnostic::new(
+            &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+            format!(
+                "`{}` passes `{callee}` a key it matches against `{from}` to choose what it stores in `{into}`, which not everyone who may read `{field}` may read",
+                self.name
+            ),
+        )
+        .at(self.span(site), format!("chooses by `{from}`"))
+        .reason(format!(
+            "`{callee}` stores in `{into}` the `id` of the record whose `{from}` equals the key passed here. That shows someone who doesn't know the key only which record was chosen, but {why}, and with it they would learn what `{from}` holds. A key that reaches a lookup through a call is a copy unless the whole call shows it is stored nowhere they read."
+        ))
+        .next_for(
+            format!(
+                "Stop and ask your user whether everyone who may read `{into}` may learn what `{from}` holds: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `{subject}: {}` with their words as its reason; otherwise pass `{callee}` only a key the request sent, and nowhere else it stores",
+                crate::acceptances::copies::CHANGE
+            ),
+            Decider::Human,
+        )
     }
 
     /// Each part of a parameter `prov` holds, or that decided it, stored
@@ -1286,6 +1634,7 @@ impl Walk<'_> {
                 field,
                 reached: reached.cloned().unwrap_or_default(),
                 origin: dest.own,
+                test: Test::Value,
             })));
         }
         let set: Vec<String> = model.set.iter().map(|(field, _)| field.clone()).collect();

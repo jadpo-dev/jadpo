@@ -2371,6 +2371,25 @@ impl Body<'_> {
             &rule::TYPE_MISSING_FIELD
         };
         let first = missing[0].trim_matches('`').to_string();
+        // An output's field of another record (chunk 10.9d): a query fills
+        // it through an include, as a nested record, so say where that is
+        // shown, for a page's items as for any result.
+        let related = !is_variant
+            && self.table.base(host) == Some(FieldsBase::Output)
+            && fields.iter().any(|field| {
+                field.name == first
+                    && matches!(
+                        field.declared.strip_nullable(),
+                        Ty::Field(owner, _) if self.table.base(owner) == Some(FieldsBase::Entity)
+                    )
+            });
+        let next = if related {
+            format!(
+                "Add `{first}: ...` to the block, from the record it is read from; a query fills a related record's field through an include, as a nested record (`jadpo help topic order-and-pages`)"
+            )
+        } else {
+            format!("Add `{first}: ...` to the block")
+        };
         let problem =
             Diagnostic::new(rule, format!("`{shown}` is missing {}", crate::and_list(&missing)))
                 .at(head_span, "fields missing")
@@ -2399,11 +2418,21 @@ impl Body<'_> {
                     .iter()
                     .map(|f| format!("\n{indent}{}: none", f.name))
                     .collect();
+                // A related record's field keeps its pointer to the
+                // include a query fills it with (chunk 10.9d).
+                let include = if related {
+                    "; a query fills a related record's field through an include, as a nested record (`jadpo help topic order-and-pages`)"
+                } else {
+                    ""
+                };
                 problem
-                    .next(format!("Add {} to the block", crate::and_list(&names)))
+                    .next(format!(
+                        "Add {} to the block{include}",
+                        crate::and_list(&names)
+                    ))
                     .edit(Span::new(self.path, at, at), written)
             }
-            None => problem.next(format!("Add `{first}: ...` to the block")),
+            None => problem.next(next),
         };
         self.out.push(problem);
     }

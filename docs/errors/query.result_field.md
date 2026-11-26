@@ -48,7 +48,7 @@ error: `BookCard.author` isn't a field of `Book`, or an include
 17 | query cards() -> List<BookCard> {
    |                  ^^^^^^^^^^^^^^ `author` can't be filled
   reason: A query fills its result's fields from `Book`'s fields of the same name (`id`, `title`, `subtitle` and `available`) and from its includes; nothing gives `author`.
-  next: Remove `author` from `BookCard`, or include records under it (agent)
+  next: Remove `author` from `BookCard`, or include records under it (`jadpo help topic order-and-pages`) (agent)
   rule: query.result_field
   help: https://jadpo.dev/docs/errors/query.result_field
 
@@ -350,6 +350,14 @@ query cards() -> List<BookCard> {
 
 Each card now comes back with its author.
 
+A field of a related record is always filled this way, as a nested
+record: `author: AuthorName` with an `Output` that picks `Author.name`,
+never a flat `author_name: Author.name`. A page's items are a result
+like any other, so a field is added to the items of a `Page<BookCard>`
+in the same way ([A field from a related record on a page's items](../language/06-reads-and-writes.md#a-field-from-a-related-record-on-a-pages-items),
+`jadpo help topic order-and-pages`). For such a flat field, `next:`
+names the include and the field to write in its place.
+
 **If a field's type doesn't fit**, pick the field, so it has the entity's own type:
 
 ```jadpo fragment
@@ -419,4 +427,5 @@ Each total fills the field of its name, and each field is filled by one total.
 
 - [What a result holds](../language/06-reads-and-writes.md#what-a-result-holds)
 - [The result](../language/06-reads-and-writes.md#the-result)
+- [A field from a related record on a page's items](../language/06-reads-and-writes.md#a-field-from-a-related-record-on-a-pages-items)
 - [`query.include_result`](query.include_result.md)

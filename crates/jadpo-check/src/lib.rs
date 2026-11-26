@@ -400,6 +400,11 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(
+                policy::flow::route_lookup_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 policy::flow::model_problems(db, project, file)
                     .iter()
                     .cloned(),
