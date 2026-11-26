@@ -840,6 +840,33 @@ pub static COMMANDS: &[Command] = &[
         run: commands::routes,
     },
     Command {
+        name: "explain",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "Print a digest of the app",
+        description: "Print a digest of the app (area 14), read from its checked code: who calls and \
+                      what tenancy limits them to, each entity's fields, lifecycle and who may \
+                      create, read, update and delete it, each route with its input, output and what \
+                      it runs, the background work, the acceptances already given, and for each kind \
+                      of construct the app uses the docs topic that explains it. Run it first in an \
+                      existing app. The project must check without errors first.",
+        arguments: &[],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "Print the digest of the app you are in",
+                command: "jadpo explain",
+            },
+            Example {
+                description: "Print it as data for tools",
+                command: "jadpo explain --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_EXPLAIN_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::explain,
+    },
+    Command {
         name: "inspect",
         synonyms: &[],
         group: "Look things up",
@@ -2927,13 +2954,14 @@ pub static COMMANDS: &[Command] = &[
         group: "Help",
         summary: "Show commands, flags and examples",
         description: "Show every command grouped by job, or one command's arguments, flags and examples, \
-                      a rule's page by the id on an error's rule: line, or a standard type's page by its name, offline. \
-                      `jadpo help types` lists every standard type. \
+                      a rule's page by the id on an error's rule: line, a standard type's page by its name, \
+                      or a topic of the language pages by its ID, offline. `jadpo help types` lists every \
+                      standard type, and `jadpo help topic <id>` reads a topic even where a command has its name. \
                       With --json, print the whole command reference and the rule catalogue as data, \
                       or one type's shape.",
         arguments: &[Argument {
             name: "command",
-            description: "The command, rule or standard type to explain",
+            description: "The command, rule, standard type or topic to explain",
             required: false,
             values: Values::Commands,
         }],
@@ -2958,6 +2986,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "List every standard type from A to Z",
                 command: "jadpo help types",
+            },
+            Example {
+                description: "Read a topic of the language pages, by the ID `jadpo explain` gives",
+                command: "jadpo help topic lifecycle",
             },
             Example {
                 description: "Print the command reference and rule catalogue for tools",

@@ -31,7 +31,8 @@ change what.
 3. **Read one topic, not a whole page.** https://jadpo.dev/llms.txt lists
    the guides and the reference's groups. Open the guide or the group's
    page for your task, and read only the `.md` of the topic it leads to.
-   Each `##` section of a language page is one topic.
+   Each `##` section of a language page is one topic, and
+   `jadpo help topic <id>` prints it offline.
 4. **Declare a feature and check it before designing around it.** Write
    the smallest piece of it, such as the one setting or line, and run
    `jadpo check`. A feature that isn't built yet is
@@ -66,7 +67,14 @@ change what.
    `jadpo check` and `jadpo test`: back out or set aside the part that
    needs the owner, keep the rest of the change that works, and say what
    is waiting on them. The next change starts from what you leave.
-8. **In an app that has code, this app is your closest example.** Read
+8. **In an app that has code, run `jadpo explain` first.** It prints a
+   digest of the app from its checked code: who calls, each entity's
+   fields, lifecycle and who may read, write and delete it, the routes
+   with their input and output, the background work, the acceptances
+   already given, and for each kind of construct the app uses the one
+   topic that explains it, which `jadpo help topic <id>` prints offline.
+   Then this app is your closest example: run `jadpo explain` again
+   rather than reading every file to rebuild the map, and read
    its code before the docs, and don't reopen pages you have already
    read. Only a new app with no code of its own yet starts from the
    closest example below.

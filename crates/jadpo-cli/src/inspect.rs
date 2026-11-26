@@ -56,7 +56,7 @@ fn named_kind(kind: Kind) -> bool {
 
 /// The project, checked, and its graph; or the reply that stops the
 /// command.
-fn graph_of(
+pub(crate) fn graph_of(
     call: &Call,
     command: &str,
 ) -> Result<(jadpo_db::Loaded, std::sync::Arc<Graph>), Reply> {

@@ -20,6 +20,7 @@ pub use crate::deliveries::deliveries;
 pub use crate::dev::dev;
 pub use crate::domain::domain;
 pub use crate::email::email;
+pub use crate::explain::explain;
 pub use crate::files::files;
 pub use crate::fix::fix;
 pub use crate::flags::flags;
@@ -46,15 +47,25 @@ pub use crate::test::test;
 pub use crate::translations::translations;
 
 pub fn help(call: &Call) -> Reply {
-    match call.arguments.first() {
-        None => help::reference(),
-        Some(word) => match (table::find(word), jadpo_diag::find(word)) {
+    match call.arguments.as_slice() {
+        [] => help::reference(),
+        // `jadpo help topic <id>` reads a topic even where a command has
+        // its name, as `schedules` and `files` do.
+        [topic, id] if topic == "topic" => match help::find_topic(id) {
+            Some(found) => help::topic(&found),
+            None => Reply::failed(crate::run::unknown_docs_topic(id)),
+        },
+        [topic] if topic == "topic" => Reply::failed(crate::run::unknown_docs_topic("")),
+        [word, ..] => match (table::find(word), jadpo_diag::find(word)) {
             (Some(command), _) => help::command(command),
             (None, Some(rule)) => help::rule(rule),
             (None, None) if word == "types" => crate::type_page::index_help(),
             (None, None) => match crate::type_page::find(word) {
                 Some(name) => crate::type_page::type_help(name),
-                None => Reply::failed(unknown_topic(word)),
+                None => match help::find_topic(word) {
+                    Some(found) => help::topic(&found),
+                    None => Reply::failed(unknown_topic(word)),
+                },
             },
         },
     }

@@ -551,7 +551,7 @@ fn ago(at: i64, now: i64) -> String {
 }
 
 /// `every:` as the source writes it: `15m`, `1d`, `30s`.
-fn every(ms: u64) -> String {
+pub(crate) fn every(ms: u64) -> String {
     let seconds = ms / 1_000;
     for (unit, size) in [("d", 86_400), ("h", 3_600), ("m", 60)] {
         if seconds >= size && seconds.is_multiple_of(size) {

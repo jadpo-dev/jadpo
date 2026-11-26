@@ -1,0 +1,161 @@
+Access
+  caller: user: User by authentication_subject, active when User.status==UserStatus.active
+  sign-in: api_token, browser_session
+  tenant: Workspace
+  scoped: Customer, Macro, Membership, Note, Reply, Tag, Ticket, TicketTag by workspace_id
+  unscoped: User
+  roles: WorkspaceRole from Membership.role in each Workspace: owner, admin, agent, viewer
+  listed: desk.found_workspace: Access.authenticated
+
+Customer domains/desk/entities/customer.jadpo:5
+  about: Someone who asks the desk for help. Viewers never see customers.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), name: PersonLabel, email: Email, phone: PhoneText?, created_at: Instant, updated_at: Instant
+  create: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  update: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  delete: WorkspaceRole.owner, WorkspaceRole.admin
+
+Macro domains/desk/entities/macro.jadpo:5
+  about: A saved answer agents can reuse.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), title: MacroTitle, body: MessageBody, created_at: Instant, updated_at: Instant
+  create: WorkspaceRole.owner, WorkspaceRole.admin
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  update: WorkspaceRole.owner, WorkspaceRole.admin
+  delete: WorkspaceRole.owner, WorkspaceRole.admin
+
+Membership domains/desk/entities/membership.jadpo:5
+  about: A person's role in a workspace, and the name colleagues see.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), user_id: User.id (cascade), role: WorkspaceRole, display_name: PersonLabel, created_at: Instant, updated_at: Instant
+  unique: one_per_person [workspace_id, user_id]
+  roles: scope workspace_id, member user_id, role role
+  create: WorkspaceRole.owner
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer, Access.system
+  update: WorkspaceRole.owner
+  delete: WorkspaceRole.owner
+
+Note domains/desk/entities/note.jadpo:5
+  about: An internal note on a ticket. Never shown to viewers or to the customer.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), ticket_id: Ticket.id (cascade), author_id: User.id? (cleared), body: MessageBody, created_at: Instant, updated_at: Instant
+  create: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  update: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  delete: author_id, WorkspaceRole.owner, WorkspaceRole.admin
+
+Reply domains/desk/entities/reply.jadpo:5
+  about: A message to the customer on a ticket. Every member may read replies.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), ticket_id: Ticket.id (cascade), author_id: User.id? (cleared), body: MessageBody, created_at: Instant, updated_at: Instant
+  create: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer
+  update: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  delete: author_id, WorkspaceRole.owner, WorkspaceRole.admin
+
+Tag domains/desk/entities/tag.jadpo:5
+  about: A label tickets can carry.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), name: TagName, created_at: Instant
+  create: WorkspaceRole.owner, WorkspaceRole.admin
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer
+  update: WorkspaceRole.owner, WorkspaceRole.admin
+  delete: WorkspaceRole.owner, WorkspaceRole.admin
+
+Ticket domains/desk/entities/ticket.jadpo:5
+  about: A customer's request for help.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), customer_id: Customer.id? (cleared), assignee_id: Membership.id? (cleared), subject: TicketSubject, status: TicketStatus, priority: TicketPriority, respond_by: Instant, first_response_at: Instant?, breached_at: Instant?, solved_at: Instant?, deleted_at: Instant?, created_at: Instant, updated_at: Instant
+  visible: deleted_at == none
+  change: delete when deleted_at == none, sets deleted_at
+  purge: after config.deleted_ticket_retention since deleted_at
+  create: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer, Access.system
+  update: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, Access.system
+  delete: WorkspaceRole.owner, WorkspaceRole.admin
+  field: breached_at: create [], update [Access.system]
+
+TicketTag domains/desk/entities/ticket_tag.jadpo:5
+  about: A tag on a ticket.
+  fields: id: Uuid, workspace_id: Workspace.id (cascade), ticket_id: Ticket.id (cascade), tag_id: Tag.id (cascade), created_at: Instant
+  unique: once_per_ticket [ticket_id, tag_id]
+  create: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer
+  delete: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent
+
+User domains/desk/entities/user.jadpo:4
+  about: Someone who signs in. Their email is theirs alone.
+  fields: id: Uuid, authentication_subject: Text, status: UserStatus, email: Email, created_at: Instant
+  read: id, Access.system
+
+Workspace domains/desk/entities/workspace.jadpo:4
+  about: A customer company of the desk: the tenant every other record belongs to.
+  fields: id: Uuid, name: WorkspaceName, created_at: Instant, updated_at: Instant
+  read: WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer, Access.system
+  update: WorkspaceRole.owner
+
+Routes  main  /
+  DELETE /customers/{customer_id} -> 204  runs delete_customer
+  GET /customers/{customer_id} -> CustomerView  query customer_by_id
+  PATCH /customers/{customer_id} PatchCustomer -> CustomerView  runs edit_customer
+  GET /customers/{customer_id}/tickets -> List<TicketView>  query customer_tickets
+  DELETE /macros/{macro_id} -> 204  runs delete_macro
+  GET /macros/{macro_id} -> MacroView  query macro_by_id
+  PATCH /macros/{macro_id} PatchMacro -> MacroView  runs edit_macro
+  GET /me -> MeView  runs my_account
+  DELETE /members/{member_id} -> 204  runs remove_member
+  PATCH /members/{member_id} MemberChange -> MemberView  runs change_member
+  DELETE /notes/{note_id} -> 204  runs delete_note
+  PATCH /notes/{note_id} WriteMessage -> NoteView  runs edit_note
+  DELETE /replies/{reply_id} -> 204  runs delete_reply
+  PATCH /replies/{reply_id} WriteMessage -> ReplyView  runs edit_reply
+  DELETE /tags/{tag_id} -> 204  runs delete_tag
+  PATCH /tags/{tag_id} NameTag -> TagView  runs rename_tag
+  DELETE /tickets/{ticket_id} -> 204  runs delete_ticket
+  GET /tickets/{ticket_id} -> TicketView  query ticket_by_id
+  PATCH /tickets/{ticket_id} PatchTicket -> TicketView  runs edit_ticket
+  POST /tickets/{ticket_id}/assign Assignment -> TicketView  runs assign_ticket
+  GET /tickets/{ticket_id}/customer -> CustomerView  runs ticket_customer
+  GET /tickets/{ticket_id}/notes -> List<NoteView>  runs ticket_notes
+  POST /tickets/{ticket_id}/notes WriteMessage -> NoteView 201  runs add_note
+  POST /tickets/{ticket_id}/reopen -> TicketView  runs reopen_ticket
+  GET /tickets/{ticket_id}/replies -> List<ReplyView>  runs ticket_replies
+  POST /tickets/{ticket_id}/replies WriteMessage -> ReplyView 201  runs add_reply
+  POST /tickets/{ticket_id}/solve -> TicketView  runs solve_ticket
+  GET /tickets/{ticket_id}/tags -> List<TicketTagView>  runs ticket_tags
+  POST /tickets/{ticket_id}/tags AddTicketTag -> TicketTagView 201  runs tag_ticket
+  DELETE /tickets/{ticket_id}/tags/{tag_id} -> 204  runs untag_ticket
+  GET /workspaces -> List<WorkspaceView>  query my_workspaces
+  POST /workspaces NewWorkspace -> WorkspaceView 201  runs found_workspace
+  GET /workspaces/{workspace_id} -> WorkspaceView  query workspace_by_id
+  PATCH /workspaces/{workspace_id} WorkspaceRename -> WorkspaceView  runs rename_workspace
+  GET /workspaces/{workspace_id}/customers -> List<CustomerView>  query workspace_customers
+  POST /workspaces/{workspace_id}/customers CreateCustomer -> CustomerView 201  runs add_customer
+  GET /workspaces/{workspace_id}/macros -> List<MacroView>  query workspace_macros
+  POST /workspaces/{workspace_id}/macros NewMacro -> MacroView 201  runs create_macro
+  GET /workspaces/{workspace_id}/members -> List<MemberView>  query workspace_members
+  POST /workspaces/{workspace_id}/members NewMember -> MemberView 201  runs add_member
+  GET /workspaces/{workspace_id}/tags -> List<TagView>  query workspace_tags
+  POST /workspaces/{workspace_id}/tags NameTag -> TagView 201  runs create_tag
+  GET /workspaces/{workspace_id}/tickets ListTickets -> Page<TicketView>  query tickets_page
+  POST /workspaces/{workspace_id}/tickets CreateTicket -> TicketView 201  runs open_ticket
+
+Background work
+  schedule: first_response_breaches every 5m, runs flag_breaches
+
+Docs
+  callers       jadpo help topic the-principal
+  sign-in       jadpo help topic ways-to-sign-in
+  tenancy       jadpo help topic tenancy
+  roles         jadpo help topic a-membership-role
+  listed        jadpo help topic action-permissions
+  entities      jadpo help topic entities-and-the-id
+  references    jadpo help topic references-and-on-delete
+  unique        jadpo help topic unique-rules
+  lifecycle     jadpo help topic lifecycle
+  policy        jadpo help topic grants
+  field policy  jadpo help topic field-restrictions
+  routes        jadpo help topic route-groups
+  queries       jadpo help topic named-queries
+  actions       jadpo help topic functions-and-actions
+  failures      jadpo help topic declaring-a-failure
+  settings      jadpo help topic settings-config-jadpo
+  schedules     jadpo help topic schedules
+
+10 entities: 44 routes, 34 actions, 17 queries
+
+next: jadpo inspect <name>  shows one declaration's fields, signature and edges

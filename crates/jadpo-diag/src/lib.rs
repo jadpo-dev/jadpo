@@ -182,6 +182,8 @@ rules! {
         "A `jadpo domain` command names a move it doesn't make, a domain the project doesn't have, a new name that is taken or isn't one, or a split or merge the domains can't take";
     CLI_EMAIL_ARGUMENTS: "cli.email_arguments", area 14, Error, Agent,
         "A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold";
+    CLI_EXPLAIN_ARGUMENTS: "cli.explain_arguments", area 14, Error, Agent,
+        "A `jadpo explain` command is given an argument, which it doesn't take";
     CLI_FILES_ARGUMENTS: "cli.files_arguments", area 14, Error, Agent,
         "A `jadpo files` command names an action it doesn't have, a store the app doesn't keep files in, a file the store doesn't hold, or a local file it can't use";
     CLI_FIX_ARGUMENTS: "cli.fix_arguments", area 14, Error, Agent,
@@ -191,7 +193,7 @@ rules! {
     CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
         "A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
-        "A `jadpo help` command names more than one command or rule";
+        "A `jadpo help` command names more than one command or rule, or a topic the docs don't have";
     CLI_IMPACT_ARGUMENTS: "cli.impact_arguments", area 14, Error, Agent,
         "A `jadpo impact` command names no declaration, one the project doesn't have, or a name two domains share";
     CLI_INSPECT_ARGUMENTS: "cli.inspect_arguments", area 14, Error, Agent,
