@@ -49,7 +49,7 @@ error: `Stock` isn't in `shared/failures`
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -91,7 +91,7 @@ error: `Stok` isn't declared
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A folder that isn't there is refused the same way:
@@ -130,7 +130,7 @@ error: `shared/tipes` isn't a folder of `shared/`
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A library comes in whole, by its name, and a line that names one of its

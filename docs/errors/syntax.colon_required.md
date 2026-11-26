@@ -35,7 +35,7 @@ error: `format` needs a colon before its value
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -67,7 +67,7 @@ error: Jadpo writes `min:`, not `min =`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A field of a record written as its name alone is this error too, because
@@ -107,7 +107,7 @@ error: `left` needs a value
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

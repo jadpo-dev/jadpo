@@ -57,7 +57,7 @@ error: `shared/types` has two `use` lines
 
 check failed: 1 error, 4 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -100,7 +100,7 @@ error: `Stock` is imported twice
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

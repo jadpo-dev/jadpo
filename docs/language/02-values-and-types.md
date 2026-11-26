@@ -831,7 +831,7 @@ error: `CakeCount(...)` can't fail, so it takes no `attempt`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ```jadpo check project=e-condition-proves-rule expect=failure.rule_cannot_break
@@ -879,7 +879,7 @@ error: `CakeCount(...)` can't break `max`, so it takes no arm
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## Signatures use named types
@@ -1625,7 +1625,7 @@ error: `Booking { ... }` can't fail, so it takes no `attempt`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ### A record names its type alone
@@ -2263,7 +2263,7 @@ error: `_` stands for a `PersonName`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 - **Where it goes.** `_` stands where a value goes: an argument, a field

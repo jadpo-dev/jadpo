@@ -109,7 +109,7 @@ error: `constant` doesn't start a statement
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A `decline` among a body's statements is this error too, because it stands

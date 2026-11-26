@@ -447,5 +447,9 @@ fn several_records_hold_none_in_an_optional_unique_field() {
         .block_on(jadpo_runtime::migrate(&store, &migrations(&root)))
         .expect("migrated");
     assert_eq!(tried(&fresh, &member_row(None)), Ok(()));
-    assert_eq!(tried(&fresh, &member_row(None)), Ok(()), "two absent values");
+    assert_eq!(
+        tried(&fresh, &member_row(None)),
+        Ok(()),
+        "two absent values"
+    );
 }

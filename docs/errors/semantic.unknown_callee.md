@@ -73,7 +73,7 @@ error: `doubld` isn't a function, action or query
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 Another domain's action is called through that domain, so the call says
@@ -109,7 +109,7 @@ error: `snooze_todo` belongs to domain `planning`
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 An entity has only the operations the language generates for it:

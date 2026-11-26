@@ -41,7 +41,7 @@ error: `OutOfStock` is a failure and can't be called
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -131,7 +131,7 @@ error: `some` is a match pattern and can't be called
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A value has no operations of its own, so a call can't be made on one:

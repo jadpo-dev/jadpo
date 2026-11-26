@@ -51,7 +51,7 @@ error: `provider` has no key `host:`
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -113,7 +113,7 @@ error: `Delivry` in `reviewed:` isn't one of the package's types
 
 check failed: 1 error, 4 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A package written by hand has no `imported:`, so it lists its reviewed types in

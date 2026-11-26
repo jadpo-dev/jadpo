@@ -101,7 +101,7 @@ error: `title` is always there, so `where_present:` would always apply
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 An item of a list a field is tested `in` is a value, so it has to be there

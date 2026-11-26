@@ -40,7 +40,7 @@ error: Jadpo writes `type GridCell = Object`, not `struct GridCell`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -73,7 +73,7 @@ error: Jadpo writes `type TicketStatus = Enum`, not `enum TicketStatus`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `interface`, and Go's `type GridCell struct {`, are the same error as

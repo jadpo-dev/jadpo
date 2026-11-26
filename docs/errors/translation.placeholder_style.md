@@ -68,7 +68,7 @@ error: `{total}` is an amount of money, written `{total, number, currency}`
 
 check failed: 1 error, 5 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -122,7 +122,7 @@ error: `{note, number, currency}` writes text as an amount of money
 
 check failed: 1 error, 4 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

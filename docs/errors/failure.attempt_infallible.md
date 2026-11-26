@@ -42,7 +42,7 @@ error: `plain(...)` can't fail, so it takes no `attempt`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -80,7 +80,7 @@ error: `Quantity(...)` can't fail, so it takes no `attempt`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 Nor can a value that is already there, which isn't a call at all:
@@ -111,7 +111,7 @@ error: `n` can't fail, so it takes no `attempt`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

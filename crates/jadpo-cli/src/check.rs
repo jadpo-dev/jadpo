@@ -660,19 +660,24 @@ fn count(n: usize, one: &str, many: &str) -> String {
 }
 
 /// The one hint naming `jadpo fix` (chunk 10.9a), when some errors have an
-/// automatic fix: never counting one that needs a person.
+/// automatic fix: never counting one that needs a person. Last on the
+/// screen, and saying what it saves, how many of the errors listed it
+/// clears and that it checks again, so an agent reading the last lines
+/// runs it before editing by hand (chunk 10.9e).
 fn fix_hint(automatic: usize, errors: usize) -> Block {
-    let edits = if automatic == 1 { "edit" } else { "edits" };
     let which = if automatic == errors {
         if errors == 1 {
-            "for this error".to_string()
+            "this error".to_string()
         } else {
-            format!("for all {errors} errors")
+            format!("all {errors} errors")
         }
     } else {
-        format!("for {automatic} of these {errors} errors")
+        format!("{automatic} of these {errors} errors")
     };
-    Block::hint("jadpo fix", format!("applies the {edits} shown {which}"))
+    Block::hint(
+        "jadpo fix",
+        format!("fixes {which} for you, then checks again"),
+    )
 }
 
 /// Every error only a person can clear, in one place, so the agent asks

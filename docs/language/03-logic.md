@@ -288,7 +288,7 @@ error: `constant` doesn't start a statement
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ```jadpo check project=e-constant-mut expect=syntax.expected_name
@@ -315,7 +315,7 @@ error: A constant can't be `mut`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ```jadpo check project=e-const-keyword expect=syntax.variable_keyword
@@ -342,7 +342,7 @@ error: Jadpo writes `constant`, not `const`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ```jadpo check project=e-constant-built-in expect=type.primitive_signature
@@ -1036,7 +1036,7 @@ error: `Map<Loaf, Stock>` can't be looped over
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ### No outside calls inside a loop
