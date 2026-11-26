@@ -60,10 +60,15 @@ error: `201` isn't a success status
    |                 ^^^ not a `SuccessStatus`
   reason: `status:` takes `SuccessStatus.ok`, `.created`, `.accepted` or `.no_content`; failure statuses come from the kinds of the failures the route can produce, never from the route.
   next: Write `SuccessStatus.created` (agent)
+  fix:
+    32 - status: 201
+    32 + status: SuccessStatus.created
   rule: route.status_invalid
   help: https://jadpo.dev/docs/errors/route.status_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

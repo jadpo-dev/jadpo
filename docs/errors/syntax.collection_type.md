@@ -30,10 +30,15 @@ error: Jadpo writes `List<Tag>`, not `Tag[]`
   |              ^^ write `List<Tag>`
   reason: `T[]` is a list type in TypeScript, Java and C#, `[]T` in Go, and `list[T]` in Python; Jadpo writes a collection's types in angle brackets, as in `List<T>`, `Set<T>` and `Map<K, V>`.
   next: Write `List<Tag>` (agent)
+  fix:
+    6 - tags: Tag[]
+    6 + tags: List<Tag>
   rule: syntax.collection_type
   help: https://jadpo.dev/docs/errors/syntax.collection_type
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

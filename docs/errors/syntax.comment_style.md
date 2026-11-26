@@ -28,10 +28,15 @@ error: Jadpo writes comments with `//`, not `#`
   | ^ write `//`
   reason: `#` starts a comment in Python, Ruby, shell scripts and YAML; a Jadpo comment starts with `//`, or `///` to document a declaration.
   next: Use `//` instead of `#` (agent)
+  fix:
+    1 - # Counts start at zero.
+    1 + // Counts start at zero.
   rule: syntax.comment_style
   help: https://jadpo.dev/docs/errors/syntax.comment_style
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -57,10 +62,15 @@ error: Jadpo writes comments with `//`, not `/* */`
   | ^^ write `//`
   reason: `/* */` encloses a comment in JavaScript, Rust, Go, Java, C#, Kotlin, Swift and SQL, and `/** */` documents a declaration; a Jadpo comment is `//` to the end of the line, and `///` documents.
   next: Write each line of the comment after `//` (agent)
+  fix:
+    1 - /* Counts start at zero. */
+    1 + // Counts start at zero.
   rule: syntax.comment_style
   help: https://jadpo.dev/docs/errors/syntax.comment_style
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

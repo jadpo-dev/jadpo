@@ -40,10 +40,15 @@ error: `order_by` isn't something a query holds
    |     ^^^^^^^^ not a section
   reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:`, `missing:`, `include_erased:` and `cache:`. Did you mean `order:`?
   next: Use `order:` (agent)
+  fix:
+    15 - order_by: [Book.id asc]
+    15 + order: [Book.id asc]
   rule: query.unknown_section
   help: https://jadpo.dev/docs/errors/query.unknown_section
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

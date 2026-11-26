@@ -37,6 +37,8 @@ error: Nothing to decline: `library.similar_exists` doesn't fire here
   |         ^^^^^^^^^^^^^^^^^^^^^^ no such finding here
   reason: This line declines `library.similar_exists` on `cap_total`, but `jadpo check` finds no `library.similar_exists` there now, so the decline has outlived its reason.
   next: Remove the `decline` line (agent)
+  fix:
+    6 - decline library.similar_exists: "Caps the basket, not a line"
   rule: decline.unused
   help: https://jadpo.dev/docs/errors/decline.unused
 

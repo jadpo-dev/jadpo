@@ -34,10 +34,15 @@ error: `RegistrationClosed` can leave `register`, but its `fails` list doesn't s
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ rejected here
   reason: `fails` lists exactly the failures that can leave an action, so every caller knows what it must handle.
   next: Add `RegistrationClosed` to `register`'s `fails` list (agent)
+  fix:
+    7 - action register(note: Note) -> Note {
+    7 + action register(note: Note) fails RegistrationClosed -> Note {
   rule: failure.undeclared_propagation
   help: https://jadpo.dev/docs/errors/failure.undeclared_propagation
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -72,10 +77,15 @@ error: `Refused` can leave `parent`, but its `fails` list doesn't say so
    |            ^^^^^^^^^^^^^^^^^^^ passed on here
   reason: `fails` lists exactly the failures that can leave an action, so every caller knows what it must handle.
   next: Add `Refused` to `parent`'s `fails` list (agent)
+  fix:
+    11 - action parent(note: Note) -> Note {
+    11 + action parent(note: Note) fails Refused -> Note {
   rule: failure.undeclared_propagation
   help: https://jadpo.dev/docs/errors/failure.undeclared_propagation
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

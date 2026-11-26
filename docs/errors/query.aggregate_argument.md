@@ -91,10 +91,15 @@ error: `count` takes no arguments
    |                ^^^^^^^^^^^^^^^^^^ wrong arguments
   reason: `count()` counts the records in each row, whatever their fields hold; to count only the records whose field has a value, add `where: Book.<field> != none`.
   next: Write `count()` (agent)
+  fix:
+    17 - books: count(Book.leaves)
+    17 + books: count()
   rule: query.aggregate_argument
   help: https://jadpo.dev/docs/errors/query.aggregate_argument
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `sum`, `min` and `max` work out over one field, named with its entity:

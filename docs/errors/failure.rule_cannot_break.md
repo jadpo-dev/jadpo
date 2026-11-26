@@ -46,10 +46,14 @@ error: `Quantity(...)` can't break `min`, so it takes no arm
    |         ^^^ never runs
   reason: The declared ranges prove the value always follows `min: 1`, so this arm could never run.
   next: Remove `min: ...` (agent)
+  fix:
+    16 - min: QuantityTooSmall
   rule: failure.rule_cannot_break
   help: https://jadpo.dev/docs/errors/failure.rule_cannot_break
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -102,10 +106,14 @@ error: `CakeCount(...)` can't break `max`, so it takes no arm
    |         ^^^ never runs
   reason: The declared ranges and the condition `n > 12` prove the value always follows `max: 12`, so this arm could never run.
   next: Remove `max: ...` (agent)
+  fix:
+    22 - max: OrderTooLarge
   rule: failure.rule_cannot_break
   help: https://jadpo.dev/docs/errors/failure.rule_cannot_break
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

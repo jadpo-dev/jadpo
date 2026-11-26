@@ -27,10 +27,15 @@ error: The code `Not Found!` isn't lower_snake_case
   |           ^^^^^^^^^^^^ not lower_snake_case
   reason: A failure's code is what clients branch on and translate by, so it is lower_snake_case, like a failure's name turned into one.
   next: Write `"not_found"` (agent)
+  fix:
+    3 - code: "Not Found!"
+    3 + code: "not_found"
   rule: failure.code_format
   help: https://jadpo.dev/docs/errors/failure.code_format
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

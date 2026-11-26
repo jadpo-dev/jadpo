@@ -36,10 +36,15 @@ error: Jadpo writes `reject`, not `throw`
   |         ^^^^^ write `reject`
   reason: `throw` raises an error in JavaScript, Java, C#, Kotlin and Swift, and `raise` in Python and Ruby; a Jadpo callable raises one of its declared failures with `reject`, and lists it in `fails`.
   next: Use `reject` instead of `throw` (agent)
+  fix:
+    9 - throw NoteRejected
+    9 + reject NoteRejected
   rule: syntax.unsupported_throw
   help: https://jadpo.dev/docs/errors/syntax.unsupported_throw
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -30,10 +30,15 @@ error: Jadpo writes `use`, not `import`
   | ^^^^^^ write `use`
   reason: `import … from` brings names into a JavaScript or TypeScript file, `from … import` into a Python module and `import a.b.C` into a Java or Kotlin file; a Jadpo file brings names in from a folder with `use <folder> { Names }`, and `jadpo fmt` writes those lines for you.
   next: Write `use shared/types { Count }` (agent)
+  fix:
+    1 - import { Count } from "./shared/types"
+    1 + use shared/types { Count }
   rule: syntax.import_statement
   help: https://jadpo.dev/docs/errors/syntax.import_statement
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -60,10 +65,15 @@ error: Jadpo writes `use shared/types { Count }`, not `::`
   |           ^^ write `use shared/types { Count }`
   reason: `::` separates a path in Rust; a Jadpo `use` line names a folder with `/`, as in `use shared/types { Amount }`.
   next: Write `use shared/types { Count }` (agent)
+  fix:
+    1 - use shared::types { Count }
+    1 + use shared/types { Count }
   rule: syntax.import_statement
   help: https://jadpo.dev/docs/errors/syntax.import_statement
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

@@ -235,10 +235,15 @@ error: `where_present:` can't hold a `geo.` condition
   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ a `geo.` condition
   reason: `where_present:` applies a field's comparison only when its value is there; a `geo.` condition's value is always given, in a `where:` line (area 20, "Queries").
   next: Write the condition in `where:` (agent)
+  fix:
+    8 - where_present: geo.within(Shop.spot, area)
+    8 + where: geo.within(Shop.spot, area)
   rule: query.condition_unsupported
   help: https://jadpo.dev/docs/errors/query.condition_unsupported
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A distance is the same, since its vector and its bound are both always
@@ -272,10 +277,15 @@ error: `where_present:` can't hold a distance
    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ a distance
   reason: `where_present:` applies a field's comparison only when its value is there; a distance's vector and its bound are both always given, in a `where:` line.
   next: Write the distance in `where:` (agent)
+  fix:
+    12 - where_present: ai.distance(HelpArticle.body_meaning, question) <= 0.6
+    12 + where: ai.distance(HelpArticle.body_meaning, question) <= 0.6
   rule: query.condition_unsupported
   help: https://jadpo.dev/docs/errors/query.condition_unsupported
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A search ranks the records it finds by how well they match one phrase, so a

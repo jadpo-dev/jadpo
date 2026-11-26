@@ -42,10 +42,15 @@ error: `PaymentOutcome.pending` carries no data to name
    |                               ^^^^^^^^^ no data
   reason: `PaymentOutcome.pending` is a plain variant; brackets after a case name the data it carries, and this one carries none.
   next: Write `PaymentOutcome.pending` without brackets (agent)
+  fix:
+    14 - PaymentOutcome.pending(waiting) -> "Pending"
+    14 + PaymentOutcome.pending -> "Pending"
   rule: type.match_unknown_binding
   help: https://jadpo.dev/docs/errors/type.match_unknown_binding
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -129,16 +129,31 @@ fn beside_another_error_the_migration_waits_for_it_and_says_so() {
         TODO,
         &format!("entity Todo {{\n    id: Uuid\n    title: Text\n    pinned: Bool?\n}}\n{broken}"),
     );
+    // A migration `jadpo check` writes itself once the other errors are
+    // fixed isn't an error the agent can act on, so it isn't shown
+    // (chunk 10.9a: agents met it 35 times in one run, beside others).
     let pinned = jadpo(&root, &["check"]);
     assert_eq!(pinned.code, 1, "{}", pinned.stdout);
     assert!(
-        pinned.stdout.contains(
-            "next: Fix the other errors first: `jadpo check` then writes this migration itself (agent)"
-        ),
+        !pinned.stdout.contains("migration.out_of_date"),
+        "{}",
+        pinned.stdout
+    );
+    assert!(
+        pinned.stdout.contains("rule: type.mismatch"),
         "{}",
         pinned.stdout
     );
     assert_eq!(migrations(&root).len(), 1);
+    // Fixed, the next check writes it.
+    write(
+        &root,
+        TODO,
+        "entity Todo {\n    id: Uuid\n    title: Text\n    pinned: Bool?\n}\n",
+    );
+    let fixed = jadpo(&root, &["check"]);
+    assert_eq!(fixed.code, 0, "{}", fixed.stdout);
+    assert_eq!(migrations(&root).len(), 2);
     write(
         &root,
         TODO,
@@ -162,6 +177,44 @@ fn beside_another_error_the_migration_waits_for_it_and_says_so() {
         "{}",
         ci.stdout
     );
+}
+
+/// A migration whose decisions were written doesn't stop `jadpo check`
+/// writing the next one itself (chunk 10.9a: after a backfill, agents were
+/// sent to `jadpo migrate new` for a new optional field).
+#[test]
+fn check_writes_the_migration_after_one_with_decisions() {
+    let root = project("after-decisions");
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    write(
+        &root,
+        TODO,
+        "entity Todo {\n    id: Uuid\n    title: Text\n    done: Bool\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "add_done"]).code, 0);
+    let latest = migrations(&root).pop().expect("a migration");
+    let changes_path = format!("database/migrations/{latest}/changes.jadpo");
+    let changes = fs::read_to_string(root.join(&changes_path)).expect("changes");
+    write(
+        &root,
+        &changes_path,
+        &changes.replace(
+            "    Todo.done: {}",
+            "    Todo.done: {\n        backfill: false\n    }",
+        ),
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new"]).code, 0);
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    write(
+        &root,
+        TODO,
+        "entity Todo {\n    id: Uuid\n    title: Text\n    done: Bool\n    note: Text?\n}\n",
+    );
+    let note = jadpo(&root, &["check"]);
+    assert_eq!(note.code, 0, "{}", note.stdout);
+    let names = migrations(&root);
+    assert_eq!(names.len(), 3, "{names:?}");
+    assert!(names[2].ends_with("_add_note"), "{names:?}");
 }
 
 #[test]

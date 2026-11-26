@@ -27,10 +27,15 @@ error: Jadpo writes strings in double quotes
   |              ^^^^^^^^^^ write `"`
   reason: Single quotes enclose text in Python, JavaScript and SQL, and a character in Rust, Java, C# and Kotlin, and backticks a template in JavaScript; Jadpo has one kind of string, in double quotes.
   next: Write `"^[a-z]+$"` (agent)
+  fix:
+    2 - pattern: '^[a-z]+$'
+    2 + pattern: "^[a-z]+$"
   rule: syntax.string_quotes
   help: https://jadpo.dev/docs/errors/syntax.string_quotes
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -38,10 +38,15 @@ error: `snooze_todo` is in this file's own domain
   |     ^^^^^^^^ own domain
   reason: The dot names who owns what you call, and `snooze_todo` belongs to `planning` itself, so code there calls it by its bare name.
   next: Remove `planning.` and import `snooze_todo` on a `use` line; `jadpo fmt` adds it (agent)
+  fix:
+    2 - planning.snooze_todo()
+    2 + snooze_todo()
   rule: semantic.own_domain_qualification
   help: https://jadpo.dev/docs/errors/semantic.own_domain_qualification
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -821,10 +821,17 @@ error: `CakeCount(...)` can't fail, so it takes no `attempt`
    |                              ^^^^^^^ nothing to pass on
   reason: The declared ranges and the condition `count * 2 > 12` prove `CakeCount(...)` always follows its type's rules, so building it never fails; `attempt` marks only what can.
   next: Remove `attempt` (agent)
+  fix:
+    14 - var doubled: CakeCount = attempt CakeCount(count * 2) {
+    15 -     max: OrderTooLarge
+    16 - }
+    14 + var doubled: CakeCount = CakeCount(count * 2)
   rule: failure.attempt_infallible
   help: https://jadpo.dev/docs/errors/failure.attempt_infallible
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ```jadpo check project=e-condition-proves-rule expect=failure.rule_cannot_break
@@ -865,10 +872,14 @@ error: `CakeCount(...)` can't break `max`, so it takes no arm
    |         ^^^ never runs
   reason: The declared ranges and the condition `n > 12` prove the value always follows `max: 12`, so this arm could never run.
   next: Remove `max: ...` (agent)
+  fix:
+    22 - max: OrderTooLarge
   rule: failure.rule_cannot_break
   help: https://jadpo.dev/docs/errors/failure.rule_cannot_break
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## Signatures use named types
@@ -1600,10 +1611,21 @@ error: `Booking { ... }` can't fail, so it takes no `attempt`
    |                            ^^^^^^^ nothing to pass on
   reason: The declared ranges and the condition `ends <= starts` prove `Booking { ... }` always follows its type's rules, so building it never fails; `attempt` marks only what can.
   next: Remove `attempt` (agent)
+  fix:
+    17 - var booking: Booking = attempt Booking {
+    18 -     starts: starts
+    19 -     ends: ends
+    20 - } {
+    21 -     ends_after_start: BookingBackwards
+    17 + var booking: Booking = Booking {
+    18 +     starts: starts
+    19 +     ends: ends
   rule: failure.attempt_infallible
   help: https://jadpo.dev/docs/errors/failure.attempt_infallible
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ### A record names its type alone
@@ -2233,10 +2255,15 @@ error: `_` stands for a `PersonName`
    |                 ^ a `PersonName` goes here
   reason: `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`. In scope, `author` fits.
   next: Write `author` (agent)
+  fix:
+    13 - author: _
+    13 + author: author
   rule: type.hole
   help: https://jadpo.dev/docs/errors/type.hole
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 - **Where it goes.** `_` stands where a value goes: an argument, a field

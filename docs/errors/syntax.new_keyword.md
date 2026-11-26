@@ -33,10 +33,15 @@ error: Jadpo creates a value without `new`
   |            ^^^ remove `new`
   reason: `new` creates an object in JavaScript, TypeScript, Java and C#; Jadpo creates a value with `Type(value)`, or an object with `Type { field: value }`.
   next: Remove `new` (agent)
+  fix:
+    8 - return new NoteWasEdited(before != after)
+    8 + return NoteWasEdited(before != after)
   rule: syntax.new_keyword
   help: https://jadpo.dev/docs/errors/syntax.new_keyword
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -33,10 +33,15 @@ error: `OutOfStock` is a failure and can't be called
   |            ^^^^^^^^^^ not callable
   reason: A failure is raised with `reject OutOfStock`, with its fields in a block when it has any.
   next: Write `OutOfStock` without `()` (agent)
+  fix:
+    6 - reject OutOfStock()
+    6 + reject OutOfStock
   rule: semantic.not_callable
   help: https://jadpo.dev/docs/errors/semantic.not_callable
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -118,10 +123,15 @@ error: `some` is a match pattern and can't be called
   |            ^^^^ not callable
   reason: A value that may be missing takes the value itself, as in `return title`, or `none`; `some(name)` only matches a present value in a `match`.
   next: Write `title` instead of `some(title)` (agent)
+  fix:
+    6 - return some(title)
+    6 + return title
   rule: semantic.not_callable
   help: https://jadpo.dev/docs/errors/semantic.not_callable
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A value has no operations of its own, so a call can't be made on one:

@@ -33,10 +33,15 @@ error: `true` isn't an `Idempotency`
   |                          ^^^^ not an `Idempotency`
   reason: `idempotency:` takes `Idempotency.required`, so a write without an `Idempotency-Key` header is refused, or `Idempotency.optional`, the default, where a client may send one.
   next: Write `Idempotency.required`, or leave `idempotency:` out (agent)
+  fix:
+    5 - idempotency: true
+    5 + idempotency: Idempotency.required
   rule: api.idempotency_invalid
   help: https://jadpo.dev/docs/errors/api.idempotency_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

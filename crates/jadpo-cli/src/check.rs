@@ -117,9 +117,9 @@ fn kept_up_to_date(checked: &Checked) -> Result<Vec<(String, &'static str)>, Box
 
 /// A migration out of date beside another error, outside CI: `jadpo
 /// check` writes none while the error stands and `jadpo migrate new` stops
-/// on it, so its next step says to fix that first, and what happens then:
-/// the migration written by the next check, or the command a decision
-/// needs (chunk 10.4c).
+/// on it. One the next check writes itself is left unsaid (chunk 10.9a);
+/// one that needs a decision says to fix the rest first, then names the
+/// command (chunk 10.4c).
 fn migration_waits(checked: &mut Checked) {
     if checked
         .diagnostics
@@ -129,6 +129,16 @@ fn migration_waits(checked: &mut Checked) {
         return;
     }
     let written = crate::migrate::written_once_fixed(&checked.loaded, &checked.diagnostics);
+    // One `jadpo check` writes itself once the rest is fixed is nothing an
+    // agent can act on, so it isn't said at all (chunk 10.9a: agents met
+    // it in 33 of 35 failing calls in one run, each beside other errors,
+    // and spent turns on it). One that needs a decision stays.
+    if written {
+        checked
+            .diagnostics
+            .retain(|d| d.rule.id != rule::MIGRATION_OUT_OF_DATE.id);
+        return;
+    }
     for diagnostic in checked
         .diagnostics
         .iter_mut()
@@ -137,11 +147,7 @@ fn migration_waits(checked: &mut Checked) {
         let Some(next) = diagnostic.next.as_mut() else {
             continue;
         };
-        if written {
-            next.text =
-                "Fix the other errors first: `jadpo check` then writes this migration itself"
-                    .to_string();
-        } else if let Some(command) = next.text.strip_prefix("Run ") {
+        if let Some(command) = next.text.strip_prefix("Run ") {
             next.text = format!("Fix the other errors first, then run {command}");
         }
     }
@@ -653,6 +659,68 @@ fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
+/// The one hint naming `jadpo fix` (chunk 10.9a), when some errors have an
+/// automatic fix: never counting one that needs a person.
+fn fix_hint(automatic: usize, errors: usize) -> Block {
+    let edits = if automatic == 1 { "edit" } else { "edits" };
+    let which = if automatic == errors {
+        if errors == 1 {
+            "for this error".to_string()
+        } else {
+            format!("for all {errors} errors")
+        }
+    } else {
+        format!("for {automatic} of these {errors} errors")
+    };
+    Block::hint("jadpo fix", format!("applies the {edits} shown {which}"))
+}
+
+/// Every error only a person can clear, in one place, so the agent asks
+/// once (chunk 10.9a): the questions and the acceptance entries their
+/// agreement writes.
+fn sign_off_block(diagnostics: &[Diagnostic]) -> Option<Block> {
+    let signed: Vec<&jadpo_diag::SignOff> = diagnostics
+        .iter()
+        .filter_map(|d| d.sign_off.as_ref())
+        .collect();
+    if signed.is_empty() {
+        return None;
+    }
+    let mut entries: Vec<String> = Vec::new();
+    for entry in signed.iter().flat_map(|s| s.entries.iter()) {
+        if !entries.contains(entry) {
+            entries.push(entry.clone());
+        }
+    }
+    Some(Block::SignOff {
+        subject: format!(
+            "{} only your user can clear",
+            count(signed.len(), "error", "errors")
+        ),
+        asks: signed.iter().map(|s| s.question.clone()).collect(),
+        entries,
+        next: if signed.len() == 1 {
+            "Stop and ask this, saying what it allows and for whom; a general go-ahead isn't agreement. If they agree, `jadpo acceptance new <purpose>` writes the entry once the rest checks, or write it in a file in `acceptances/`, with their own words as its `///` reason".to_string()
+        } else {
+            "Stop and ask these in one message, saying what each allows and for whom; a general go-ahead isn't agreement. For what they agree to, `jadpo acceptance new <purpose>` writes the entries once the rest checks, or write them in a file in `acceptances/`, with their own words as its `///` reason".to_string()
+        },
+    })
+}
+
+fn sign_off_json(diagnostics: &[Diagnostic]) -> Json {
+    Json::array(diagnostics.iter().filter_map(|d| {
+        let sign_off = d.sign_off.as_ref()?;
+        Some(Json::object([
+            ("rule", Json::from(d.rule.id)),
+            ("question", Json::from(sign_off.question.as_str())),
+            (
+                "entries",
+                Json::array(sign_off.entries.iter().map(String::as_str)),
+            ),
+        ]))
+    }))
+}
+
 fn report(
     diagnostics: Vec<Diagnostic>,
     sources: BTreeMap<String, String>,
@@ -708,12 +776,38 @@ fn report(
             rows: Vec::new(),
         });
     }
+    // With every sign-off said once below, each error's own long step
+    // points there (chunk 10.9a).
+    let signed = diagnostics.iter().filter(|d| d.sign_off.is_some()).count();
     for diagnostic in &diagnostics {
-        screen.push(Block::diagnostic_from(
-            diagnostic,
-            &sources,
-            root.as_deref(),
-        ));
+        let mut shown = diagnostic.clone();
+        if shown.sign_off.is_some()
+            && let Some(next) = shown.next.as_mut()
+        {
+            let ask = if signed == 1 {
+                "ask your user the question below"
+            } else {
+                "ask your user, with the other questions below"
+            };
+            // What the agent may do instead stays: a fix before the
+            // question, or a way round after it.
+            next.text = match (
+                next.text.split_once(", or stop and ask"),
+                next.text.split_once("; otherwise "),
+            ) {
+                (Some((instead, _)), _) => format!("{instead}, or {ask}"),
+                (_, Some((_, otherwise))) => {
+                    format!(
+                        "{}{}; otherwise {otherwise}",
+                        ask[..1].to_uppercase(),
+                        &ask[1..]
+                    )
+                }
+                _ => format!("{}{}", ask[..1].to_uppercase(), &ask[1..]),
+            };
+            shown.next_repeat_of = None;
+        }
+        screen.push(Block::diagnostic_from(&shown, &sources, root.as_deref()));
     }
     if errors == 0 {
         for block in crate::provider_review::check_blocks(reviews) {
@@ -732,12 +826,18 @@ fn report(
     if let Some(alerts) = publisher_alerts(publishers) {
         screen.push(alerts);
     }
+    if let Some(block) = sign_off_block(&diagnostics) {
+        screen.push(block);
+    }
     screen.push(Block::summary(outcome, headline, facts));
+    let automatic = diagnostics.iter().filter(|d| d.automatic()).count();
     if errors == 0 && !updated.is_empty() {
         screen.push(Block::hint(
             "git diff",
             "shows what it wrote, to commit with the code",
         ));
+    } else if automatic > 0 {
+        screen.push(fix_hint(automatic, errors));
     }
     let files_written = if full {
         vec![
@@ -778,6 +878,15 @@ fn report(
             ),
             ("notice_list", notice_list_json(notice_list)),
             ("package_alerts", publishers_json(publishers)),
+            (
+                "automatic_fixes",
+                if automatic > 0 {
+                    automatic.into()
+                } else {
+                    Json::Null
+                },
+            ),
+            ("sign_off", sign_off_json(&diagnostics)),
             (
                 "updated",
                 Json::array(updated.iter().map(|(path, change)| {

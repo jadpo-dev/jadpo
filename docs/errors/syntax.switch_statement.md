@@ -40,10 +40,15 @@ error: Jadpo writes `match`, not `switch`
    |            ^^^^^^ write `match`
   reason: `switch` chooses between cases in JavaScript, Java, C#, Go and Swift, and `when` in Kotlin; Jadpo's `match` does, with one arm per line, `pattern -> result`, covering every case.
   next: Use `match` instead of `switch` (agent)
+  fix:
+    11 - return switch (status) {
+    11 + return match (status) {
   rule: syntax.switch_statement
   help: https://jadpo.dev/docs/errors/syntax.switch_statement
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -79,10 +84,15 @@ error: A Jadpo `match` arm has no `case`
    |         ^^^^ remove `case`
   reason: `case` starts an arm of a `switch` in JavaScript, Java, C#, Go and Swift; a Jadpo `match` arm is `pattern -> result`, and ends at its result, with no `break`.
   next: Write the arm as `TicketStatus.open -> 1` (agent)
+  fix:
+    12 - case TicketStatus.open -> 1
+    12 + TicketStatus.open -> 1
   rule: syntax.switch_statement
   help: https://jadpo.dev/docs/errors/syntax.switch_statement
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 So is `default`, or `else` in Kotlin's `when`:
@@ -115,10 +125,15 @@ error: Jadpo writes `_ -> 2`, not `default ->`
    |         ^^^^^^^^^^ write `_ -> 2`
   reason: `default` is a `switch`'s catch-all in JavaScript, Java, C#, Go and Swift, and `else` a `when`'s in Kotlin; Jadpo's is `_`, used only where the cases can't be listed.
   next: Write `_ -> 2` (agent)
+  fix:
+    13 - default -> 2
+    13 + _ -> 2
   rule: syntax.switch_statement
   help: https://jadpo.dev/docs/errors/syntax.switch_statement
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

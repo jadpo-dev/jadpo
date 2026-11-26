@@ -30,10 +30,15 @@ error: `Target.workers` isn't a target
   |                     ^^^^^^^^^^^^^^ not a `Target`
   reason: A deployable is built for `Target.native`, a server, or `Target.wasm`, WebAssembly on Cloudflare Workers. Did you mean `Target.wasm`?
   next: Use `Target.wasm` instead (agent)
+  fix:
+    5 - target: Target.workers
+    5 + target: Target.wasm
   rule: deployable.target_unknown
   help: https://jadpo.dev/docs/errors/deployable.target_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

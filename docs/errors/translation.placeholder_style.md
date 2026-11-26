@@ -60,10 +60,15 @@ error: `{total}` is an amount of money, written `{total, number, currency}`
   |                                  ^^^^^^^ no style
   reason: `OrderTotal.total` is money, and a wording writes an amount of money with its style, `{total, number, currency}`, so the translator sees it is one; it is shown as `text.format` shows it in the reader's locale, with its symbol and the currency's places.
   next: Write `{total, number, currency}` (agent)
+  fix:
+    2 - order_total: "Tu pedido suma {total}."
+    2 + order_total: "Tu pedido suma {total, number, currency}."
   rule: translation.placeholder_style
   help: https://jadpo.dev/docs/errors/translation.placeholder_style
 
 check failed: 1 error, 5 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -109,10 +114,15 @@ error: `{note, number, currency}` writes text as an amount of money
   |                        ^^^^^^^^^^^^^^^^^^^^^^^^ not an amount of money
   reason: `, number, currency` is the style of an amount of money, and `OrderNote.note` is text, which a wording writes as `{note}`.
   next: Write `{note}` (agent)
+  fix:
+    2 - order_note: "Nota: {note, number, currency}."
+    2 + order_note: "Nota: {note}."
   rule: translation.placeholder_style
   help: https://jadpo.dev/docs/errors/translation.placeholder_style
 
 check failed: 1 error, 4 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

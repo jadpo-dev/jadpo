@@ -41,10 +41,15 @@ error: A query returning `Book?` takes no `order:`
    |     ^^^^^ not for this result
   reason: `Book?` is at most one record, found by a unique field, so there is nothing to order or limit.
   next: Remove `order:` (agent)
+  fix:
+    15 - order: [Book.title asc]
+    15 +
   rule: query.section_unexpected
   help: https://jadpo.dev/docs/errors/query.section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -86,10 +91,15 @@ error: A query returning `Book?` takes no `missing:`
    |     ^^^^^^^ not for this result
   reason: `Book?` already says the record may be absent: the caller gets `none`, so there is no failure to name.
   next: Remove `missing:` (agent)
+  fix:
+    19 - missing: BookGone
+    19 +
   rule: query.section_unexpected
   help: https://jadpo.dev/docs/errors/query.section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A `limit:` bounds a list, and a page's size is in its `page:` block:
@@ -127,10 +137,15 @@ error: A query returning `Page<Book>` takes no `limit:`
    |     ^^^^^ not for this result
   reason: A page's size is its `page:` block's `size:`; `limit:` bounds a `List<T>`.
   next: Remove `limit:` (agent)
+  fix:
+    19 - limit: 20
+    19 +
   rule: query.section_unexpected
   help: https://jadpo.dev/docs/errors/query.section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `page:` belongs to a query returning `Page<T>`:
@@ -168,10 +183,18 @@ error: A query returning `List<Book>` takes no `page:`
    |     ^^^^ not for this result
   reason: `page:` belongs to a query returning `Page<T>`; `List<Book>` is one bounded list, sized by `limit:`.
   next: Remove `page:` (agent)
+  fix:
+    16 - page: {
+    17 -     size: 20
+    18 -     after: after
+    19 - }
+    16 +
   rule: query.section_unexpected
   help: https://jadpo.dev/docs/errors/query.section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `geometry:` names the field each feature of a map layer holds, and a list of
@@ -201,10 +224,15 @@ error: A query returning `List<Shop>` takes no `geometry:`
   |     ^^^^^^^^ not for this result
   reason: `geometry:` names the field each feature of a map layer holds, for a query returning `FeatureCollection<G, P>`; `List<Shop>` holds records, not features.
   next: Remove `geometry:` (agent)
+  fix:
+    8 - geometry: Shop.spot
+    8 +
   rule: query.section_unexpected
   help: https://jadpo.dev/docs/errors/query.section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A `group:` gives one row for each group, so the query returns them as a
@@ -288,10 +316,15 @@ error: An aggregate query takes no `limit:`
    |     ^^^^^ not for this query
   reason: Without `group:`, an aggregate query is one row over every record it finds, so there is nothing to order or limit.
   next: Remove `limit:` (agent)
+  fix:
+    19 - limit: 20
+    19 +
   rule: query.section_unexpected
   help: https://jadpo.dev/docs/errors/query.section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 An include of a parent record is the one record a reference points at, which
@@ -343,10 +376,15 @@ error: This include takes no `order:`
    |             ^^^^^ not for this include
   reason: This include is the one `Author` record a reference points at, which is there whenever the reference is, so it takes no conditions, order or limit.
   next: Remove `order:` (agent)
+  fix:
+    30 - order: [Author.name asc]
+    30 +
   rule: query.section_unexpected
   help: https://jadpo.dev/docs/errors/query.section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

@@ -51,10 +51,15 @@ error: `Percent` is imported but not used
   |                    ^^^^^^^ not used
   reason: A `use` line lists only the names its file uses, so each says where it comes from; nothing here uses `Percent`.
   next: Remove `Percent` from this line (agent)
+  fix:
+    1 - use shared/types { Percent, Stock }
+    1 + use shared/types { Stock }
   rule: import.unused
   help: https://jadpo.dev/docs/errors/import.unused
 
 check failed: 1 error, 5 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -85,10 +90,14 @@ error: `lending` is imported but not used
   |     ^^^^^^^ no calls through it
   reason: `use lending` brings in a domain for calls such as `lending.<action>(...)`, and this file makes none.
   next: Remove this line (agent)
+  fix:
+    1 - use lending
   rule: import.unused
   help: https://jadpo.dev/docs/errors/import.unused
 
 check failed: 1 error, 3 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 A package's line is refused the same way when the file writes nothing through

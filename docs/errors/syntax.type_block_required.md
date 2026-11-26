@@ -25,10 +25,15 @@ error: `OrderId` needs a block
   |                ^^^^ expected `{}` after the base
   reason: Every type is written `type Name = Base { ... }`. Without a block it reads like an alias, and Jadpo has no aliases: every type is a new type.
   next: Add `{}` after `Uuid` (agent)
+  fix:
+    1 - type OrderId = Uuid
+    1 + type OrderId = Uuid {}
   rule: syntax.type_block_required
   help: https://jadpo.dev/docs/errors/syntax.type_block_required
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

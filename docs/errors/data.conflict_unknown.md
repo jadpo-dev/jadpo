@@ -45,10 +45,15 @@ error: `Customer.mail` names no unique rule or reference
    |             ^^^^^^^^^^^^^ not a rule
   reason: A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, a `restricted` reference that refuses a delete, or a lifecycle transition whose `when:` can refuse it. `Customer.create` can break `Customer.email`. Did you mean `Customer.email`?
   next: Use `Customer.email` instead of `Customer.mail` (agent)
+  fix:
+    18 - Customer.mail: EmailTaken
+    18 + Customer.email: EmailTaken
   rule: data.conflict_unknown
   help: https://jadpo.dev/docs/errors/data.conflict_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

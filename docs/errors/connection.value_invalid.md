@@ -216,10 +216,15 @@ error: `couriers`'s `sandbox:` lists `bookings.creat`, which `AcmeCouriers.v1` d
   |                           ^^^^^^^^^^^^^^ no such operation or resource
   reason: `sandbox:` lets the package's public operations and resources through to its sandbox in `jadpo dev`; `AcmeCouriers.v1` has `bookings.create` and `bookings`.
   next: Use `bookings.create` instead of `bookings.creat` (agent)
+  fix:
+    8 - sandbox: [bookings.creat]
+    8 + sandbox: [bookings.create]
   rule: connection.value_invalid
   help: https://jadpo.dev/docs/errors/connection.value_invalid
 
 check failed: 1 error, 12 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `erasure: { key: }` names the field of the person's record holding what the

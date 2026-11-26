@@ -895,9 +895,15 @@ error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which store
 91 |     run: post_bulletin(event.blurb)
    |                        ^^^^^^^^^^^ an `emit` filled this from `Note.appraisal`
   reason: `post_bulletin` stores what it is given here in `Bulletin.blurb`. Anyone signed in may read `Bulletin.blurb` but not `Note.appraisal`, which only the user `reviewer_id` points at may read. The cause is the role: no `Note` lets anyone signed in read its `appraisal`, whatever the record or its tenant, and everyone who may read `Bulletin.blurb` reads what is stored there, from any request. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
-  next: Stop and ask your user whether anyone signed in may read what `Note.appraisal` holds once it is stored in `Bulletin.blurb`: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `"Note.appraisal -> Bulletin.blurb": PolicyChange.field_copied` with their words as its reason; otherwise leave `Note.appraisal` out of `Bulletin.blurb` (human)
+  next: Ask your user the question below; otherwise leave `Note.appraisal` out of `Bulletin.blurb` (human)
   rule: policy.output_field_unproved
   help: https://jadpo.dev/docs/errors/policy.output_field_unproved
+
+decision: 1 error only your user can clear
+  ask: May anyone signed in read what `Note.appraisal` holds once it is stored in `Bulletin.blurb`?
+  accept:
+    "Note.appraisal -> Bulletin.blurb": PolicyChange.field_copied
+  next: Stop and ask this, saying what it allows and for whom; a general go-ahead isn't agreement. If they agree, `jadpo acceptance new <purpose>` writes the entry once the rest checks, or write it in a file in `acceptances/`, with their own words as its `///` reason (human)
 
 check failed: 1 error, 1 file
 ```
@@ -1361,9 +1367,15 @@ error: `reply_with_macro` stores `Macro.body` in `Reply.body`, which not everyon
 14 |             body: saved.body
    |                   ^^^^^^^^^^ from `Macro.body`
   reason: `Role.viewer` may read `Reply.body` but not `Macro.body`, which only `Role.owner` and `Role.agent` may read. The cause is the role: no `Macro` lets `Role.viewer` read its `body`, whatever the record or its tenant, and everyone who may read `Reply.body` reads what is stored there, from any request.
-  next: Stop and ask your user whether `Role.viewer` may read what `Macro.body` holds once it is stored in `Reply.body`: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `"desk.Macro.body -> desk.Reply.body": PolicyChange.field_copied` with their words as its reason; otherwise leave `Macro.body` out of `Reply.body` (human)
+  next: Ask your user the question below; otherwise leave `Macro.body` out of `Reply.body` (human)
   rule: policy.output_field_unproved
   help: https://jadpo.dev/docs/errors/policy.output_field_unproved
+
+decision: 1 error only your user can clear
+  ask: May `Role.viewer` read what `Macro.body` holds once it is stored in `Reply.body`?
+  accept:
+    "desk.Macro.body -> desk.Reply.body": PolicyChange.field_copied
+  next: Stop and ask this, saying what it allows and for whom; a general go-ahead isn't agreement. If they agree, `jadpo acceptance new <purpose>` writes the entry once the rest checks, or write it in a file in `acceptances/`, with their own words as its `///` reason (human)
 
 check failed: 1 error, 13 files
 ```

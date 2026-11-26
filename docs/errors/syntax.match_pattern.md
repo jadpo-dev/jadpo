@@ -40,10 +40,15 @@ error: A match arm names a case's data in brackets
    |                             ^^^^^^^^^^^^^^^^ expected `(name)`
   reason: An arm binds a case's data to one name, `PaymentOutcome.paid(paid)`, and reads its fields from it, as in `paid.field`.
   next: Write `PaymentOutcome.paid(paid)` (agent)
+  fix:
+    13 - PaymentOutcome.paid { receipt_note } -> receipt_note
+    13 + PaymentOutcome.paid(paid) -> receipt_note
   rule: syntax.match_pattern
   help: https://jadpo.dev/docs/errors/syntax.match_pattern
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -123,10 +128,15 @@ error: Failure arms have no `failure` prefix
    |         ^^^^^^^ not part of a pattern
   reason: Failure names are types of their own, so an arm names the failure alone.
   next: Write `LookupMissing -> ...` (agent)
+  fix:
+    19 - failure LookupMissing -> "not found"
+    19 + LookupMissing -> "not found"
   rule: syntax.match_pattern
   help: https://jadpo.dev/docs/errors/syntax.match_pattern
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 And so is an arm with nothing before its arrow:

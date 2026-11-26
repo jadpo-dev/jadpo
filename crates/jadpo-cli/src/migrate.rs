@@ -459,8 +459,28 @@ fn planned_for_check(loaded: &Loaded, problems: &[Diagnostic]) -> Option<Planned
     }
     let (db, project) = (&loaded.db, loaded.project);
     let set = records::migrations(db, project);
-    if set.list.last().is_some_and(|latest| latest.changes) {
-        return None;
+    // A latest migration still waiting for its decisions is finished by
+    // `jadpo migrate new`; one whose decisions are written is history,
+    // and the next is written after it (chunk 10.9a).
+    if let Some(latest) = set.list.last()
+        && latest.changes
+    {
+        let lookup = jadpo_check::lookups::Lookup::new(db, project);
+        let decisions = written_decisions(loaded, latest);
+        let before = set.before_latest();
+        let after = set.latest_schema();
+        let decide = Decide {
+            db,
+            project,
+            lookup: &lookup,
+            model: data_model(db, project),
+            decisions: &decisions,
+            file: loaded.file(&latest.changes_path()),
+            before: &before,
+        };
+        if !finished(&decide, &before, &after, latest) {
+            return None;
+        }
     }
     let latest = set.latest_schema();
     let next = next_snapshot(&latest, schema(db, project));

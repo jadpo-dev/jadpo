@@ -39,10 +39,15 @@ error: Jadpo writes `for line in lines`, not `for (const line of lines)`
    |         ^^^^^^^^^^^^^^^^^^^^^ write `for line in lines`
   reason: `for (const item of items)` walks a list in JavaScript and TypeScript, `for (item in items)` in Kotlin, `for (Type item : items)` in Java and `foreach (var item in items)` in C#; Jadpo writes `for item in items {`, without brackets.
   next: Write `for line in lines` (agent)
+  fix:
+    11 - for (const line of lines) {
+    11 + for line in lines {
   rule: syntax.for_loop
   help: https://jadpo.dev/docs/errors/syntax.for_loop
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

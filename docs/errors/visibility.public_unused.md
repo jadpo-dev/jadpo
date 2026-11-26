@@ -48,6 +48,9 @@ error: `count_todos` is `public`, but nothing outside `planning` uses it
   | ^^^^^^ offered to no one
   reason: `public` offers a declaration to other domains, and no other domain's code or tests, no root `tests/` scenario and no public declaration they use names `count_todos`; `planning`'s own tests don't count.
   next: Remove `public` (agent)
+  fix:
+    3 - public action count_todos() -> TodoCount {
+    3 + action count_todos() -> TodoCount {
   rule: visibility.public_unused
   help: https://jadpo.dev/docs/errors/visibility.public_unused
 

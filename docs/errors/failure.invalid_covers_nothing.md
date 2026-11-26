@@ -44,10 +44,14 @@ error: `invalid:` covers nothing here
    |         ^^^^^^^ no rule left to cover
   reason: Every rule `Quantity(...)` can break has its own arm (`max`), so `invalid:` could never run.
   next: Remove `invalid: ...` (agent)
+  fix:
+    17 - invalid: QuantityRefused
   rule: failure.invalid_covers_nothing
   help: https://jadpo.dev/docs/errors/failure.invalid_covers_nothing
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -30,10 +30,15 @@ error: `mian` isn't one of the app's APIs
   |                      ^^^^ no such API
   reason: `serves:` names APIs the app has: `main`. Did you mean `main`?
   next: Use `main` instead of `mian` (agent)
+  fix:
+    4 - serves: [mian]
+    4 + serves: [main]
   rule: deployable.api_unknown
   help: https://jadpo.dev/docs/errors/deployable.api_unknown
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

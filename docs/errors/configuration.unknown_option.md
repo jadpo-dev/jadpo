@@ -55,10 +55,15 @@ error: `defualt` isn't an option a setting takes
   |         ^^^^^^^ unknown option
   reason: `page_size` can say `secret:`, `default:`, `binding:` and `test:`. Did you mean `default`?
   next: Use `default` instead of `defualt` (agent)
+  fix:
+    3 - defualt: 25
+    3 + default: 25
   rule: configuration.unknown_option
   help: https://jadpo.dev/docs/errors/configuration.unknown_option
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

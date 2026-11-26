@@ -54,10 +54,14 @@ error: `Customer.update` can't break `Customer.email`, so it takes no arm
    |             ^^^^^^^^^^^^^^ never runs
   reason: `Customer.update` sets none of the fields `Customer.email` covers, so it can't break it.
   next: Remove `Customer.email: ...` (agent)
+  fix:
+    23 - Customer.email: EmailTaken
   rule: data.conflict_cannot_break
   help: https://jadpo.dev/docs/errors/data.conflict_cannot_break
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -33,6 +33,9 @@ error: A route group can't be `public`
   | ^^^^^^ not part of a domain's interface
   reason: A route group is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy.
   next: Remove `public` (agent)
+  fix:
+    1 - public routes Todos {
+    1 + routes Todos {
   rule: visibility.public_not_allowed
   help: https://jadpo.dev/docs/errors/visibility.public_not_allowed
 
@@ -75,6 +78,9 @@ error: A function can't be `public`
   | ^^^^^^ not part of a domain's interface
   reason: Another domain uses a helper through a public library, so a plain function stays with the code that calls it.
   next: Remove `public` (agent)
+  fix:
+    5 - public function capped(amount: Stock) -> Stock {
+    5 + function capped(amount: Stock) -> Stock {
   rule: visibility.public_not_allowed
   help: https://jadpo.dev/docs/errors/visibility.public_not_allowed
 
@@ -109,6 +115,9 @@ error: A constant can't be `public`
   | ^^^^^^ not part of a domain's interface
   reason: Another domain reads a constant through a public library, so a constant beside its use stays with the code that reads it.
   next: Remove `public` (agent)
+  fix:
+    5 - public constant most_stock: Stock = 1000
+    5 + constant most_stock: Stock = 1000
   rule: visibility.public_not_allowed
   help: https://jadpo.dev/docs/errors/visibility.public_not_allowed
 

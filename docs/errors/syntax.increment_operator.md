@@ -33,10 +33,15 @@ error: Jadpo writes `next = next + 1`, not `next++`
   |         ^^ write `next = next + 1`
   reason: `++`, `--`, `+=`, `-=` and `*=` change a variable in place in JavaScript, Java, C#, Go, Kotlin, Swift and Python; Jadpo assigns a `var mut` with `=`, and a named type converts the result back with its constructor, as in `count = Count(count + 1)`.
   next: Write `next = next + 1` (agent)
+  fix:
+    7 - next++
+    7 + next = next + 1
   rule: syntax.increment_operator
   help: https://jadpo.dev/docs/errors/syntax.increment_operator
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

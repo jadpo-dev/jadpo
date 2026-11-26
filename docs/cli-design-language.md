@@ -119,7 +119,11 @@ long one gets a line of its own so it copies whole.
   a declinable error's `next` offers its `decline` line.
 - **Errors.** Area 14's fields in its order: path, code frame,
   `reason`, `next` (`(agent)` muted, `(human)` in decision colour),
-  `in use` when a rename needs the names taken (area 1's
+  `fix` when an agent's next step carries edits (the lines they change,
+  under the label at indent 4: the line number muted, then `-` as it was
+  or `+` as it becomes, the lines' common indent left out, at most eight
+  lines and then `… N more lines`; an edit to another file names it
+  first, muted), `in use` when a rename needs the names taken (area 1's
   `semantic.duplicate_declaration`: one name and its file per line, in
   two columns, the files muted as paths in lists are), `impact` only when
   it says something, `rule`, `help`. Failed tests and
@@ -151,6 +155,11 @@ long one gets a line of its own so it copies whole.
 - **Summary footer.** Last: symbol and outcome in bold and its colour, two
   spaces, then facts joined by `·` with problem counts in their colour and
   time last: `✗ 1 failed  87 passed · 88 tests in 2.4 s`.
+- **Asking a person once.** Every error only a person can clear goes
+  into one `◆ decision` block before the summary footer: an `ask` line
+  per question, the `accept` entries their agreement writes, each whole
+  on a line of its own so it copies, and `next` ending `(human)`. Each
+  such error's own `next` points to it.
 - **Hint.** At most one, after the footer: `→ jadpo check  confirms the
   migration matches`. Arrow and command in accent, reason muted, command
   exactly as typed. Left out when the output already says what to do.
@@ -189,6 +198,9 @@ Everything left out comes back with `--full`, in every mode.
 - A diagnostic with the same rule and reason as an earlier one keeps its
   headline, location, code frame, `next` and `rule`. Its `reason` reads
   ``As the first `type.mismatch` above``, and it has no `help`.
+- A next step of more than 80 characters that the same rule gave an
+  earlier diagnostic, word for word, reads ``As the first `type.mismatch`
+  above``; its owner and `fix` stay.
 - A failed test whose fault has the same kind, reason and next step as an
   earlier test's keeps its headline, `fault`, `at`, `rule` and `rerun`. Its
   `reason` reads `As the first fault above`.

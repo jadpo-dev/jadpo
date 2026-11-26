@@ -153,6 +153,9 @@ error: `borrow` belongs to domain `lending`
   |         ^^^^^^ needs its domain
   reason: Root `policy { }` names each action through its domain, `domain.action`, as a call from outside the domain does; a bare name is for a single-file project.
   next: Write `lending.borrow`; `jadpo fmt` then imports `lending` in place of `borrow` (agent)
+  fix:
+    5 - borrow: [Access.public]
+    5 + lending.borrow: [Access.public]
   rule: policy.binding_invalid
   help: https://jadpo.dev/docs/errors/policy.binding_invalid
 

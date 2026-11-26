@@ -28,10 +28,15 @@ error: `$` isn't part of Jadpo
   |            ^ not Jadpo
   reason: Jadpo source is names, literals, brackets and operators such as `+` and `==`; this character has no meaning.
   next: Remove `$` (agent)
+  fix:
+    2 - min: 0 $
+    2 + min: 0
   rule: syntax.unexpected_character
   help: https://jadpo.dev/docs/errors/syntax.unexpected_character
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

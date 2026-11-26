@@ -34,10 +34,15 @@ error: `BillTotal` is divided by a count
   |                      ^^^^^^^^^ money shared out by `/`
   reason: Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes a 20% tax off; `3` is a whole number.
   next: Share it with `money.split(total, 3)`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve an amount with `* 0.5` (agent)
+  fix:
+    8 - return BillTotal(total / 3)
+    8 + return BillTotal(money.split(total, 3))
   rule: type.money_split
   help: https://jadpo.dev/docs/errors/type.money_split
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

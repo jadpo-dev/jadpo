@@ -47,10 +47,14 @@ error: `Item.update` takes no `missing:`
    |         ^^^^^^^ not a section here
   reason: A record that isn't there reports `ItemNotFound` itself; `missing:` maps a query's "nothing matched".
   next: Remove `missing: ...` (agent)
+  fix:
+    19 - missing: ItemMissing
   rule: data.write_section_unexpected
   help: https://jadpo.dev/docs/errors/data.write_section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -91,10 +95,14 @@ error: `Item.update` takes no `patch:`
    |         ^^^^^ not a section here
   reason: An update gives its fields in `set:`, or changes the fields a request supplied with `patch:`, never both.
   next: Remove `patch: ...` (agent)
+  fix:
+    20 - patch: amendment
   rule: data.write_section_unexpected
   help: https://jadpo.dev/docs/errors/data.write_section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 So is a section given twice:
@@ -131,10 +139,16 @@ error: `set:` is given twice
    |         ^^^ given again
   reason: Each section of `Item.update` is given once, so there is never a question of which counts.
   next: Remove one `set:` (agent)
+  fix:
+    15 - set: {
+    16 -     name: name
+    17 - }
   rule: data.write_section_unexpected
   help: https://jadpo.dev/docs/errors/data.write_section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 So is `when_supplied:` with no `patch:`, since nothing was supplied:
@@ -253,10 +267,16 @@ error: `Item.archive` takes no `set:`
    |         ^^^ not a section here
   reason: `Item.archive` is a lifecycle transition: the fields it changes are fixed in the lifecycle's `set:`, so it takes only `conflict:`.
   next: Remove `set: ...` (agent)
+  fix:
+    18 - set: {
+    19 -     archived_at: at
+    20 - }
   rule: data.write_section_unexpected
   help: https://jadpo.dev/docs/errors/data.write_section_unexpected
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 ## How to fix it

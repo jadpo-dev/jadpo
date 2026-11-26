@@ -50,10 +50,15 @@ error: `Bakery.delivery_area` isn't a `Point`, so it can't be each feature's geo
    |               ^^^^^^^^^^^^^^^^^^^^ a `Polygon`
   reason: `FeatureCollection<Point, BakeryPin>`'s features each hold a `Point`, and a stored value goes into the layer as it is, so `geometry:` names a field of that type.
   next: Use `Bakery.spot` (agent)
+  fix:
+    19 - geometry: Bakery.delivery_area
+    19 + geometry: Bakery.spot
   rule: query.geometry_field
   help: https://jadpo.dev/docs/errors/query.geometry_field
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -93,6 +93,11 @@ fn check_reports_each_unformatted_file_and_changes_nothing() {
   |                    ^ the formatter changes this line
   reason: `jadpo fmt` lays this file out differently from here on.
   next: Run `jadpo fmt` to format it (agent)
+  fix:
+    1 - type Count = Int { min: 0 }
+    1 + type Count = Int {
+    2 +     min: 0
+    3 + }
   rule: format.changes_required
   help: https://jadpo.dev/docs/errors/format.changes_required
 
@@ -151,6 +156,9 @@ fn a_file_with_syntax_errors_is_reported_and_left_alone() {
   |            ^ not Jadpo
   reason: Jadpo source is names, literals, brackets and operators such as `+` and `==`; this character has no meaning.
   next: Remove `$` (agent)
+  fix:
+    2 - min: 0 $
+    2 + min: 0
   rule: syntax.unexpected_character
   help: https://jadpo.dev/docs/errors/syntax.unexpected_character
 

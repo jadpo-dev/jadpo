@@ -2371,14 +2371,68 @@ impl Body<'_> {
             &rule::TYPE_MISSING_FIELD
         };
         let first = missing[0].trim_matches('`').to_string();
-        self.out.push(
+        let problem =
             Diagnostic::new(rule, format!("`{shown}` is missing {}", crate::and_list(&missing)))
                 .at(head_span, "fields missing")
                 .reason(format!(
                     "Every field of `{shown}` is given when a value is built; a field that may be absent is declared `T?` and given as `none`."
-                ))
-                .next(format!("Add `{first}: ...` to the block")),
-        );
+                ));
+        // Fields that may be absent are given as `none`, which `jadpo fix`
+        // writes (chunk 10.9a): a field just added to a type is the usual
+        // case. A required field's value is the author's to choose.
+        let absent: Vec<&FieldDef> = fields
+            .iter()
+            .filter(|f| missing.contains(&format!("`{}`", f.name)))
+            .collect();
+        let insert = absent
+            .iter()
+            .all(|f| self.table.is_nullable(&f.declared))
+            .then(|| self.after_last_member(list.as_ref()))
+            .flatten();
+        let problem = match insert {
+            Some((at, indent)) => {
+                let names: Vec<String> = absent
+                    .iter()
+                    .map(|f| format!("`{}: none`", f.name))
+                    .collect();
+                let written: String = absent
+                    .iter()
+                    .map(|f| format!("\n{indent}{}: none", f.name))
+                    .collect();
+                problem
+                    .next(format!("Add {} to the block", crate::and_list(&names)))
+                    .edit(Span::new(self.path, at, at), written)
+            }
+            None => problem.next(format!("Add `{first}: ...` to the block")),
+        };
+        self.out.push(problem);
+    }
+
+    /// Where a line goes after a block's last member, and that member's
+    /// indent: `None` for an empty block or one written on a single line.
+    fn after_last_member(&self, list: Option<&ast::MemberList>) -> Option<(u32, String)> {
+        let last = list?.member_items().last()?;
+        let node = last.syntax();
+        let mut indent = None;
+        let mut before = node.prev_sibling_or_token();
+        while let Some(item) = before {
+            match item.as_token() {
+                Some(token) if token.kind() == jadpo_syntax::SyntaxKind::WHITESPACE => {
+                    let text = token.text();
+                    if let Some((_, tail)) = text.rsplit_once('\n') {
+                        indent = Some(tail.to_string());
+                        break;
+                    }
+                    before = token.prev_sibling_or_token();
+                }
+                _ => break,
+            }
+        }
+        let indent = indent?;
+        if !indent.chars().all(|c| c == ' ') || indent.is_empty() {
+            return None;
+        }
+        Some((u32::from(node.text_range().end()), indent))
     }
 
     /// Records that building an object never fails: each field's value is

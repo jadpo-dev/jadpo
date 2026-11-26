@@ -35,10 +35,15 @@ error: Jadpo writes `assert same(2) == 2`, not `assert_eq!(same(2), 2)`
    |     ^^^^^^^^^^^^^^^^^^^^^^ write `assert same(2) == 2`
   reason: `assert_eq!` checks a test's values in Rust, `assertEquals` in JUnit, `assertEqual` in Python's unittest, `expect(…).toBe(…)` in Jest and `assert.equal` in Node; a Jadpo test checks with `assert condition`.
   next: Write `assert same(2) == 2` (agent)
+  fix:
+    10 - assert_eq!(same(2), 2)
+    10 + assert same(2) == 2
   rule: syntax.assertion_form
   help: https://jadpo.dev/docs/errors/syntax.assertion_form
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -53,10 +53,15 @@ error: `passkey` isn't a `Confirmation`
    |                  ^^^^^^^ not `Confirmation.passkey`
   reason: `confirm:` says what the signed-in person presents before the route runs, and `Confirmation.passkey`, one of their own passkeys for this one request, is the only way there is.
   next: Write `confirm: Confirmation.passkey` (agent)
+  fix:
+    18 - confirm: passkey
+    18 + confirm: Confirmation.passkey
   rule: route.confirm_invalid
   help: https://jadpo.dev/docs/errors/route.confirm_invalid
 
 check failed: 1 error, 1 file
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make the fix itself: the value has only one spelling.

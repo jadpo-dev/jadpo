@@ -36,6 +36,7 @@ mod exchange;
 mod failure_text;
 mod files;
 mod fix;
+mod fix_all;
 mod flags;
 mod fmt;
 mod help;

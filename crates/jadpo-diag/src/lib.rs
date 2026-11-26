@@ -1785,7 +1785,49 @@ pub struct Diagnostic {
     /// and the values in scope that fit, which `--json` gives as
     /// `expected` and `fits` and hovering over the `_` shows.
     pub hole: Option<Hole>,
+    /// Which earlier diagnostic of the same list has the same rule and
+    /// the same long next step: this one's `next` points back to it in
+    /// text, set by [`shorten_repeats`] (chunk 10.9a).
+    pub next_repeat_of: Option<usize>,
+    /// What only a person can clear, said as the question to ask them and
+    /// the acceptance entries their agreement writes (area 14, "Errors
+    /// only a person can clear"; chunk 10.9a).
+    pub sign_off: Option<SignOff>,
 }
+
+/// The question an error needs a person to answer, and the entries of
+/// `acceptances/` their agreement writes, each `subject: Kind.change`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignOff {
+    pub question: String,
+    pub entries: Vec<String>,
+}
+
+/// The rule families whose edits `jadpo fix` never applies, since what
+/// they change is a person's to decide: who may read or write, an
+/// acceptance, a migration or a committed record (area 14, "`jadpo fix`").
+const PERSON_FAMILIES: &[&str] = &[
+    "acceptance.",
+    "policy.",
+    "privacy.",
+    "visibility.",
+    "identity.",
+    "migration.",
+    "record.",
+    "decline.",
+];
+
+/// Whether an edit to `path` is one `jadpo fix` leaves to a person: an
+/// acceptance, a migration or a committed record.
+fn person_path(path: &str) -> bool {
+    path.starts_with("acceptances/")
+        || path.starts_with("database/")
+        || path.ends_with(".jadpo_record")
+}
+
+/// The length from which a next step said again is pointed back to
+/// rather than repeated: one that no longer fits a line.
+const LONG_NEXT: usize = 80;
 
 /// What a typed hole asks for: the type, as the code would write it, and
 /// up to five values in scope that fit, closest first.
@@ -1830,6 +1872,25 @@ pub fn shorten_repeats(diagnostics: &mut [Diagnostic]) {
             None => first.push((rule, reason.clone(), index)),
         }
     }
+    // A long next step said again by the same rule points back too
+    // (chunk 10.9a): the edits stay, so each still shows its own fix.
+    let mut said: Vec<(&'static str, String, usize)> = Vec::new();
+    for (index, diagnostic) in diagnostics.iter_mut().enumerate() {
+        let Some(next) = &diagnostic.next else {
+            continue;
+        };
+        if next.text.len() <= LONG_NEXT {
+            continue;
+        }
+        let rule = diagnostic.rule.id;
+        match said
+            .iter()
+            .find(|(seen, text, _)| *seen == rule && *text == next.text)
+        {
+            Some((_, _, at)) => diagnostic.next_repeat_of = Some(*at),
+            None => said.push((rule, next.text.clone(), index)),
+        }
+    }
 }
 
 impl Diagnostic {
@@ -1845,6 +1906,8 @@ impl Diagnostic {
             in_use: Vec::new(),
             repeat_of: None,
             hole: None,
+            next_repeat_of: None,
+            sign_off: None,
         }
     }
 
@@ -1918,6 +1981,45 @@ impl Diagnostic {
             });
         }
         self
+    }
+
+    /// The question only a person can answer, and the acceptance entries
+    /// their agreement writes (chunk 10.9a).
+    pub fn sign_off(mut self, question: impl Into<String>, entries: Vec<String>) -> Diagnostic {
+        self.sign_off = Some(SignOff {
+            question: question.into(),
+            entries,
+        });
+        self
+    }
+
+    /// Whether only a person can clear it: its next step is theirs, or it
+    /// waits for their acceptance.
+    pub fn needs_person(&self) -> bool {
+        self.sign_off.is_some()
+            || self.rule.id.starts_with("acceptance.")
+            || self
+                .next
+                .as_ref()
+                .is_some_and(|next| next.decides == Decider::Human)
+    }
+
+    /// Whether `jadpo fix` applies its edits unattended (area 14, "`jadpo
+    /// fix`"): an agent's fix with edits, never one that needs a person,
+    /// a security rule's, or one in a family whose edits decide who may
+    /// read or write, what is accepted, or what is stored.
+    pub fn automatic(&self) -> bool {
+        let Some(next) = &self.next else {
+            return false;
+        };
+        !next.edits.is_empty()
+            && next.decides == Decider::Agent
+            && !self.needs_person()
+            && !self.rule.security
+            && !PERSON_FAMILIES
+                .iter()
+                .any(|family| self.rule.id.starts_with(family))
+            && next.edits.iter().all(|edit| !person_path(&edit.span.path))
     }
 
     /// What a typed hole asks for (`type.hole`, area 2).

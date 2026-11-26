@@ -155,10 +155,15 @@ error: `slot_takn` isn't an answer `couriers.bookings.create` gives
   |                                    ^^^^^^^^^ not a failure or a condition
   reason: A scripted answer is a value of `AcmeCouriers.Booking`, one of `couriers.bookings.create`'s failures by its code (`slot_taken`), or a condition: `unavailable`, `lost`, `in_use` or `misconfigured`.
   next: Use `slot_taken` instead of `slot_takn` (agent)
+  fix:
+    6 - couriers.bookings.create: [slot_takn]
+    6 + couriers.bookings.create: [slot_taken]
   rule: semantic.fake_invalid
   help: https://jadpo.dev/docs/errors/semantic.fake_invalid
 
 check failed: 1 error, 13 files
+
+next: jadpo fix  applies the edit shown for this error
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
