@@ -105,6 +105,14 @@ with who said them and where, such as `/// Ana Ruiz (catalogue owner),
 in chat on 2026-10-20: "No client reads a book's author."` The agent
 writes what they said, never a reason of its own.
 
+A field copy's entry (`PolicyChange.field_copied`) names one field
+flow, and a guard needs only one: a field that only decides whether an
+action refuses, such as `customer.blocked` before `reject
+CustomerBlocked`, is accepted as
+`"desk.Customer.blocked -> desk.CustomerBlocked"`, the field and the
+failure, never once for each field the action stores
+([What else shows a field](../language/09-policy.md#what-else-shows-a-field)).
+
 Once the reason is written, `jadpo check` passes. The acceptance is
 committed with the change, and the pull request's review is where an
 owner of `acceptances/` approves it. Once merged, it is history.
