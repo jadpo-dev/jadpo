@@ -835,35 +835,6 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::TOPICS;
-
-    #[test]
-    fn every_topic_it_names_is_a_topic_of_the_area_pages() {
-        for (construct, id, _) in TOPICS {
-            let found = crate::help::find_topic(id);
-            assert!(
-                found.is_some(),
-                "{construct:?} names `{id}`, which no area page declares"
-            );
-            assert_eq!(
-                found.expect("found").id,
-                *id,
-                "`{id}` is an old ID; name the topic by its ID now"
-            );
-        }
-    }
-
-    #[test]
-    fn each_construct_has_one_label_and_one_topic() {
-        let mut labels: Vec<&str> = TOPICS.iter().map(|(_, _, label)| *label).collect();
-        labels.sort_unstable();
-        labels.dedup();
-        assert_eq!(labels.len(), TOPICS.len(), "two constructs share a label");
-    }
-}
-
 /// The queries that say `include_hidden: true` for `entity`, on the query
 /// or inside `exists(...)` (area 6, "Records a lifecycle hides"), by name.
 fn hidden_readers(db: &dyn jadpo_db::Db, project: jadpo_db::Project, entity: &str) -> Vec<String> {
@@ -898,4 +869,33 @@ fn hidden_reads(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TOPICS;
+
+    #[test]
+    fn every_topic_it_names_is_a_topic_of_the_area_pages() {
+        for (construct, id, _) in TOPICS {
+            let found = crate::help::find_topic(id);
+            assert!(
+                found.is_some(),
+                "{construct:?} names `{id}`, which no area page declares"
+            );
+            assert_eq!(
+                found.expect("found").id,
+                *id,
+                "`{id}` is an old ID; name the topic by its ID now"
+            );
+        }
+    }
+
+    #[test]
+    fn each_construct_has_one_label_and_one_topic() {
+        let mut labels: Vec<&str> = TOPICS.iter().map(|(_, _, label)| *label).collect();
+        labels.sort_unstable();
+        labels.dedup();
+        assert_eq!(labels.len(), TOPICS.len(), "two constructs share a label");
+    }
 }

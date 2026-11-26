@@ -361,7 +361,11 @@ fn project(name: &str) -> PathBuf {
     for (path, text) in FILES {
         write(&root, path, text);
     }
-    write(&root, "domains/desk/queries/binned_tickets.test.jadpo", TESTS);
+    write(
+        &root,
+        "domains/desk/queries/binned_tickets.test.jadpo",
+        TESTS,
+    );
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
     root
