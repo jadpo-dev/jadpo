@@ -2613,8 +2613,9 @@ compiler checks each like an output:
 - **What decides a value.** A value made under an `if`, a `match` or a
   loop, or kept by a filter, shows what they test. So it carries their
   fields' rules too. So do a count of what a filter kept, a failure raised
-  on such a condition, and what comes after a `return` or `reject` it may
-  have taken.
+  on such a condition, and what comes after a `return` it may have taken.
+  What comes after a `reject` it may have taken shows only that it didn't
+  refuse, as a guard's does (below).
 - **Finding records.** Which record a `get`, a query or a write finds
   shows the value it found it by, and an include shows the reference it
   follows. So each is proved like an output.
@@ -2646,8 +2647,9 @@ compiler checks each like an output:
   `id` it is given changes the record whose `id` its caller passes, so a
   value read from that record and passed beside its `id` stays within
   the record, as a copy in one body does. What decided a value is stored
-  with it. Since an action is all-or-nothing, so is whatever a `reject`
-  in it tests. A value read through a query's `Output` is still the field
+  with it. An action is all-or-nothing, but what a `reject` in it tests
+  decides only whether it fails, as a guard does, not what it stores
+  before or after. A value read through a query's `Output` is still the field
   it picks, so storing it is checked as storing one read from the record
   is.
 - **A lookup isn't a copy.** A restricted field used only to choose
@@ -2680,6 +2682,28 @@ compiler checks each like an output:
   may read who may not read the source field (the readers would then
   know which record holds that value), and when anything but the `id` is
   stored, the field's value above all.
+- **A guard is one decision.** A field that only decides whether an
+  action goes ahead, tested by an `if`, a `match` or a loop that may
+  leave only by a `reject`, shows one fact: that the action refused.
+  What comes after it runs exactly when it didn't, so the values made
+  and stored there aren't copies of the field, nor are those stored
+  before it, which the refusal undoes; they show it no more than any
+  record shows that the action which made it ran. The fact reaches
+  whoever gets the failure, so the failure is checked: everyone who may
+  run the action may read the field, or a person approves that they
+  learn whether it refuses, one acceptance naming the field and the
+  failure (`"desk.Customer.blocked -> desk.CustomerBlocked":
+  PolicyChange.field_copied`) whatever the action stores. A failure
+  carrying client fields is checked by what they carry, as an output is.
+  Still decided by the field, as before: a value worked out from it,
+  after the guard or anywhere else; what comes after an `if`, a `match`
+  or a loop that may also `return`, since the caller gets a different
+  value; a guard on a parameter, judged where the action is called with
+  what is passed for it, since the called action can't tell a guard from
+  a copy; and a guard on a secret, a `PasswordHash` checked with
+  `crypto.verify_password` among them, which lets nothing past it, so no
+  acceptance allows its failure. The walk for what reaches a model keeps
+  what a guard tested, as before.
 - **Copies a person approves.** A copy that lets people read what a
   field keeps from them, such as a staff-only macro's text stored in a
   reply every member reads, is the app owner's decision, so it is allowed

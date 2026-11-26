@@ -213,7 +213,7 @@ impl Walk<'_> {
     }
 
     /// Whether a `return` is inside the statement at `site`.
-    fn returns_in(&self, site: SiteId) -> bool {
+    pub(super) fn returns_in(&self, site: SiteId) -> bool {
         let at = self.body.site(site);
         self.body.sites.iter().any(|inner| {
             inner.start >= at.start

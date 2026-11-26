@@ -276,6 +276,39 @@ fn param_in(src: &Src) -> Option<usize> {
     }
 }
 
+/// Whether `src`, which decided that a `reject` may run, still decides
+/// the values made after it or stored beside it (chunk 10.11b): a
+/// parameter's part, which the caller's walk judges with what it passes
+/// (chunk 10.9c's rule across calls), or a field holding a secret, a
+/// `PasswordHash` among them, which no guard lets past. Anything else
+/// decides only whether the action fails.
+fn guard_copies(flow: &Flow<'_>, src: &Src) -> bool {
+    if param_in(src).is_some() {
+        return true;
+    }
+    match src {
+        Src::Decided(inner) | Src::Deep(inner) => guard_copies(flow, inner),
+        Src::Field { entity, field, .. } => secret_field(flow, entity, field),
+        _ => false,
+    }
+}
+
+/// Whether `entity`'s `field` holds a secret value or a `PasswordHash`
+/// (area 19, "Secret values").
+fn secret_field(flow: &Flow<'_>, entity: &str, field: &str) -> bool {
+    let Some(model) = flow
+        .entities
+        .get(entity)
+        .and_then(|model| crate::data::field(model, field))
+    else {
+        // Nothing says what it holds: held to be one.
+        return true;
+    };
+    let table = crate::types::type_table(flow.db, flow.project);
+    crate::types::secrets::secret_in(table, &model.ty).is_some()
+        || crate::types::decl::holds_password_hash(table, &model.ty, &mut Vec::new())
+}
+
 /// `src` as what decided a value; for a whole record, whether it is
 /// there.
 fn decided(src: Src) -> Option<Src> {
@@ -1487,6 +1520,7 @@ impl<'a> Flow<'a> {
             let before = walk.locals.clone();
             walk.returns = Prov::default();
             walk.pc.clear();
+            walk.guarded.clear();
             walk.found.clear();
             walk.block(self, &body.block);
             if walk.locals == before {
@@ -1502,6 +1536,7 @@ impl<'a> Flow<'a> {
         walk.left.clear();
         walk.left_params.clear();
         walk.pc.clear();
+        walk.guarded.clear();
         walk.found.clear();
         walk.lookups.clear();
         walk.held.clear();
@@ -1601,6 +1636,12 @@ struct Walk<'b> {
     /// What decided that the statements being walked run: the conditions
     /// of the `if`s and `match`es around them and the loops they are in.
     pc: Vec<Src>,
+    /// What decided only whether the body went on past a guard, an `if`,
+    /// a `match` or a loop it may have left only by a `reject` (chunk
+    /// 10.11b): it decides whether the statements being walked fail, as
+    /// `pc` does, but no value they make. One failure shows it, checked
+    /// where the `reject` raises it.
+    guarded: Vec<Src>,
     /// While a write's values are worked out: its entity, each way the
     /// caller may have reached the record it changes, which a value
     /// reading a stored field (`Post.view_count + 1`) comes from, and
@@ -1720,6 +1761,7 @@ impl<'b> Walk<'b> {
             report: false,
             problems: Vec::new(),
             pc: Vec::new(),
+            guarded: Vec::new(),
             stored: None,
             decided: BTreeSet::new(),
             stores: Vec::new(),
@@ -1877,7 +1919,13 @@ impl Walk<'_> {
     /// reply action's failure is answered to whoever sent the webhook
     /// (chunk 7.9g).
     fn may_fail(&mut self, flow: &Flow<'_>, site: SiteId, also: &[Src]) {
-        let srcs: Vec<Src> = self.pc.iter().chain(also).cloned().collect();
+        let srcs: Vec<Src> = self
+            .pc
+            .iter()
+            .chain(&self.guarded)
+            .chain(also)
+            .cloned()
+            .collect();
         self.reply_shows(flow, site, &srcs, Shown::Fails);
         for src in srcs {
             let src = self.unturned_src(&src);
@@ -1930,9 +1978,39 @@ impl Walk<'_> {
     /// After the `if`, `match` or loop at `site`, walked with `saved` as
     /// what decided it runs: what it tested decides the statements after
     /// it too when a `return` or `reject` inside it may have left.
-    fn after(&mut self, site: SiteId, saved: Vec<Src>) {
+    ///
+    /// A guard is one decision (chunk 10.11b): when only a `reject` may
+    /// have left, the statements after it run exactly when the body did
+    /// not fail there, so what it tested decides only whether they fail
+    /// ([`Walk::guarded`]), shown by the failure the `reject` raises. The
+    /// values they make carry it no more than any value carries the fact
+    /// that its action ran. A parameter's part is kept as before, for the
+    /// caller's walk to judge (chunk 10.9c), and so is a secret's field,
+    /// which no guard lets past; the walk for what reaches a model keeps
+    /// all of it.
+    fn after(&mut self, flow: &Flow<'_>, site: SiteId, saved: Vec<Src>) {
         if !self.leaves(site) {
             self.pc = saved;
+            return;
+        }
+        if self.personal || self.returns_in(site) {
+            return;
+        }
+        let tested: Vec<Src> = self
+            .pc
+            .iter()
+            .filter(|src| !saved.contains(src))
+            .cloned()
+            .collect();
+        self.pc = saved;
+        for src in tested {
+            if guard_copies(flow, &src) {
+                if !self.pc.contains(&src) {
+                    self.pc.push(src);
+                }
+            } else if !self.guarded.contains(&src) {
+                self.guarded.push(src);
+            }
         }
     }
 
@@ -2069,7 +2147,7 @@ impl Walk<'_> {
                         self.block(flow, &arm.then);
                     }
                     self.block(flow, otherwise);
-                    self.after(site, saved);
+                    self.after(flow, site, saved);
                 }
                 Stmt::For { item, list, body } => {
                     let saved = self.pc.clone();
@@ -2109,7 +2187,7 @@ impl Walk<'_> {
                     }
                     self.block(flow, body);
                     self.looping -= 1;
-                    self.after(site, saved);
+                    self.after(flow, site, saved);
                     self.pc = self.pc.iter().map(|src| self.unturned_src(src)).collect();
                 }
                 Stmt::Emit { value: Some(value) } => {
@@ -2283,7 +2361,7 @@ impl Walk<'_> {
                         ArmBody::Empty => {}
                     }
                 }
-                self.after(site, saved);
+                self.after(flow, site, saved);
                 out
             }
             Expr::Attempt { inner, arms } => {
@@ -2299,8 +2377,14 @@ impl Walk<'_> {
             }
             Expr::Reject { failure, fields } => {
                 // The action is all-or-nothing: what may make it fail
-                // decides everything it stores, in every turn.
+                // decides everything it stores, in every turn. A guard
+                // shows only that it refused, by this failure (chunk
+                // 10.11b), so only a parameter's part, for the caller's
+                // walk, and a secret's field still decide what it stores.
                 for src in self.pc.clone() {
+                    if !self.personal && !guard_copies(flow, &src) {
+                        continue;
+                    }
                     let src = self.unturned_src(&src);
                     if !self.failing.contains(&src) {
                         self.failing.push(src);
@@ -3399,28 +3483,83 @@ impl Walk<'_> {
         if !self.report {
             return;
         }
+        // Whether a guard refused is one fact about the fields it tested,
+        // which a person may let its callers learn: an acceptance naming
+        // the field and the failure (chunk 10.11b). Never a secret's.
+        let raises = failure.name();
+        let accepted = crate::acceptances::copies::accepted(flow.db, flow.project);
+        let qualified = |entity: &str, field: &str| {
+            format!(
+                "{}.{field}",
+                crate::policy::report::qualified(&flow.lookup, entity)
+            )
+        };
+        let decided = Prov {
+            whole: decided
+                .whole
+                .into_iter()
+                .filter(|src| match shallow(src.clone()) {
+                    Src::Decided(inner) => match shallow(*inner) {
+                        Src::Field { entity, field, .. } => {
+                            secret_field(flow, &entity, &field)
+                                || !accepted
+                                    .contains(&(qualified(&entity, &field), raises.to_string()))
+                        }
+                        _ => true,
+                    },
+                    _ => true,
+                })
+                .collect(),
+            fields: BTreeMap::new(),
+        };
         let Some((entity, from, reached, _)) = self.first_unread(flow, &decided) else {
             return;
         };
         let among = among(flow, &entity, &from, &reached);
         let readers = flow.prover.readers(&entity, &from);
-        let raises = failure.name();
-        self.problems.push(
-            Diagnostic::new(
-                &rule::POLICY_OUTPUT_FIELD_UNPROVED,
-                format!(
-                    "`{}` raises `{raises}` on a condition that tests `{entity}.{from}`, which not every caller may read",
-                    self.name
-                ),
-            )
-            .at(self.span(site), format!("decided by `{entity}.{from}`"))
-            .reason(format!(
-                "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. Whether `{raises}` is raised shows what the condition tested, so a failure is raised only on what every caller may read.",
+        let problem = Diagnostic::new(
+            &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+            format!(
+                "`{}` raises `{raises}` on a condition that tests `{entity}.{from}`, which not every caller may read",
                 self.name
-            ))
-            .next(format!(
+            ),
+        )
+        .at(self.span(site), format!("decided by `{entity}.{from}`"))
+        .reason(format!(
+            "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. Whether `{raises}` is raised shows what the condition tested, so a failure is raised only on what every caller may read.",
+            self.name
+        ));
+        // Acceptances are a project's (area 18), so loose files keep the
+        // agent's fix alone.
+        if flow.project.layout(flow.db) != jadpo_db::Layout::Project {
+            self.problems.push(problem.next(format!(
                 "Test a field every caller may read, or raise `{raises}` only where callers who may read `{from}` reach"
-            )),
+            )));
+            return;
+        }
+        if secret_field(flow, &entity, &from) {
+            self.problems.push(problem.next(format!(
+                "Test a field every caller may read, or raise `{raises}` only where callers who may read `{from}` reach: what a secret holds is shown to nobody, so no acceptance allows it"
+            )));
+            return;
+        }
+        let subject = crate::acceptances::copies::subject(&qualified(&entity, &from), raises);
+        let change = crate::acceptances::copies::CHANGE;
+        self.problems.push(
+            problem
+                .next_for(
+                    format!(
+                        "Stop and ask your user whether every caller may learn whether `{raises}` is raised, which shows one fact about `{entity}.{from}`: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `{subject}: {change}` with their words as its reason, one entry for this guard whatever the action stores; otherwise test a field every caller may read, or raise `{raises}` only where callers who may read `{from}` reach"
+                    ),
+                    jadpo_diag::Decider::Human,
+                )
+                .sign_off(
+                    format!(
+                        "May every caller of `{}` learn whether `{raises}` is raised, which shows one fact about `{entity}.{from}`?",
+                        self.name
+                    ),
+                    vec![format!("{subject}: {change}")],
+                ),
         );
     }
 

@@ -1242,10 +1242,17 @@ pub fn access_needs(
         let Some((from, to)) = copy.split_once(" -> ") else {
             continue;
         };
-        out.push(Need {
-            said: format!(
+        let said = if super::copies::failure(to) {
+            format!(
+                "callers who may not read `{from}` may now learn from whether `{to}` is raised one fact about what it holds"
+            )
+        } else {
+            format!(
                 "what `{from}` holds may now be stored in `{to}`, which people who may not read `{from}` may read"
-            ),
+            )
+        };
+        out.push(Need {
+            said,
             subject: super::copies::subject(from, to),
             change: super::copies::CHANGE.to_string(),
             family: Family::Access,

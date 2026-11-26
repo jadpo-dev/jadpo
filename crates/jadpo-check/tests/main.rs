@@ -60,6 +60,7 @@ mod geodesics;
 mod geospatial;
 mod graph;
 mod graph_nodes;
+mod guards;
 mod habits;
 mod holes;
 mod identity;
