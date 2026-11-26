@@ -2662,9 +2662,11 @@ compiler checks each like an output:
   action's parameters, or a standard operation of them, never a literal,
   a constant, a setting or a variable. A loop over the records, an `if`
   or a `match` on the comparison, `list.filter` and `list.find` keep it
-  a lookup; so does an action that does the lookup and returns the `id`,
-  while what its caller passes for the key is made only of parameters
-  too. It is a copy, as before, when the value is worked out from what
+  a lookup; so does an action that does the lookup and returns or
+  stores the `id`, while each caller, an action or a route, passes the
+  key only from its own parameters and passes no part of it again as a
+  value the action stores where those readers read it. Anything a check
+  can't see through, a call included, is held to be a copy. It is a copy, as before, when the value is worked out from what
   the field holds (`text.ends_with(c.email, "@vip.test")`, a length),
   when the key is a literal or anything but the request's
   values, when the action also stores the key in a field that a role

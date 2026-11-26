@@ -386,7 +386,7 @@ fn diagnostics(extra: &[(&str, &str)]) -> Vec<Diagnostic> {
     let project = support::project(&db, Layout::Project, &files);
     jadpo_check::check(&db, project)
         .iter()
-        .filter(|d| d.rule.id != "data.personal_unread")
+        .filter(|d| d.rule.id != "data.personal_unread" && d.rule.id != "record.out_of_date")
         .cloned()
         .collect()
 }
@@ -624,4 +624,148 @@ query case_page(workspace_id: Workspace.id, after: PageCursor?) -> Page<CaseRow>
         ),
         "{all}"
     );
+}
+
+/// An action that does the lookup and stores the chosen `id` itself,
+/// beside a subject every member reads.
+fn storing_lookup() -> String {
+    filtered("open_case_for", "c.address == address", "subject")
+}
+
+/// An action passing `key` and `subject` on to `open_case_for`.
+fn relaying(name: &str, key: &str, subject: &str) -> String {
+    format!(
+        "use desk/entities {{ Case, ContactNotFound, Workspace, WorkspaceNotFound }}
+use desk/types {{ Body }}
+use desk/actions {{ open_case_for }}
+
+/// Opens a case through another action.
+action {name}(workspace_id: Workspace.id, address: Body, subject: Body) fails WorkspaceNotFound, ContactNotFound -> Case {{
+    return attempt open_case_for(workspace_id, {key}, {subject})
+}}
+"
+    )
+}
+
+#[test]
+fn a_key_passed_to_an_action_that_stores_the_id_beside_other_values_is_a_lookup() {
+    let inner = storing_lookup();
+    let outer = relaying("relay_case", "address", "subject");
+    let found = diagnostics(&[
+        ("domains/desk/actions/open_case_for.jadpo", &inner),
+        ("domains/desk/actions/relay_case.jadpo", &outer),
+    ]);
+    assert!(found.is_empty(), "{}", shown(&found));
+}
+
+#[test]
+fn a_key_passed_again_as_a_value_the_called_action_stores_is_a_copy() {
+    // The subject viewers read would be the address that chose the
+    // contact.
+    let inner = storing_lookup();
+    let outer = relaying("relay_case", "address", "address");
+    let found = diagnostics(&[
+        ("domains/desk/actions/open_case_for.jadpo", &inner),
+        ("domains/desk/actions/relay_case.jadpo", &outer),
+    ]);
+    asks_for(&found, CHOSEN);
+}
+
+#[test]
+fn a_key_written_in_the_code_and_passed_to_an_action_that_stores_the_id_is_a_copy() {
+    let inner = storing_lookup();
+    let outer = relaying("relay_case", "\"boss@acme.test\"", "subject");
+    let found = diagnostics(&[
+        ("domains/desk/actions/open_case_for.jadpo", &inner),
+        ("domains/desk/actions/relay_case.jadpo", &outer),
+    ]);
+    asks_for(&found, CHOSEN);
+}
+
+#[test]
+fn a_key_the_caller_stores_itself_and_passes_to_an_action_that_stores_the_id_is_a_copy() {
+    let inner = storing_lookup();
+    let outer = "use desk/entities { Case, ContactNotFound, Workspace, WorkspaceNotFound }
+use desk/types { Body }
+use desk/actions { open_case_for }
+
+/// Opens a case and a second one named by the address.
+action relay_case(workspace_id: Workspace.id, address: Body, subject: Body) fails WorkspaceNotFound, ContactNotFound -> Case {
+    attempt Case.create {
+        set: {
+            workspace_id: workspace_id
+            contact_id: none
+            person_id: none
+            subject: address
+        }
+    }
+    return attempt open_case_for(workspace_id, address, subject)
+}
+";
+    let found = diagnostics(&[
+        ("domains/desk/actions/open_case_for.jadpo", &inner),
+        ("domains/desk/actions/relay_case.jadpo", outer),
+    ]);
+    asks_for(&found, CHOSEN);
+}
+
+const CASE_REQUEST: &str = "use desk/types { Body }
+
+/// A case asked for by address.
+type CaseRequest = Input {
+    address: Body
+    subject: Body
+}
+";
+
+/// A route running `open_case_for` with `subject` as its subject.
+fn routed(subject: &str) -> String {
+    format!(
+        "use desk/entities {{ Workspace }}
+use desk/types {{ CaseRequest }}
+use desk/actions {{ open_case_for }}
+
+/// Cases.
+routes Cases {{
+    prefix: /cases
+
+    /// Opens a case for the contact with an address.
+    POST /{{workspace_id: Workspace.id}} {{
+        input: CaseRequest
+        status: SuccessStatus.no_content
+        run: open_case_for(workspace_id, input.address, {subject})
+    }}
+}}
+"
+    )
+}
+
+#[test]
+fn a_route_passing_the_key_and_another_value_runs_a_lookup() {
+    let inner = storing_lookup().replace("-> Case {", "-> Unit {").replace(
+        "    return attempt Case.create {",
+        "    attempt Case.create {",
+    );
+    let route = routed("input.subject");
+    let found = diagnostics(&[
+        ("domains/desk/types/case_request.jadpo", CASE_REQUEST),
+        ("domains/desk/actions/open_case_for.jadpo", &inner),
+        ("domains/desk/routes/cases.jadpo", &route),
+    ]);
+    assert!(found.is_empty(), "{}", shown(&found));
+}
+
+#[test]
+fn a_route_passing_the_key_again_as_a_stored_value_is_a_copy() {
+    let inner = storing_lookup().replace("-> Case {", "-> Unit {").replace(
+        "    return attempt Case.create {",
+        "    attempt Case.create {",
+    );
+    let route = routed("input.address");
+    let found = diagnostics(&[
+        ("domains/desk/types/case_request.jadpo", CASE_REQUEST),
+        ("domains/desk/actions/open_case_for.jadpo", &inner),
+        ("domains/desk/routes/cases.jadpo", &route),
+    ]);
+    asks_for(&found, CHOSEN);
 }

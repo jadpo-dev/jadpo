@@ -643,6 +643,9 @@ struct Summary {
     returns: Prov,
     sends: BTreeSet<(usize, Vec<String>)>,
     stores: Vec<Store>,
+    /// The lookups it stores, itself or through what it calls, each
+    /// checked where it is called (chunk 10.9c).
+    lookups: Vec<stores::Held>,
     /// What each `emit` it runs, itself or through an action it calls,
     /// puts in its event, by the event's key: what a subscriber of it
     /// stores is checked against these (chunk 6.1c). With no [`Origin`]
@@ -683,6 +686,7 @@ static NOTHING: Summary = Summary {
     },
     sends: BTreeSet::new(),
     stores: Vec::new(),
+    lookups: Vec::new(),
     emits: Vec::new(),
     fails: Vec::new(),
     batches: Vec::new(),
@@ -699,6 +703,11 @@ impl Summary {
         for store in &other.stores {
             if !self.stores.contains(store) {
                 self.stores.push(store.clone());
+            }
+        }
+        for held in &other.lookups {
+            if !self.lookups.contains(held) {
+                self.lookups.push(held.clone());
             }
         }
         for emit in &other.emits {
@@ -742,6 +751,15 @@ impl Summary {
                 })
                 .collect(),
             stores,
+            lookups: self.lookups.into_iter().map(stores::Held::widened).fold(
+                Vec::new(),
+                |mut out, held| {
+                    if !out.contains(&held) {
+                        out.push(held);
+                    }
+                    out
+                },
+            ),
             emits: self
                 .emits
                 .into_iter()
@@ -1289,6 +1307,98 @@ pub fn subscriber_store_problems(db: &dyn Db, project: Project, file: File) -> V
     out
 }
 
+/// The lookups the actions a file's routes run keep for their callers
+/// (chunk 10.9c, [`stores::Held`]): a route's arguments are the request's,
+/// so a lookup there is one unless the route passes the key's part of the
+/// request again where the action stores it for its readers, or passes
+/// something else as the key, such as the caller.
+#[salsa::tracked(returns(ref))]
+pub fn route_lookup_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    use crate::routes::{ArgRoot, group_read};
+    if !super::policy_clean(db, project) {
+        return Vec::new();
+    }
+    let lookup = Lookup::new(db, project);
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for item in &jadpo_db::item_tree(db, file).items {
+        if item.kind != jadpo_db::ItemKind::Routes || !seen.insert(item.name.as_str()) {
+            continue;
+        }
+        let Some(read) = group_read(db, project, Name::new(db, item.name.clone())) else {
+            continue;
+        };
+        let Some(model) = read.model.as_ref().filter(|_| read.path == *file.path(db)) else {
+            continue;
+        };
+        for route in model.routes.iter().filter(|route| !route.run.query) {
+            let Some(callable) = crate::graph::declaration_key(&lookup, &route.run.name)
+                .and_then(|key| resolve(db, project, &key))
+            else {
+                continue;
+            };
+            let summary = flow_summary(db, project, callable);
+            // A part of a parameter as the route gives it: the request's
+            // input or a placeholder, with the path read through it.
+            let given = |part: &(usize, Vec<String>)| -> Option<(ArgRoot, Vec<String>)> {
+                let arg = route.run.args.get(part.0)?;
+                matches!(arg.root, ArgRoot::Input | ArgRoot::Param(_)).then(|| {
+                    let mut path = arg.path.clone();
+                    path.extend(part.1.iter().cloned());
+                    (arg.root.clone(), path)
+                })
+            };
+            for held in &summary.lookups {
+                let keys: Vec<Option<(ArgRoot, Vec<String>)>> =
+                    held.key.iter().map(given).collect();
+                let others: Vec<(ArgRoot, Vec<String>)> =
+                    held.others.iter().filter_map(given).collect();
+                let known = keys.is_empty() || keys.iter().any(Option::is_none);
+                let again = keys.iter().flatten().any(|(root, path)| {
+                    others.iter().any(|(other, inner)| {
+                        other == root && (path.starts_with(inner) || inner.starts_with(path))
+                    })
+                });
+                if !known && !again {
+                    continue;
+                }
+                let label = route.label();
+                let Some((_, span)) = read.run_spans.iter().find(|(run, _)| *run == label) else {
+                    continue;
+                };
+                let (from, into, subject) = (&held.from, &held.into, &held.subject);
+                let why = if known {
+                    "the route passes it something other than the request's values, which they may know"
+                } else {
+                    "the route passes the same part of the request again where the action stores it for them to read"
+                };
+                out.push(
+                    Diagnostic::new(
+                        &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                        format!(
+                            "`{label}` passes `{}` a key it matches against `{from}` to choose what it stores in `{into}`, which not everyone who may read it may know",
+                            route.run.name
+                        ),
+                    )
+                    .at(span.clone(), format!("chooses by `{from}`"))
+                    .reason(format!(
+                        "`{}` stores in `{into}` the `id` of the record whose `{from}` equals the key it is given. That shows someone who doesn't know the key only which record was chosen, but {why}, and with it they would learn what `{from}` holds. A key that reaches a lookup through a call is a copy unless the whole call shows it is stored nowhere they read.",
+                        route.run.name
+                    ))
+                    .next_for(
+                        format!(
+                            "Stop and ask your user whether everyone who may read `{into}` may learn what `{from}` holds: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `{subject}: {}` with their words as its reason; otherwise pass the key only once, from the request",
+                            crate::acceptances::copies::CHANGE
+                        ),
+                        jadpo_diag::Decider::Human,
+                    ),
+                );
+            }
+        }
+    }
+    out
+}
+
 /// An action's or function's walk: its summary and its problems.
 fn walked<'db>(
     db: &'db dyn Db,
@@ -1394,6 +1504,7 @@ impl<'a> Flow<'a> {
         walk.pc.clear();
         walk.found.clear();
         walk.lookups.clear();
+        walk.held.clear();
         walk.block(self, &body.block);
         walk.kept_lookups(self);
         // An action is all-or-nothing: whatever a `reject` tests decides
@@ -1419,6 +1530,7 @@ impl<'a> Flow<'a> {
             returns: walk.returns.erased(),
             sends: walk.sends,
             stores: walk.stores,
+            lookups: walk.held,
             emits,
             fails,
             batches: walk.batches,
@@ -1506,7 +1618,9 @@ struct Walk<'b> {
     /// Each lookup it stores (chunk 10.9c): the key a field was compared
     /// with, the field, and the problem it is should the key be stored
     /// where it shows ([`Walk::kept_lookups`]).
-    lookups: Vec<(Vec<Src>, Src, Diagnostic)>,
+    lookups: Vec<stores::Pending>,
+    /// The lookups it stores that its callers check ([`Summary::lookups`]).
+    held: Vec<stores::Held>,
     /// What decided each `reject` in the body: an action is
     /// all-or-nothing, so these decide every value it stores, before them
     /// or after. Gathered in every walk, so the last walk, which reports,
@@ -1611,6 +1725,7 @@ impl<'b> Walk<'b> {
             stores: Vec::new(),
             kept: BTreeSet::new(),
             lookups: Vec::new(),
+            held: Vec::new(),
             failing: Vec::new(),
             looping: 0,
             turns: BTreeSet::new(),
@@ -3090,6 +3205,11 @@ impl Walk<'_> {
             .filter(|(_, arg)| !arg.is_some_and(|arg| self.key_only(arg)))
             .map(|(at, _)| at)
             .collect();
+        if !self.personal {
+            for held in &summary.lookups {
+                self.passed_lookup(site, key.name(), held, provs, &loose);
+            }
+        }
         if here && !summary.fails.is_empty() {
             let fails = Prov {
                 whole: summary

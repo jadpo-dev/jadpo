@@ -550,12 +550,15 @@ fn an_edit_rechecks_only_what_reads_it() {
     );
     let comment = bench.check("comment above an action that writes a note");
     assert_eq!(most(&comment), 1, "{comment:?}");
+    // The action's own summary is walked again too: the routes that run
+    // it read the lookups it keeps (chunk 10.9c), and the summary, the
+    // same as before, stops there.
     assert_eq!(
         ran(&comment, PHASE_4),
         [
             ("typed_body", 1),
             ("body_facts", 1),
-            ("flow_summary", 0),
+            ("flow_summary", 1),
             ("flow_problems", 1),
             ("reach_problems", 0),
             ("query_policy_problems", 0),
@@ -580,12 +583,15 @@ fn an_edit_rechecks_only_what_reads_it() {
     bench.stale_api = true;
     let policy = bench.check("a field's policy on one entity");
     assert_eq!(most(&policy), 1, "{policy:?}");
+    // The summary of the action that creates its records is walked again
+    // for the routes that read the lookups it keeps, which turn on who
+    // may read what (chunk 10.9c).
     assert_eq!(
         ran(&policy, PHASE_4),
         [
             ("typed_body", 0),
             ("body_facts", 0),
-            ("flow_summary", 0),
+            ("flow_summary", 1),
             ("flow_problems", 1),
             ("reach_problems", 1),
             ("query_policy_problems", 1),
