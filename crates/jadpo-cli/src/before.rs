@@ -44,8 +44,9 @@ fn line(dir: &Path, args: &[&str]) -> Option<String> {
 }
 
 /// The default branch: the remote's `HEAD`, else its `main` or `master`,
-/// else a local `main` or `master`. Its ref and its short name.
-fn default_branch(top: &Path) -> Option<(String, String)> {
+/// else a local `main` or `master`. Its ref, its short name, and why it is
+/// the one, for messages (chunk 10.13).
+fn default_branch(top: &Path) -> Option<(String, String, String)> {
     let remotes = git(top, &["remote"]).unwrap_or_default();
     let mut remotes: Vec<&str> = remotes.lines().filter(|r| !r.is_empty()).collect();
     remotes.sort_by_key(|remote| *remote != "origin");
@@ -55,19 +56,27 @@ fn default_branch(top: &Path) -> Option<(String, String)> {
             &["symbolic-ref", "-q", &format!("refs/remotes/{remote}/HEAD")],
         ) {
             let short = head.rsplit('/').next().unwrap_or("main").to_string();
-            return Some((head, short));
+            return Some((head, short, format!("the default branch {remote}'s `HEAD` names")));
         }
         for name in ["main", "master"] {
             let candidate = format!("refs/remotes/{remote}/{name}");
             if line(top, &["rev-parse", "-q", "--verify", &candidate]).is_some() {
-                return Some((candidate, name.to_string()));
+                return Some((
+                    candidate,
+                    name.to_string(),
+                    format!("{remote}'s `{name}`, since {remote} names no default branch"),
+                ));
             }
         }
     }
     for name in ["main", "master"] {
         let candidate = format!("refs/heads/{name}");
         if line(top, &["rev-parse", "-q", "--verify", &candidate]).is_some() {
-            return Some((candidate, name.to_string()));
+            return Some((
+                candidate,
+                name.to_string(),
+                "the local branch: no remote names a default branch".to_string(),
+            ));
         }
     }
     None
@@ -95,6 +104,7 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
         prefix,
         base,
         described,
+        why,
         paths,
     } = match find(root, with, has_acceptances)? {
         Ok(found) => found,
@@ -105,7 +115,7 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
             "the project is new since {described}"
         )));
     }
-    read_at(root, &top, &prefix, &base, described, &paths)
+    read_at(root, &top, &prefix, &base, (described, why), &paths)
 }
 
 /// What `jadpo test --affected` measures a change against (area 14,
@@ -144,6 +154,7 @@ struct Found {
     prefix: String,
     base: String,
     described: String,
+    why: String,
     paths: Vec<String>,
 }
 
@@ -170,7 +181,7 @@ fn find(
     }
     let prefix = line(root, &["rev-parse", "--show-prefix"]).unwrap_or_default();
     let shallow = line(&top, &["rev-parse", "--is-shallow-repository"]).as_deref() == Some("true");
-    let (base, described) = match with {
+    let (base, described, why) = match with {
         Some(reference) => {
             let Some(commit) = line(
                 &top,
@@ -189,13 +200,17 @@ fn find(
                 return Err(UnknownRef(reference.to_string()));
             };
             let short = commit.get(..7).unwrap_or(&commit).to_string();
-            (commit, format!("{reference} at {short}"))
+            (
+                commit,
+                format!("{reference} at {short}"),
+                "named with `--before`".to_string(),
+            )
         }
         None => {
             if line(&top, &["rev-parse", "-q", "--verify", "HEAD"]).is_none() {
                 return Ok(Err(Before::Nothing("no commit yet".to_string())));
             }
-            let Some((default, name)) = default_branch(&top) else {
+            let Some((default, name, chosen)) = default_branch(&top) else {
                 if shallow {
                     return Ok(Err(Before::Missing {
                         base: "the default branch".to_string(),
@@ -220,12 +235,16 @@ fn find(
                     )));
                 };
                 let short = previous.get(..7).unwrap_or(&previous).to_string();
-                (previous, format!("the previous commit, {short}"))
+                (
+                    previous,
+                    format!("the previous commit, {short}"),
+                    format!("this is the default branch, `{name}`, itself"),
+                )
             } else {
                 match line(&top, &["merge-base", "HEAD", &default]) {
                     Some(commit) => {
                         let short = commit.get(..7).unwrap_or(&commit).to_string();
-                        (commit, format!("{} at {short}", shown(&default)))
+                        (commit, format!("{} at {short}", shown(&default)), chosen)
                     }
                     None if shallow => {
                         return Ok(Err(Before::Missing {
@@ -272,6 +291,7 @@ fn find(
         prefix,
         base,
         described,
+        why,
         paths,
     }))
 }
@@ -283,7 +303,7 @@ fn read_at(
     top: &Path,
     prefix: &str,
     base: &str,
-    described: String,
+    (described, why): (String, String),
     paths: &[String],
 ) -> Result<Before, UnknownRef> {
     let domains: BTreeSet<String> = paths
@@ -320,6 +340,7 @@ fn read_at(
     Ok(Before::At(BeforeSide {
         commit: base.get(..7).unwrap_or(base).to_string(),
         described,
+        why,
         files,
         domains,
         migrations,

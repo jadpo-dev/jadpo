@@ -1207,3 +1207,68 @@ fn copying_a_restricted_field_needs_an_acceptance_naming_the_flow() {
     );
     assert_eq!(problems(&root), Vec::<String>::new());
 }
+
+/// The reason each `acceptance.unmatched` gives, by its message.
+fn unmatched_reasons(root: &Path) -> Vec<String> {
+    let output = jadpo(root, &["check", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+    document["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .filter(|d| d["rule"] == "acceptance.unmatched")
+        .map(|d| d["reason"].as_str().unwrap_or("").to_string())
+        .collect()
+}
+
+/// Chunk 10.13: an entry matching nothing says which baseline the change
+/// was compared with and why, and, while other errors stand, which records
+/// weren't compared, so the entry may be right after all.
+#[test]
+fn an_unmatched_entry_says_what_it_was_compared_with() {
+    let root = library("unmatched-baseline");
+    let base = Command::new("git")
+        .args(["rev-parse", "--short=7", "main"])
+        .current_dir(&root)
+        .output()
+        .expect("git runs");
+    let base = String::from_utf8_lossy(&base.stdout).trim().to_string();
+    write(
+        &root,
+        "acceptances/20261127T0900_remove_title.jadpo",
+        "/// Nobody reads the title, as the shop front said.\nacceptance {\n    changes: {\n        main.BookView.title: ApiChange.output_field_removed\n    }\n}\n",
+    );
+    // With no remote, the default branch is the local `main`.
+    let reasons = unmatched_reasons(&root);
+    assert_eq!(reasons.len(), 1, "{reasons:?}");
+    assert!(
+        reasons[0].ends_with(&format!(
+            "This change was compared with main at {base}, the local branch: no remote names a default branch."
+        )),
+        "{}",
+        reasons[0]
+    );
+    // The change is made, but a route's error keeps the API records from
+    // being compared: the entry is unmatched only for now.
+    edit(
+        &root,
+        "domains/lending/types/book_view.jadpo",
+        "pick: [Book.id, Book.title]",
+        "pick: [Book.id]",
+    );
+    edit(
+        &root,
+        "domains/lending/routes/books.jadpo",
+        "    GET / {\n",
+        "    GET / {\n        authentication: RouteAuthentication.nobody\n",
+    );
+    let reasons = unmatched_reasons(&root);
+    assert_eq!(reasons.len(), 1, "{reasons:?}");
+    assert!(
+        reasons[0].contains(
+            "While other errors stand, the API records aren't compared, so a change in them isn't seen yet."
+        ),
+        "{}",
+        reasons[0]
+    );
+}

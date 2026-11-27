@@ -261,6 +261,9 @@ pub enum Before {
 pub struct BeforeSide {
     /// How the base was found, for messages: `origin/main at 1a2b3c4`.
     pub described: String,
+    /// Why it is the base, after it in a message: `the local branch: no
+    /// remote names a default branch` (chunk 10.13).
+    pub why: String,
     /// The base commit's short hash, for a command that restores a file
     /// from it.
     pub commit: String,

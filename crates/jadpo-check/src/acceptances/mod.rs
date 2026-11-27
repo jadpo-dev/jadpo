@@ -472,6 +472,7 @@ pub fn problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     }
     let added = added(before, &all);
     let needs = needs(db, project);
+    let uncompared = uncompared(db, project);
     let wanted: BTreeSet<(&str, &str)> = needs
         .iter()
         .map(|need| (need.subject.as_str(), need.change.as_str()))
@@ -484,7 +485,7 @@ pub fn problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         for entry in &acceptance.entries {
             listed.insert((&entry.subject, &entry.change));
             if !wanted.contains(&(entry.subject.as_str(), entry.change.as_str())) {
-                out.push(unmatched(entry, needs));
+                out.push(unmatched(entry, needs, before, &uncompared));
             }
         }
     }
@@ -842,13 +843,37 @@ fn no_reason(acceptance: &files::Acceptance) -> Diagnostic {
     .next("Write your user's own words agreeing to these changes as the reason, with who said them and where, and never a reason of your own; if they haven't agreed, stop and ask them, and if they don't accept, delete the draft and undo the changes")
 }
 
-fn unmatched(entry: &files::Entry, needs: &[Need]) -> Diagnostic {
+/// The records `needs` couldn't compare, since their sources have errors
+/// (chunk 10.13): a change in them isn't seen until those are fixed.
+fn uncompared(db: &dyn Db, project: Project) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if !crate::routes::routes_clean(db, project) {
+        out.push("the API records");
+    }
+    if !crate::events::record::events_clean(db, project) {
+        out.push("the event records");
+    }
+    if access::record_text(db, project).is_none() {
+        out.push("the access record");
+    }
+    if network::record_text(db, project).is_none() {
+        out.push("the network record");
+    }
+    out
+}
+
+fn unmatched(
+    entry: &files::Entry,
+    needs: &[Need],
+    before: &BeforeSide,
+    uncompared: &[&str],
+) -> Diagnostic {
     let same_subject: Vec<String> = needs
         .iter()
         .filter(|need| need.subject == entry.subject)
         .map(|need| format!("`{}`", need.change))
         .collect();
-    let reason = if same_subject.is_empty() {
+    let mut reason = if same_subject.is_empty() {
         "An acceptance allows the changes this change makes, so each entry must name one `jadpo check` reports.".to_string()
     } else {
         format!(
@@ -857,15 +882,28 @@ fn unmatched(entry: &files::Entry, needs: &[Need]) -> Diagnostic {
             crate::or_list(&same_subject)
         )
     };
+    // Which baseline, and why: on the default branch itself, or with no
+    // remote, it may not be the one the author had in mind.
+    reason.push_str(&format!(
+        " This change was compared with {}, {}.",
+        before.described, before.why
+    ));
+    let next = if uncompared.is_empty() {
+        "Remove the entry, or run `jadpo acceptance new <purpose>` to list what this change needs".to_string()
+    } else {
+        reason.push_str(&format!(
+            " While other errors stand, {} aren't compared, so a change in them isn't seen yet.",
+            crate::and_list(&uncompared.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        ));
+        "Fix the other errors first; if the entry still matches no change, remove it, or run `jadpo acceptance new <purpose>` to list what this change needs".to_string()
+    };
     Diagnostic::new(
         &rule::ACCEPTANCE_UNMATCHED,
         format!("`{}: {}` matches no change", entry.subject, entry.change),
     )
     .at(entry.span.clone(), "nothing changed like this")
     .reason(reason)
-    .next(
-        "Remove the entry, or run `jadpo acceptance new <purpose>` to list what this change needs",
-    )
+    .next(next)
 }
 
 fn edited(acceptance: &files::Acceptance, before: &BeforeSide) -> Diagnostic {
