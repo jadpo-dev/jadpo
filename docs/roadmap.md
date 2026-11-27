@@ -154,6 +154,7 @@ D1 first: the site starts once D1 has merged.
   frozen where 10.14b merged. The report gives correctness, unsafe changes,
   tokens and cost per correct change for each model, with debriefs of the
   misses.
+- [x] **10.15c Reading an Int in the form it is written**: [Numbers in JSON](language/02-values-and-types.md#numbers-in-json) and its decision in [the notes](language/notes/02-values-and-types.md).
 - [ ] **10.16 A real product, grown large in both languages** `opus · high`
   after 10.15 (Richard, 2026-11-27): does TypeScript lose more than Jadpo as
   an app grows past what an agent can read at once? The app is a private

@@ -450,7 +450,9 @@ pub fn verify_jwt_as(
     match codecs.read(
         codec,
         &Json::Object(custom),
-        &Path::default(),
+        // Read as `json.read` reads a document: an `Int` in the form Jadpo
+        // writes it.
+        &Path::default().sent(),
         &mut problems,
     ) {
         Some(value) => Ok(value),

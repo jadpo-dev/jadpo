@@ -240,6 +240,20 @@ fn the_first_problem_reaches_the_client_and_never_a_value() {
         serde_json::json!({ "problem": { "field": "lines.2.quantity", "rule": "max" } })
     );
 
+    // An `Int` is read in the form Jadpo writes it: text is the wrong type
+    // (area 2, "Numbers in JSON").
+    let text = dev.send(
+        "POST",
+        "/imports",
+        &[],
+        &body(r#"{"reference": "A-12", "lines": [{"sku": "rye", "quantity": "2"}]}"#),
+    );
+    assert_eq!(text.status, 422, "{text:?}");
+    assert_eq!(
+        text.json()["error"]["details"],
+        serde_json::json!({ "problem": { "field": "lines.0.quantity", "rule": "type" } })
+    );
+
     let secret = dev.send(
         "POST",
         "/imports",
