@@ -156,6 +156,46 @@ pub(crate) const TOKENS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM
 pub(crate) const REVOKE_TOKEN: &str =
     "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1 AND \"csrf_verifier\" IS NULL";
 
+/// A user's browser sessions that haven't ended, oldest first (chunk
+/// 10.13).
+pub(crate) const BROWSER_SESSIONS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NOT NULL AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
+
+/// Ends one browser session, never an API token.
+pub(crate) const REVOKE_BROWSER_SESSION: &str =
+    "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1 AND \"csrf_verifier\" IS NOT NULL";
+
+/// Which credentials a listing or a revocation is of (chunk 10.13).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Held {
+    /// A user's API tokens.
+    Tokens,
+    /// A user's browser sessions.
+    Sessions,
+    /// A service's keys.
+    Keys,
+}
+
+impl Held {
+    /// What `op` lists or revokes.
+    pub fn of(op: jadpo_std::http::SessionOp) -> Held {
+        use jadpo_std::http::SessionOp;
+        match op {
+            SessionOp::Keys | SessionOp::RevokeKey | SessionOp::IssueKey => Held::Keys,
+            SessionOp::BrowserSessions | SessionOp::RevokeBrowserSession => Held::Sessions,
+            _ => Held::Tokens,
+        }
+    }
+
+    /// What a `GET` route's listing lists.
+    pub fn listed(keys: bool, browser: bool) -> Held {
+        match (keys, browser) {
+            (true, _) => Held::Keys,
+            (false, true) => Held::Sessions,
+            (false, false) => Held::Tokens,
+        }
+    }
+}
+
 /// Keeps a new service key.
 pub(crate) const ISSUE_KEY: &str = "INSERT INTO \"jadpo_service_keys\" (\"id\", \"principal_id\", \"verifier\", \"started_at\", \"ends_at\") VALUES ($1, $2, $3, $4, $5)";
 
@@ -1225,16 +1265,18 @@ pub async fn issue_key(
     Stored::Value(Value::text(&key))
 }
 
-/// `sessions.tokens(user_id)` or `Service.keys(service_id)` at site
-/// `site`: the caller's tokens or keys that haven't ended, oldest first,
-/// as `IssuedToken`s or `IssuedKey`s.
+/// `sessions.tokens(user_id)`, `sessions.browser_sessions(user_id)` or
+/// `Service.keys(service_id)` at site `site`: the caller's tokens,
+/// browser sessions or keys that haven't ended, oldest first, as
+/// `IssuedToken`s (a browser session's too) or `IssuedKey`s.
 pub async fn issued(
     ctx: &mut Ctx<'_>,
     plan: Option<&IdentityPlan>,
-    keys: bool,
+    held: Held,
     holder: &Value,
     site: u32,
 ) -> Stored {
+    let keys = held == Held::Keys;
     let store = match (plan, keys) {
         (Some(plan), false) => Some(plan.store.clone()),
         (Some(plan), true) => plan.keys_store().map(str::to_string),
@@ -1255,10 +1297,13 @@ pub async fn issued(
         ));
     };
     let params = vec![holder, SqlValue::Timestamp(ctx.now().saturating_mul(1000))];
-    let (statement, gated) = if keys {
-        (KEYS, plan.and_then(|plan| plan.gated.keys.as_ref()))
-    } else {
-        (TOKENS, plan.and_then(|plan| plan.gated.tokens.as_ref()))
+    let (statement, gated) = match held {
+        Held::Keys => (KEYS, plan.and_then(|plan| plan.gated.keys.as_ref())),
+        Held::Tokens => (TOKENS, plan.and_then(|plan| plan.gated.tokens.as_ref())),
+        Held::Sessions => (
+            BROWSER_SESSIONS,
+            plan.and_then(|plan| plan.gated.browser_sessions.as_ref()),
+        ),
     };
     let Some((statement, params)) = policed(ctx, statement, gated, params) else {
         return Stored::Fault(unpoliced(ctx, site));
@@ -1299,10 +1344,10 @@ pub async fn issued(
 pub async fn list(
     ctx: &mut Ctx<'_>,
     plan: Option<&IdentityPlan>,
-    keys: bool,
+    held: Held,
     holder: &Value,
 ) -> Stored {
-    let mut alone = Listing { plan, keys, holder };
+    let mut alone = Listing { plan, held, holder };
     match action(ctx, &mut alone).await {
         Outcome::Value(value) => Stored::Value(value),
         Outcome::Failed(failure) => Stored::Failed(failure),
@@ -1317,7 +1362,7 @@ pub async fn list(
 /// The listing as its boundary's body.
 struct Listing<'o> {
     plan: Option<&'o IdentityPlan>,
-    keys: bool,
+    held: Held,
     holder: &'o Value,
 }
 
@@ -1328,7 +1373,7 @@ impl<'p> ActionBody<'p> for Listing<'_> {
 
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
-            match issued(ctx, self.plan, self.keys, self.holder, crate::Frame::ENTRY).await {
+            match issued(ctx, self.plan, self.held, self.holder, crate::Frame::ENTRY).await {
                 Stored::Value(value) => Outcome::Value(value),
                 Stored::Failed(failure) => Outcome::Failed(failure),
                 Stored::Conflict { cause, .. } => Outcome::Failed(cause),
@@ -1338,16 +1383,18 @@ impl<'p> ActionBody<'p> for Listing<'_> {
     }
 }
 
-/// `sessions.revoke_token(token_id)` or `Service.revoke_key(key_id)` at
-/// site `site`: deletes it in the running action's transaction; an `id`
-/// nothing has deletes nothing.
+/// `sessions.revoke_token(token_id)`,
+/// `sessions.revoke_browser_session(session_id)` or
+/// `Service.revoke_key(key_id)` at site `site`: deletes it in the running
+/// action's transaction; an `id` nothing of that kind has deletes nothing.
 pub async fn revoke(
     ctx: &mut Ctx<'_>,
     plan: Option<&IdentityPlan>,
-    keys: bool,
+    held: Held,
     id: &Value,
     site: u32,
 ) -> Stored {
+    let keys = held == Held::Keys;
     let store = match (plan, keys) {
         (Some(plan), false) => Some(plan.store.clone()),
         (Some(plan), true) => plan.keys_store().map(str::to_string),
@@ -1367,16 +1414,19 @@ pub async fn revoke(
             site,
         ));
     };
-    let (statement, gated) = if keys {
-        (
+    let (statement, gated) = match held {
+        Held::Keys => (
             REVOKE_KEY,
             plan.and_then(|plan| plan.gated.revoke_key.as_ref()),
-        )
-    } else {
-        (
+        ),
+        Held::Tokens => (
             REVOKE_TOKEN,
             plan.and_then(|plan| plan.gated.revoke_token.as_ref()),
-        )
+        ),
+        Held::Sessions => (
+            REVOKE_BROWSER_SESSION,
+            plan.and_then(|plan| plan.gated.revoke_browser_session.as_ref()),
+        ),
     };
     let Some((statement, params)) = policed(ctx, statement, gated, vec![id]) else {
         return Stored::Fault(unpoliced(ctx, site));

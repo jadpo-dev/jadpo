@@ -3640,3 +3640,128 @@ fn a_route_test_leaves_an_omitted_field_out() {
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
 }
+
+/// The sign-in project with a second browser, a listing of the member's
+/// browser sessions and signing out everywhere (chunk 10.13).
+const EVERYWHERE: &[(&str, &str)] = &[
+    (
+        "domains/notes/actions/another_browser.jadpo",
+        r#"/// Starts another session for the signed-in member, as a second
+/// browser signing in does.
+action another_browser(member: Principal.user) -> Unit {
+    sessions.start(member.id)
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/sign_out_everywhere.jadpo",
+        r#"/// Ends every browser session the member has, this one's too.
+action sign_out_everywhere(member: Principal.user) -> Unit {
+    for session in sessions.browser_sessions(member.id) {
+        sessions.revoke_browser_session(session.id)
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/routes/browsers.jadpo",
+        r#"use notes/actions { another_browser, sign_out_everywhere }
+
+/// The member's browsers.
+routes Browsers {
+    prefix: /browsers
+
+    /// Every browser the member is signed in on, oldest first.
+    GET / {
+        output: List<IssuedToken>
+        run: sessions.browser_sessions(current_principal.user.id)
+    }
+
+    /// Signs another browser in.
+    POST / {
+        status: SuccessStatus.no_content
+        run: another_browser(current_principal.user)
+    }
+
+    /// Signs the member out of every browser.
+    POST /sign-out {
+        status: SuccessStatus.no_content
+        run: sign_out_everywhere(current_principal.user)
+    }
+}
+"#,
+    ),
+];
+
+#[test]
+fn a_member_lists_their_browsers_and_signs_out_of_every_one() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let dir = tempdir::Dir::new("everywhere");
+    let root = dir.path().join("notes");
+    for (path, text) in SIGN_IN.iter().chain(EVERYWHERE) {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["records", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let json = [("content-type", "application/json")];
+    let signed = dev.send("POST", "/account/sign-up", &json, r#"{"handle":"ann"}"#);
+    assert_eq!(signed.status, 204, "{}", signed.body);
+    let (first, first_csrf, _) = session_cookies(&signed);
+    let headers = |token: &str, csrf: &str| {
+        (
+            format!("notes_session={token}; notes_session_csrf={csrf}"),
+            csrf.to_string(),
+        )
+    };
+    let (cookie, csrf) = headers(&first, &first_csrf);
+    let from = |cookie: &str, csrf: &str| {
+        vec![
+            ("cookie".to_string(), cookie.to_string()),
+            ("origin".to_string(), "http://localhost".to_string()),
+            ("x-jadpo-csrf".to_string(), csrf.to_string()),
+        ]
+    };
+    let send = |method: &str, path: &str, with: &[(String, String)]| {
+        let with: Vec<(&str, &str)> = with.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+        dev.send(method, path, &with, "")
+    };
+    // A second browser signs in beside the first.
+    let second = send("POST", "/browsers", &from(&cookie, &csrf));
+    assert_eq!(second.status, 204, "{}", second.body);
+    let (token, second_csrf, _) = session_cookies(&second);
+    assert_eq!(token.len(), 64);
+    let (other, other_csrf) = headers(&token, &second_csrf);
+    // Both are listed, oldest first, as their ids and times only.
+    let listed = send("GET", "/browsers", &from(&other, &other_csrf));
+    assert_eq!(listed.status, 200, "{}", listed.body);
+    let sessions = listed.json();
+    let sessions = sessions.as_array().expect("a list");
+    assert_eq!(sessions.len(), 2, "{}", listed.body);
+    for session in sessions {
+        let mut keys: Vec<&str> = session
+            .as_object()
+            .expect("an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["ends_at", "id", "started_at"]);
+    }
+    // Signing out everywhere ends both.
+    let out = send("POST", "/browsers/sign-out", &from(&other, &other_csrf));
+    assert_eq!(out.status, 204, "{}", out.body);
+    for (cookie, csrf) in [(&cookie, &csrf), (&other, &other_csrf)] {
+        let after = send("GET", "/browsers", &from(cookie, csrf));
+        assert_eq!(after.status, 401, "{}", after.body);
+        assert_eq!(after.json()["error"]["code"], "invalid_credentials");
+    }
+}

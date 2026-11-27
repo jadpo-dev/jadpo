@@ -923,7 +923,7 @@ rules! {
     QUERY_ORDER_DIRECTION: "query.order_direction", area 6, Error, Agent,
         "An entry of a query's `order:` has no direction, or one it can't sort in";
     QUERY_ORDER_FIELD: "query.order_field", area 6, Error, Agent,
-        "A query sorts records by a field, such as a `Bool` or an enum, that the database and Jadpo don't order the same way";
+        "A query sorts records by a field, such as a `Bool` or an enum with data, that the database and Jadpo don't order the same way";
     QUERY_OTHER_DOMAIN: "query.other_domain", area 6, Error, Human,
         "A query in one domain reads the records of an entity that belongs to another domain";
     QUERY_PAGE_SETTING: "query.page_setting", area 6, Error, Agent,

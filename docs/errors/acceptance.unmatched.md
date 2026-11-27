@@ -48,7 +48,7 @@ error: `main.TodoView.title: ApiChange.output_field_removed` matches no change
   |
 4 |         main.TodoView.title: ApiChange.output_field_removed
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ nothing changed like this
-  reason: An acceptance allows the changes this change makes, so each entry must name one `jadpo check` reports.
+  reason: An acceptance allows the changes this change makes, so each entry must name one `jadpo check` reports. This change was compared with main at 0bffa25, the local branch: no remote names a default branch.
   next: Remove the entry, or run `jadpo acceptance new <purpose>` to list what this change needs (agent)
   rule: acceptance.unmatched
   help: https://jadpo.dev/docs/errors/acceptance.unmatched
@@ -61,6 +61,16 @@ the fix itself.
 
 An entry for a change that an earlier acceptance already allowed is the
 same error, since it allows nothing new.
+
+The reason says which commit the change was compared with and why that
+one: the default branch a remote names, at its merge base with your
+branch; a local `main` when no remote names one; the previous commit on
+the default branch itself; or what `--before` names. A change you made
+before that commit isn't part of this change.
+
+While other errors stand, the records whose source has errors aren't
+compared, and the reason names them: an entry for a change in them is
+reported until those errors are fixed. Fix them first, then check again.
 
 ## How to fix it
 

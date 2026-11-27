@@ -888,7 +888,7 @@ fn text_form(entry: &Json, forms: &Forms) -> Vec<String> {
         // Text already: a `Text` parameter takes it as it is (chunk
         // 10.9e), and `text.from` is `type.mismatch`.
         Some("text") => out.extend([
-            "It is text already, so pass it as it is wherever `Text` is wanted: `Label(value)` for a type `Label` built on `Text`, or `text.lower(value)`. `text.from` doesn't take it. `text.parse` reads one from text, checking it.".to_string(),
+            "It is text already, so pass it as it is wherever `Text` is wanted: `Label(value)` for a type `Label` built on `Text`, or `text.lower(value)`, and `text.from(value)` gives the same text. `text.parse` reads one from text, checking it.".to_string(),
             String::new(),
         ]),
         Some(_) => {
@@ -1420,9 +1420,10 @@ mod tests {
 
     /// What a page says to write a value as text compiles (chunk 10.9e):
     /// `jadpo help Email` once offered `text.from`, which a type built on
-    /// `Text` is `type.mismatch` for. Each type a page calls text already
-    /// is passed as it is, and each it says `text.from` writes is given
-    /// to `text.from`, through the checker.
+    /// `Text` was `type.mismatch` for until chunk 10.13. Each type a page
+    /// calls text already is passed as it is or through `text.from`, and
+    /// each it says `text.from` writes is given to `text.from`, through
+    /// the checker.
     #[test]
     fn what_a_page_says_writes_a_value_as_text_compiles() {
         let reference = Reference::load();
@@ -1462,8 +1463,8 @@ mod tests {
                 );
                 assert_eq!(
                     check("Wire(text.from(value))"),
-                    ["type.mismatch"],
-                    "{name}: `text.from` doesn't take it"
+                    Vec::<String>::new(),
+                    "{name}: `text.from` gives it as it is"
                 );
             }
         }

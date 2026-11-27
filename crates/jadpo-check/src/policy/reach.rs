@@ -233,8 +233,12 @@ pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> 
         | SessionOp::TestPasskeySignIn
         | SessionOp::TestPasskeyConfirm
         | SessionOp::TestProviderSignIn => Act::SignsIn,
-        SessionOp::Tokens => Act::Entity(user?.to_string(), Effect::Read),
-        SessionOp::RevokeToken => Act::Entity(user?.to_string(), Effect::Update),
+        SessionOp::Tokens | SessionOp::BrowserSessions => {
+            Act::Entity(user?.to_string(), Effect::Read)
+        }
+        SessionOp::RevokeToken | SessionOp::RevokeBrowserSession => {
+            Act::Entity(user?.to_string(), Effect::Update)
+        }
         SessionOp::Keys => Act::Entity(service?.to_string(), Effect::Read),
         SessionOp::IssueKey | SessionOp::RevokeKey => {
             Act::Entity(service?.to_string(), Effect::Update)

@@ -210,10 +210,15 @@ pub enum Run {
     Action(u32),
     /// A named query's read.
     Query(Box<ReadPlan>),
-    /// `sessions.tokens` (or the service entity's `keys` when `keys`) run
-    /// by a `GET` itself (area 8): the holder's tokens or keys that
+    /// `sessions.tokens` (or the service entity's `keys` when `keys`, or
+    /// `sessions.browser_sessions` when `browser`) run by a `GET` itself
+    /// (area 8): the holder's tokens, keys or browser sessions that
     /// haven't ended, limited by its record's `read` grants (area 9).
-    Listing { keys: bool },
+    Listing {
+        keys: bool,
+        #[serde(default)]
+        browser: bool,
+    },
     /// `POST /auth/exchange`, generated with a revocation delay and
     /// service keys (area 8, "Ways to sign in"): the service key the
     /// request signed in with, traded for a short-lived signed token.
@@ -1205,6 +1210,11 @@ pub enum SessionOp {
     Tokens,
     /// `sessions.revoke_token(token_id)`.
     RevokeToken,
+    /// `sessions.browser_sessions(user_id)` (chunk 10.13): the user's live
+    /// browser sessions.
+    BrowserSessions,
+    /// `sessions.revoke_browser_session(session_id)`.
+    RevokeBrowserSession,
     /// `Service.issue_key(service_id, expires_at)`: a `ServiceKey`, shown
     /// once.
     IssueKey,
@@ -1266,12 +1276,14 @@ pub enum SessionOp {
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 23] = [
+    pub const ALL: [SessionOp; 25] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
         SessionOp::Tokens,
         SessionOp::RevokeToken,
+        SessionOp::BrowserSessions,
+        SessionOp::RevokeBrowserSession,
         SessionOp::IssueKey,
         SessionOp::Keys,
         SessionOp::RevokeKey,
@@ -1299,6 +1311,8 @@ impl SessionOp {
             SessionOp::IssueToken => "issue_token",
             SessionOp::Tokens => "tokens",
             SessionOp::RevokeToken => "revoke_token",
+            SessionOp::BrowserSessions => "browser_sessions",
+            SessionOp::RevokeBrowserSession => "revoke_browser_session",
             SessionOp::IssueKey => "issue_key",
             SessionOp::Keys => "keys",
             SessionOp::RevokeKey => "revoke_key",
@@ -1436,7 +1450,7 @@ impl SessionOp {
     pub fn reads_only(self) -> bool {
         matches!(
             self,
-            SessionOp::Tokens | SessionOp::Keys | SessionOp::Webhooks
+            SessionOp::Tokens | SessionOp::BrowserSessions | SessionOp::Keys | SessionOp::Webhooks
         )
     }
 
@@ -1447,6 +1461,8 @@ impl SessionOp {
             // browser session in, rather than a method of their own.
             SessionOp::Start
             | SessionOp::End
+            | SessionOp::BrowserSessions
+            | SessionOp::RevokeBrowserSession
             | SessionOp::MagicLinkRequest
             | SessionOp::MagicLinkRedeem
             | SessionOp::MagicLinkRedeemCode
@@ -1677,6 +1693,13 @@ pub struct GatedStatements {
     pub tokens: Option<crate::policy::Gated>,
     /// `sessions.revoke_token(token_id)`: `$1` the token.
     pub revoke_token: Option<crate::policy::Gated>,
+    /// `sessions.browser_sessions(user_id)`: `$1` the user, `$2` the time
+    /// now (chunk 10.13).
+    #[serde(default)]
+    pub browser_sessions: Option<crate::policy::Gated>,
+    /// `sessions.revoke_browser_session(session_id)`: `$1` the session.
+    #[serde(default)]
+    pub revoke_browser_session: Option<crate::policy::Gated>,
     /// `Service.issue_key(...)`: `$1` the key's `id`, `$2` the service,
     /// `$3` its verifier, `$4` the time now and `$5` when it expires.
     pub issue_key: Option<crate::policy::Gated>,

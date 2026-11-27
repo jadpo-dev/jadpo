@@ -169,7 +169,12 @@ set it fails on them instead, naming the command
 compares the change with the default branch at its merge base, and fails
 on each change that needs a person's acceptance and has none
 ([Review and sign-off](#review-and-sign-off)); `--before <branch or
-commit>` compares with another. With `--json`, `data` holds the `layout`,
+commit>` compares with another. The default branch is the one a remote's
+`HEAD` names, else a remote's `main` or `master`, else a local `main` or
+`master`; on the default branch itself the change is its last commit. An
+acceptance entry that matches no change says which of these it compared
+with and why, and, while other errors stand, which records weren't
+compared, since a change in them isn't seen until those are fixed. With `--json`, `data` holds the `layout`,
 the `root`, the `fileCount` and the `errors`, and any `notice_list`,
 `providers`, `per_instance` and `before`; `--full` lists the `files` and what it
 wrote to `build`. What a first commit holds that nothing can compare, such as a

@@ -118,6 +118,14 @@ const FILES: &[(&str, &str)] = &[
         "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Every task by status, a page at a time.\nquery other_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    order: [Task.title asc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
     ),
     (
+        "domains/planning/queries/status_page.jadpo",
+        "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Tasks open first, as `Status` declares them, a page at a time.\nquery status_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    order: [Task.status asc, Task.title asc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
+    ),
+    (
+        "domains/planning/queries/status_list_desc.jadpo",
+        "use planning/entities { Task }\nuse planning/types { TaskView }\n\n/// Tasks done first.\nquery status_list_desc() -> List<TaskView> {\n    from: Task\n    order: [Task.status desc, Task.title asc]\n    limit: 10\n}\n",
+    ),
+    (
         "domains/planning/queries/boards.jadpo",
         "use planning/entities { Project, Task }\nuse planning/types { Board, Status }\n\n/// Every project with its first open task.\nquery boards() -> List<Board> {\n    from: Project\n    order: [Project.name asc]\n    limit: 10\n    include: {\n        tasks: {\n            via: Task.project_id\n            where: Task.status == Status.open\n            order: [Task.title asc]\n            limit: 1\n        }\n    }\n}\n",
     ),
@@ -256,3 +264,24 @@ test \"get reads a record by id, or fails with its id\" {
     assert find_project(\"0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e\") fails ProjectNotFound
 }
 ";
+
+/// Chunk 10.13 (area 6, "What can be sorted"): an enum sorts in its
+/// declared order, `open` before `done`, not by the codes' spelling, in a
+/// list and across a page's cursor.
+#[test]
+fn an_enum_sorts_in_its_declared_order() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = project("enum-order");
+    write(
+        &root,
+        "domains/planning/queries/status_page.test.jadpo",
+        "use planning/types { Filter, TaskView }\nuse planning/queries { status_list_desc }\nuse planning/fixtures { two_projects }\n\ntest \"open comes before done, page after page\" {\n    assert list.count(two_projects().tasks) == 5\n    var first: Page<TaskView> = status_page(Filter {})\n    assert list.map(first.items, task -> task.title) == [\"Dig\", \"Paint\"]\n    var second: Page<TaskView> = status_page(Filter { after: first.next })\n    assert list.map(second.items, task -> task.title) == [\"Sweep\", \"Water\"]\n    var third: Page<TaskView> = status_page(Filter { after: second.next })\n    assert list.map(third.items, task -> task.title) == [\"Plant\"]\n    assert third.next == none\n}\n\ntest \"descending puts done first\" {\n    assert list.count(two_projects().tasks) == 5\n    var all: List<TaskView> = status_list_desc()\n    assert list.map(all, task -> task.title) == [\"Plant\", \"Dig\", \"Paint\", \"Sweep\", \"Water\"]\n}\n",
+    );
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+}

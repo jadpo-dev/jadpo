@@ -5783,9 +5783,12 @@ follows the Unicode release PostgreSQL was built with.
 standard type with a canonical text, and `Int`, `Decimal` and `Bool`;
 anything else is `type.mismatch`. It takes no enum your application
 declares: such an enum has no display label
-([Enums](02-values-and-types.md#enums)), so showing one is a `match`. It
-takes no text either, since a value built on `Text` already is text
-(`Email`, `Url` and `IpAddress` included).
+([Enums](02-values-and-types.md#enums)), so showing one is a `match`. A
+value built on `Text`, `Email`, `Url`, `IpAddress` or a type your
+application builds on `Text`, gives its text as it is, so code that
+needs `Text` from one writes `text.from(email)` as it would for any other
+value. A secret is still `type.secret_exposed`
+([What may read a secret](#what-may-read-a-secret)).
 
 A standard type's canonical text is the one form
 [the contract](#what-every-standard-type-can-do) writes it as:
@@ -10343,7 +10346,7 @@ everything, a named validator. For each of them:
 
 - only the canonical text is read;
 - none is ordered;
-- `text.from` is `type.mismatch`, because each is text already;
+- `text.from` gives the text as it is;
 - `text.parse` fails only as `malformed`.
 
 `Hostname`, `WebOrigin` and `Cidr` are text, not an enum and objects,

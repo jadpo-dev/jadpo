@@ -101,8 +101,8 @@ cd examples/10-library-loans && ../../target/release/jadpo migrate status
   <!-- try {"file": "domains/lending/entities/member.jadpo", "replace": "    joined_at: Instant {\n        generated: Generated.on_create\n    }\n", "with": "    joined_at: Instant {\n        generated: Generated.on_create\n    }\n\n    indexes: {\n        by_name: [name]\n    }\n", "check": ["migration.out_of_date"]} -->
 - In `member_loans.jadpo`, change `limit: 50` to `limit: 0`. `jadpo check` reports `query.limit_range`: a list holds at least one record.
   <!-- try {"file": "domains/lending/queries/member_loans.jadpo", "replace": "limit: 50", "with": "limit: 0", "check": ["query.limit_range"]} -->
-- In `browse_books.jadpo`, sort by `Book.wear` instead of `Book.title`. `jadpo check` reports `query.order_field`: the database keeps an enum as its variant's name, so it can't sort copies in the enum's order.
-  <!-- try {"file": "domains/lending/queries/browse_books.jadpo", "replace": "order: [Book.title asc]", "with": "order: [Book.wear asc]", "check": ["query.order_field"]} -->
+- In `browse_books.jadpo`, sort by `Book.wear` instead of `Book.title`. Copies then come pristine first and fragile last, in the order `Wear` declares, and `jadpo check` reports `migration.out_of_date`: the page's new order needs an index of its own, which the next migration writes.
+  <!-- try {"file": "domains/lending/queries/browse_books.jadpo", "replace": "order: [Book.title asc]", "with": "order: [Book.wear asc]", "check": ["migration.out_of_date"]} -->
 - In `member_by_email.jadpo`, change `==` to `!=`. `jadpo check` reports `query.not_unique`: `Member?` is at most one record, and every other address could match many.
   <!-- try {"file": "domains/lending/queries/member_by_email.jadpo", "replace": "where: Member.email == email", "with": "where: Member.email != email", "check": ["query.not_unique"]} -->
 - In `lend.jadpo`, delete the `conflict:` block after the loan's `set:`. `jadpo check` reports `data.conflict_unmapped`: lending a copy twice on one day breaks `Loan.one_loan_per_due_date`, and something must say what the caller gets.

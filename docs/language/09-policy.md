@@ -962,6 +962,38 @@ limited to. What `batches.status` gives is held to what decides every
 batch's failures. [Background work](12-jobs-and-events.md) covers this
 under "What a run reaches under policy".
 
+### Tenant proof across actions
+
+A record an action returns keeps its proof of which tenant it belongs to
+when the caller is another action in the same request. The called action
+read, created or changed it under the same caller and in the same
+transaction, so the caller may read it, change it, copy between it and
+its own records, and name its tenant, without reading it again. Here
+`find_chore` is a helper the other actions share:
+
+```jadpo fragment
+action find_chore(chore_id: Chore.id) fails ChoreNotFound -> Chore {
+    return attempt Chore.get(chore_id)
+}
+
+action bump(chore_id: Chore.id) fails ChoreNotFound -> Unit {
+    var chore: Chore = attempt find_chore(chore_id)
+    Chore.update(chore) {
+        set: {
+            ticks: chore.ticks + 1
+        }
+    }
+}
+```
+
+- The proof is of the record the action is declared to return, `Chore`
+  or `Chore?`. Each call gives a record of its own, so two calls'
+  records may be of two tenants.
+- A value that arrives as an action's parameter keeps no proof, since it
+  comes from outside the action, and is checked as above: an id is
+  proved by reading its record, and a record handed whole is proved where
+  the action is called.
+
 ## Tenancy
 <!-- topic: tenancy -->
 
@@ -2642,7 +2674,12 @@ compiler checks each like an output:
   it, as does a `match` binding the one record a value such as
   `list.first(...)` holds (never a collection's records, which are many),
   and a change finds a record it is given by its `id`, not by what an
-  earlier change stored in it. What the change gives back is still proved
+  earlier change stored in it. A record another action returns is the
+  one record that call gives, read, created or changed under the same
+  caller in the same transaction, so the caller copies between it and a
+  record it reads itself as it would between two of its own, with no
+  second read; each call gives a record of its own, so two calls'
+  records are two records ([Tenant proof across actions](#tenant-proof-across-actions)). What the change gives back is still proved
   against its entity's `read:`. So does a copy into a
   record whose user field the write sets from the caller, such as a
   duplicate of the caller's own todo: whoever that field lets in is the

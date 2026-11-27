@@ -8,7 +8,7 @@
 //! Clauses come one to a line, an inner statement two spaces in, so
 //! `jadpo sql` prints a statement as it is sent.
 
-use crate::{ident, idents};
+use crate::{ident, idents, text_literal};
 
 /// `SELECT` of `columns` from `table`, each line led by `indent`.
 pub fn select<S: AsRef<str>>(columns: &[S], table: &str, indent: &str) -> String {
@@ -378,6 +378,9 @@ pub struct Order<'a> {
     /// Whether the column may be `NULL`: it then sorts `NULLS LAST`, in
     /// either direction (area 6, "What can be sorted").
     pub nullable: bool,
+    /// An enum's codes in its declared order, which it sorts by (chunk
+    /// 10.13); `None` for any other column.
+    pub codes: Option<&'a [String]>,
 }
 
 /// An order's fields, `qualifier.`-prefixed when one is given.
@@ -386,16 +389,35 @@ fn order_terms(order: &[Order<'_>], qualifier: Option<&str>) -> String {
         .iter()
         .map(|field| {
             let prefix = qualifier.map_or_else(String::new, |q| format!("{}.", ident(q)));
+            let column = format!("{prefix}{}", ident(field.column));
             format!(
-                "{prefix}{}{} {}{}",
-                ident(field.column),
-                collate(field.collate),
+                "{} {}{}",
+                sorted_by(&column, field.collate, field.codes),
                 if field.descending { "DESC" } else { "ASC" },
                 if field.nullable { " NULLS LAST" } else { "" }
             )
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// What `value` (a column or a parameter) sorts as: an enum's place among
+/// its codes in declared order, text by code point, or itself.
+fn sorted_by(value: &str, text: bool, codes: Option<&[String]>) -> String {
+    match codes {
+        Some(codes) => enum_position(value, codes),
+        None => format!("{value}{}", collate(text)),
+    }
+}
+
+/// An enum's place in its declared order: `array_position` of the codes
+/// it is stored as, as a group of one sorts (area 6, "Aggregates").
+pub fn enum_position(value: &str, codes: &[String]) -> String {
+    let codes: Vec<String> = codes.iter().map(|code| text_literal(code)).collect();
+    format!(
+        "array_position(ARRAY[{}]::text[], ({value})::text)",
+        codes.join(", ")
+    )
 }
 
 /// ` COLLATE "C"` when `text` sorts by code point.
@@ -438,6 +460,8 @@ pub struct After<'a> {
     pub descending: bool,
     /// Whether the column may be `NULL`, which sorts last either way.
     pub nullable: bool,
+    /// An enum's codes in declared order, as [`Order::codes`].
+    pub codes: Option<&'a [String]>,
 }
 
 /// The condition that starts a page after its cursor: the rows past the
@@ -448,8 +472,8 @@ pub fn after(parts: &[After<'_>]) -> Option<String> {
         return after_nullable(parts);
     }
     let first = parts.first()?;
-    let column = |part: &After<'_>| format!("{}{}", ident(part.column), collate(part.collate));
-    let param = |part: &After<'_>| format!("{}{}", part.param, collate(part.collate));
+    let column = |part: &After<'_>| sorted_by(&ident(part.column), part.collate, part.codes);
+    let param = |part: &After<'_>| sorted_by(&part.param, part.collate, part.codes);
     let past_op = |part: &After<'_>| if part.descending { "<" } else { ">" };
     let same = parts.iter().all(|p| p.descending == first.descending);
     let past = if same {
@@ -497,8 +521,8 @@ pub fn after(parts: &[After<'_>]) -> Option<String> {
 /// `NULL` in a row, so its parameter says whether there is a cursor.
 fn after_nullable(parts: &[After<'_>]) -> Option<String> {
     let last = parts.last()?;
-    let column = |part: &After<'_>| format!("{}{}", ident(part.column), collate(part.collate));
-    let param = |part: &After<'_>| format!("{}{}", part.param, collate(part.collate));
+    let column = |part: &After<'_>| sorted_by(&ident(part.column), part.collate, part.codes);
+    let param = |part: &After<'_>| sorted_by(&part.param, part.collate, part.codes);
     let equal = |part: &After<'_>| {
         if part.nullable {
             format!("{} IS NOT DISTINCT FROM {}", column(part), param(part))
@@ -1592,6 +1616,7 @@ mod tests {
             collate: false,
             descending,
             nullable: false,
+            codes: None,
         };
         assert_eq!(after(&[]), None);
         let optional = |column, param: &str, descending| After {

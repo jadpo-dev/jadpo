@@ -203,6 +203,7 @@ pub(crate) fn table(
             (
                 Run::Listing {
                     keys: op.on_service(),
+                    browser: op == jadpo_std::http::SessionOp::BrowserSessions,
                 },
                 None,
             )

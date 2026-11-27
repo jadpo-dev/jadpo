@@ -269,3 +269,38 @@ fn a_batch_reaching_a_tenants_records_through_its_action_names_its_tenant() {
     let only_shared = "query people(page: SweepPage) -> Page<Person> {\n    from: Person\n    order: [Person.id asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n\naction look(person: Person) -> Unit {\n    assert person.handle != \"\"\n}\n\naction sweep_people(page: SweepPage) -> BatchRun {\n    return batches.each(from: people(page), each: person -> look(person))\n}\n";
     assert_eq!(unnamed(only_shared), Vec::<String>::new());
 }
+
+/// The `policy.output_field_unproved` problems `actions` give beside
+/// [`BASE`], each with what it says.
+fn copies(actions: &str) -> Vec<String> {
+    let source = format!("{BASE}\n{actions}");
+    support::problems(Layout::Loose, &[("main.jadpo", source.as_str())])
+        .into_iter()
+        .filter(|problem| problem.contains("policy.output_field_unproved"))
+        .collect()
+}
+
+/// `find_chore`, an action another action calls to read a chore.
+const FIND: &str = "action find_chore(chore_id: Chore.id) fails ChoreNotFound -> Chore {\n    return attempt Chore.get(chore_id)\n}\n\n";
+
+#[test]
+fn a_record_an_action_returns_keeps_its_tenant_proof() {
+    // Chunk 10.13 (area 9, "Tenant proof across actions"): the chore
+    // `find_chore` read under the same caller, in the same transaction,
+    // is the one `bump` updates, so what it copies from it stays in its
+    // tenant, as when `bump` reads the chore itself.
+    let returned = format!(
+        "{FIND}action bump(chore_id: Chore.id) fails ChoreNotFound -> Unit {{\n    var chore: Chore = attempt find_chore(chore_id)\n    Chore.update(chore) {{\n        set: {{\n            ticks: chore.ticks + 1\n        }}\n    }}\n}}\n"
+    );
+    assert_eq!(copies(&returned), Vec::<String>::new());
+}
+
+#[test]
+fn each_call_returns_a_record_of_its_own() {
+    // Two calls may return chores of two households: copying one's
+    // count into the other could carry it across tenants.
+    let two = format!(
+        "{FIND}action copy_ticks(from_id: Chore.id, to_id: Chore.id) fails ChoreNotFound -> Unit {{\n    var from: Chore = attempt find_chore(from_id)\n    var to: Chore = attempt find_chore(to_id)\n    Chore.update(to) {{\n        set: {{\n            ticks: from.ticks\n        }}\n    }}\n}}\n"
+    );
+    assert_eq!(copies(&two).len(), 1, "{:?}", copies(&two));
+}
