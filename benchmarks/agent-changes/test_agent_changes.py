@@ -970,8 +970,11 @@ class Claude(unittest.TestCase):
         self.assertEqual((sandbox['enabled'], sandbox['autoAllowBashIfSandboxed'], sandbox['allowUnsandboxedCommands']),
                          (True, True, False))
         files = sandbox['filesystem']
-        own = [str(self.folder / name) for name in ('app', 'tmp', 'home')]
-        self.assertEqual(files['allowWrite'], own)
+        tmp = harness.claude_tmp(self.folder)
+        own = [str(self.folder / 'app'), str(tmp), str(self.folder / 'home')]
+        self.assertEqual(files['allowWrite'], own, 'exactly three: the copy, its short tmp and its home')
+        self.assertNotIn(str(harness.CLAUDE_TMP_ROOT), files['allowRead'] + files['allowWrite'])
+        self.assertEqual([path for path in files['allowRead'] if Path(path).is_relative_to(harness.CLAUDE_TMP_ROOT)], [str(tmp)])
         for denied in (str(Path.home()), '/Users', '/tmp', '/private/tmp'):
             self.assertIn(denied, files['denyRead'])
         self.assertIn(str(self.folder / 'docs'), files['allowRead'])
@@ -995,6 +998,21 @@ class Claude(unittest.TestCase):
             self.assertEqual(environment[name], '1')
         self.assertNotIn('CLAUDE_CODE_OAUTH_TOKEN', environment)
 
+    def test_temporary_files_go_in_a_short_folder_of_the_runs_own(self):
+        tmp = harness.claude_tmp(self.folder)
+        environment = harness.claude_environment(self.folder)
+        for name in ('TMPDIR', 'CLAUDE_CODE_TMPDIR'):
+            self.assertEqual(environment[name], str(tmp))
+        self.assertEqual(environment['TMPPREFIX'], str(tmp / 'zsh'))
+        self.assertEqual(tmp.parent, harness.CLAUDE_TMP_ROOT)
+        self.assertRegex(tmp.name, r'^[0-9a-f]{6}$')
+        self.assertLessEqual(len(f'{tmp}/claude-{os.getuid()}'.encode()), 44, "Claude Code's limit for its sandboxed commands")
+        self.assertEqual(harness.claude_tmp(self.folder), tmp, 'one name for the whole run')
+        self.assertNotEqual(harness.claude_tmp(self.folder.with_name('S12-jadpo-r1')), tmp)
+        with mock.patch.object(harness, 'CLAUDE_TMP_ROOT', Path('/a-root-long-enough-to-pass-the-limit/x')):
+            with self.assertRaises(SystemExit):
+                harness.claude_tmp(self.folder.with_name('S12-jadpo-r2'))
+
     def test_home_starts_empty_and_goes_and_the_token_stays_out(self):
         with tempfile.TemporaryDirectory() as scratch:
             token, folder = Path(scratch) / 'token', Path(scratch) / 'run'
@@ -1009,12 +1027,27 @@ class Claude(unittest.TestCase):
                     pass
                 token.chmod(0o600)
                 with mock.patch.object(harness, 'real_git', lambda: '/usr/bin/git'):
-                    with harness.claude_home(folder, harness.PINNED, self.environment) as home:
+                    with mock.patch.object(harness, 'CLAUDE_TMP_ROOT', Path(scratch) / 'jt'), mock.patch.object(harness, 'CLAUDE_TMP_LIMIT', 4096), \
+                            harness.claude_home(folder, harness.PINNED, self.environment) as home:
+                        tmp = harness.claude_tmp(folder)
+                        self.assertEqual(stat.S_IMODE(os.stat(tmp).st_mode), 0o700)
                         self.assertEqual(list(home.iterdir()), [])
                         self.assertEqual(stat.S_IMODE(os.stat(home).st_mode), 0o700)
                         (home / 'projects/-work-app').mkdir(parents=True)
                         (home / 'projects/-work-app/s1.jsonl').write_text('{}\n')
                 self.assertFalse((folder / 'claude-home').exists())
+                self.assertFalse(tmp.exists(), 'the short tmp goes with the session')
+                with mock.patch.object(harness, 'CLAUDE_TMP_ROOT', Path(scratch) / 'jt'), mock.patch.object(harness, 'CLAUDE_TMP_LIMIT', 4096):
+                    with self.assertRaises(RuntimeError), harness.claude_home(folder, harness.PINNED, self.environment):
+                        failed = harness.claude_tmp(folder)
+                        raise RuntimeError('the run failed')
+                    self.assertFalse(failed.exists(), 'removed when the run fails too')
+                    taken = harness.claude_tmp(folder)
+                    taken.mkdir(parents=True)
+                    with self.assertRaises(SystemExit) as raised, harness.claude_home(folder, harness.PINNED, self.environment):
+                        pass
+                    self.assertIn('already exists', str(raised.exception))
+                    self.assertTrue(taken.is_dir(), 'a folder it did not make is left alone')
                 self.assertTrue((folder / 'claude-session/-work-app/s1.jsonl').is_file())
                 self.assertTrue((folder / harness.CLAUDE_SETTINGS).is_file())
                 written = [path.read_text() for path in folder.rglob('*') if path.is_file()]

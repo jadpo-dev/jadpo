@@ -131,7 +131,19 @@ without the hidden results; the language can't be hidden.
   settings file as Codex's is: it writes only the copy and its own
   temporary folders, reads nothing of the home folder, `/Users`, `/tmp`
   or other volumes but the copy, the docs, the compiler and the tools on
-  `PATH`, and has no network but the run's PostgreSQL socket. That sandbox
+  `PATH`, and has no network but the run's PostgreSQL socket. Its
+  temporary folder is not the run's `tmp` but a short one of its own,
+  `~/.jt/<6 hex>`: made 0700 when the session starts, refused if it is
+  already there, removed when the session ends even after a failure, and
+  the only path under `~/.jt` on the sandbox's lists. Claude Code puts its
+  own temporary files there (`CLAUDE_CODE_TMPDIR`), the shell's
+  working-directory file after each command among them. Its sandboxed
+  commands use that folder only while `<it>/claude-<uid>` fits in 44
+  bytes, the room a Unix socket path leaves; past that they fall back to
+  `/tmp/claude-<uid>`, which the sandbox refuses, and every command comes
+  back failed. A run folder is far longer than that, hence the folder
+  outside it. The isolation probe checks that a command that should pass
+  comes back clean. That sandbox
   covers commands only; `--restricted` keeps the file tools to the copy
   and the docs. Codex runs with its own
   `CODEX_HOME` for the run, holding only a mode-0600 copy of the login

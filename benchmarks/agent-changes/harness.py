@@ -714,9 +714,32 @@ CLAUDE_ENVIRONMENT = {'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB': '1', 'CLAUDE_CODE_DISA
                       'DISABLE_AUTOUPDATER': '1'}
 
 
+# Claude Code keeps its own temporary files, the shell's working-directory
+# file after every command among them, in a per-uid folder under
+# CLAUDE_CODE_TMPDIR (`<it>/claude-<uid>`). Its sandboxed commands use that
+# folder only while it fits in 44 bytes, the room a Unix socket path leaves;
+# past that they fall back to /tmp/claude-<uid>, which the sandbox refuses,
+# and every command comes back failed. A run folder is far longer, so a
+# Claude run's temporary folder is a short one of its own outside it:
+# ~/.jt/<6 hex>, 0700, made when the session starts and removed when it ends.
+CLAUDE_TMP_ROOT = Path.home() / '.jt'
+CLAUDE_TMPS = {}
+CLAUDE_TMP_LIMIT = 44 - len('/claude-') - len(str(os.getuid()))
+
+
+def claude_tmp(folder):
+    """This run's temporary folder for Claude Code, named once per run."""
+    path = CLAUDE_TMP_ROOT / CLAUDE_TMPS.setdefault(str(folder), secrets.token_hex(3))
+    if len(str(path).encode()) > CLAUDE_TMP_LIMIT:
+        raise SystemExit(f'{path} is over {CLAUDE_TMP_LIMIT} bytes: Claude Code would put its temporary files in /tmp, '
+                         'which the sandbox refuses')
+    return path
+
+
 def claude_environment(folder):
-    return {'CLAUDE_CONFIG_DIR': str(folder / 'claude-home'), 'HOME': str(folder / 'home'), 'TMPDIR': str(folder / 'tmp'),
-            'TMPPREFIX': str(folder / 'tmp/zsh'), **CLAUDE_ENVIRONMENT}
+    tmp = claude_tmp(folder)
+    return {'CLAUDE_CONFIG_DIR': str(folder / 'claude-home'), 'HOME': str(folder / 'home'), 'TMPDIR': str(tmp),
+            'TMPPREFIX': str(tmp / 'zsh'), 'CLAUDE_CODE_TMPDIR': str(tmp), **CLAUDE_ENVIRONMENT}
 
 
 # Plugins the pinned Claude Code ships and loads even in safe mode; the run's
@@ -725,7 +748,7 @@ CLAUDE_BUILT_IN_PLUGINS = ('cc-plugin-agents-md', 'cc-plugin-privacy', 'cc-plugi
 
 
 def claude_settings(folder, environment, sockets=()):
-    own = [str(folder / name) for name in ('app', 'tmp', 'home')]
+    own = [str(folder / 'app'), str(claude_tmp(folder)), str(folder / 'home')]
     readable = [str(path) for path in codex_readable(folder, environment) if 'codex-home' not in path.parts]
     return {'sandbox': {'enabled': True, 'autoAllowBashIfSandboxed': True, 'allowUnsandboxedCommands': False,
                         'filesystem': {'denyRead': [str(Path.home()), '/Users', '/Volumes', '/tmp', '/private/tmp',
@@ -779,16 +802,23 @@ def claude_home(folder, settings, environment, sockets=()):
     it. Claude Code's own record of the conversation is kept as
     claude-session/ and the config folder deleted afterwards."""
     claude_token()
-    home = folder / 'claude-home'
-    for name in ('tmp', 'home'):
-        (folder / name).mkdir(parents=True, exist_ok=True)
-    home.mkdir(mode=0o700)
-    (folder / CLAUDE_SETTINGS).write_text(json.dumps(claude_settings(folder, environment, sockets), indent=2) + '\n')
+    home, tmp = folder / 'claude-home', claude_tmp(folder)
+    if tmp.exists():
+        raise SystemExit(f'{tmp} already exists: another run has it, or a run left it behind')
+    (folder / 'home').mkdir(parents=True, exist_ok=True)
+    CLAUDE_TMP_ROOT.mkdir(mode=0o700, exist_ok=True)
+    tmp.mkdir(mode=0o700)
     try:
+        home.mkdir(mode=0o700)
+        (folder / CLAUDE_SETTINGS).write_text(json.dumps(claude_settings(folder, environment, sockets), indent=2) + '\n')
         yield home
     finally:
         save_claude_session(folder)
         shutil.rmtree(home, ignore_errors=True)
+        shutil.rmtree(tmp, ignore_errors=True)
+        # ~/.jt itself stays: runs side by side make and remove their own
+        # folders in it, and it is on no sandbox list.
+        CLAUDE_TMPS.pop(str(folder), None)
 
 
 def save_claude_session(folder):
