@@ -4240,6 +4240,17 @@ action sign_out() -> Unit {
 and the response of the route that ran the action sets its cookie.
 `sessions.end()` ends the session the request came with.
 
+An app signs someone out everywhere by ending each of their browser
+sessions, as it ends their API tokens ([API tokens](#api-tokens)):
+
+```jadpo fragment
+action sign_out_everywhere(member: Principal.user) -> Unit {
+    for session in sessions.browser_sessions(member.id) {
+        sessions.revoke_browser_session(session.id)
+    }
+}
+```
+
 - `sessions.start` keeps the session in the action's own transaction, in
   the `jadpo_sessions` system table of the store the principal's user
   entity lives in ([System tables](05-data.md#system-tables)). So an action
@@ -4257,6 +4268,17 @@ and the response of the route that ran the action sets its cookie.
 - Only verifiers are kept: a session's token and its CSRF token are 32
   random bytes each, stored as their digests, so a copy of the database
   signs no one in.
+- `sessions.browser_sessions(user_id)` lists the user's browser sessions
+  that haven't ended, oldest first, as `IssuedToken`s, the same `id`,
+  `started_at` and `ends_at` a token lists with, never the cookie;
+  `sessions.revoke_browser_session(session_id)` ends one by its `id`, and
+  an `id` no browser session has ends nothing, an API token's included.
+  Each needs `browser_session:` in `authentication { }`, and goes through
+  policy as `sessions.tokens` and `sessions.revoke_token` do. A
+  `GET` route can run `sessions.browser_sessions` itself
+  ([Listing from a `GET` route](#listing-from-a-get-route)). With
+  `revocation_delay` set, an ended session still signs in until its
+  signed part expires, as a revoked token does.
 
 ### How a session started
 
@@ -4335,8 +4357,9 @@ sends as `Authorization: Bearer`. With magic links, the generated
 #### Listing from a `GET` route
 
 An application's "signed-in devices" screen is one route. A `GET` runs
-`sessions.tokens(user_id)`, and `Service.keys(service_id)` for a service's
-keys, directly, as generated queries that read what Jadpo keeps:
+`sessions.tokens(user_id)`, `sessions.browser_sessions(user_id)`, and
+`Service.keys(service_id)` for a service's keys, directly, as generated
+queries that read what Jadpo keeps:
 
 ```jadpo fragment
 routes Devices {
@@ -4353,8 +4376,9 @@ routes Devices {
   `current_principal`, and nothing else; the route's `output:` is
   `List<IssuedToken>` (`List<IssuedKey>` for keys), exactly what the
   listing returns. Any other method is `route.run_kind`, and the writes
-  (`sessions.issue_token`, `.revoke_token`, `issue_key`, `revoke_key`) are
-  `route.run_invalid`: an action calls those.
+  (`sessions.issue_token`, `.revoke_token`, `.revoke_browser_session`,
+  `issue_key`, `revoke_key`) are `route.run_invalid`: an action calls
+  those.
 - `IssuedToken` and `IssuedKey` are built-in values an `Output` can hold
   (`tokens: List<IssuedToken>`) and a route can send. On the wire each is
   an object of its `id`, `started_at` and `ends_at`, never the credential;

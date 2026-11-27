@@ -2943,6 +2943,8 @@ impl Reader<'_> {
         if !op.reads_only() {
             let keeps = if op.magic_link() {
                 "the sign-in requests"
+            } else if op == SessionOp::RevokeBrowserSession {
+                "the browser sessions"
             } else {
                 "the tokens or keys"
             };

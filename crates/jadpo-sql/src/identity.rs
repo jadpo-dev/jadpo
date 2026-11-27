@@ -29,6 +29,22 @@ pub fn revoke_token(held: &str) -> String {
     )
 }
 
+/// A user's browser sessions that haven't ended, oldest first, whose user
+/// the caller may read: `$1` the user, `$2` the time now (chunk 10.13).
+pub fn browser_sessions(held: &str) -> String {
+    format!(
+        "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NOT NULL AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\""
+    )
+}
+
+/// Ends one browser session, never an API token, whose user the caller
+/// may update: `$1` the session.
+pub fn revoke_browser_session(held: &str) -> String {
+    format!(
+        "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1 AND \"csrf_verifier\" IS NOT NULL AND {held}"
+    )
+}
+
 /// Keeps a new service key, for a service the caller may update: `$1` to
 /// `$5` its identity, its service, its verifier, when it starts and when
 /// it ends.

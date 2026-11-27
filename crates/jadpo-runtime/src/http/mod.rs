@@ -1593,9 +1593,10 @@ async fn run_with_caller(
                     ctx.set_resumable(None);
                     ran
                 }
-                Run::Listing { keys } => {
+                Run::Listing { keys, browser } => {
                     let holder = args.first().cloned().unwrap_or(Value::None);
-                    match identity::list(ctx, app.table.identity.as_ref(), *keys, &holder).await {
+                    let held = identity::Held::listed(*keys, *browser);
+                    match identity::list(ctx, app.table.identity.as_ref(), held, &holder).await {
                         Stored::Value(value) => Outcome::Value(value),
                         Stored::Failed(failure) => Outcome::Failed(failure),
                         Stored::Conflict { cause, .. } => Outcome::Failed(cause),
@@ -2361,12 +2362,13 @@ pub async fn session(
         (SessionOp::IssueKey, [service, expires_at]) => {
             identity::issue_key(ctx, plan, service, expires_at, at).await
         }
-        (SessionOp::Tokens | SessionOp::Keys, [holder]) => {
-            identity::issued(ctx, plan, op.on_service(), holder, at).await
+        (SessionOp::Tokens | SessionOp::BrowserSessions | SessionOp::Keys, [holder]) => {
+            identity::issued(ctx, plan, identity::Held::of(op), holder, at).await
         }
-        (SessionOp::RevokeToken | SessionOp::RevokeKey, [id]) => {
-            identity::revoke(ctx, plan, op.on_service(), id, at).await
-        }
+        (
+            SessionOp::RevokeToken | SessionOp::RevokeBrowserSession | SessionOp::RevokeKey,
+            [id],
+        ) => identity::revoke(ctx, plan, identity::Held::of(op), id, at).await,
         // The webhooks entity's addresses (area 16, "Outgoing webhooks";
         // chunk C1b), boxed so this frame stays small.
         (SessionOp::RegisterWebhook, _) => {

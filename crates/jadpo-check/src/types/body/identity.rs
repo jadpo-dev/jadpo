@@ -410,14 +410,15 @@ impl Body<'_> {
             let does = match op {
                 SessionOp::Start => "starts the session of the request a route answers".to_string(),
                 SessionOp::End => "ends the session of the request a route answers".to_string(),
-                SessionOp::Tokens | SessionOp::Keys => format!(
+                SessionOp::Tokens | SessionOp::BrowserSessions | SessionOp::Keys => format!(
                     "reads the {} the runtime keeps, which an action reads, or a `GET` route that runs it",
-                    if op == SessionOp::Tokens {
-                        "tokens"
-                    } else {
-                        "keys"
+                    match op {
+                        SessionOp::Tokens => "tokens",
+                        SessionOp::BrowserSessions => "browser sessions",
+                        _ => "keys",
                     }
                 ),
+                SessionOp::RevokeBrowserSession => "writes the browser sessions the runtime keeps, in the transaction of the action that calls it".to_string(),
                 _ => format!(
                     "writes the {} the runtime keeps, in the transaction of the action that calls it",
                     if op.on_service() { "keys" } else { "tokens" }
@@ -438,7 +439,7 @@ impl Body<'_> {
                     SessionOp::Start | SessionOp::End => {
                         format!("Call `{written}` in the action a sign-in or sign-out route runs")
                     }
-                    SessionOp::Tokens | SessionOp::Keys => {
+                    SessionOp::Tokens | SessionOp::BrowserSessions | SessionOp::Keys => {
                         format!("Call `{written}` in an action, or run it from a `GET` route")
                     }
                     _ => format!("Call `{written}` in an action"),
@@ -496,6 +497,16 @@ impl Body<'_> {
             ),
             SessionOp::RevokeToken => (
                 vec![("token_id", "the token's", Ty::Prim(Prim::Uuid))],
+                Ty::Prim(Prim::Unit),
+            ),
+            // A browser session lists as a token does: its `id`, when it
+            // started and when it ends (chunk 10.13).
+            SessionOp::BrowserSessions => (
+                vec![("user", "the user's", id(&entity))],
+                Ty::List(Box::new(Ty::Opaque(ISSUED_TOKEN.to_string(), Vec::new()))),
+            ),
+            SessionOp::RevokeBrowserSession => (
+                vec![("session_id", "the session's", Ty::Prim(Prim::Uuid))],
                 Ty::Prim(Prim::Unit),
             ),
             SessionOp::IssueKey => (
