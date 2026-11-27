@@ -154,16 +154,23 @@ D1 first: the site starts once D1 has merged.
   frozen where 10.14b merged. The report gives correctness, unsafe changes,
   tokens and cost per correct change for each model, with debriefs of the
   misses.
-- [ ] **10.16 The helpdesk, grown large in both languages** `opus · high`
+- [ ] **10.16 A real product, grown large in both languages** `opus · high`
   after 10.15 (Richard, 2026-11-27): does TypeScript lose more than Jadpo as
-  an app grows past what an agent can read at once? The helpdesk
-  (`benchmarks/helpdesk/`) and its TypeScript twin grow from 44 routes
-  through scored changes, `desk_parity.py` proving both answer every route
-  the same at every step. Blind modification sets at about 100 and 200
-  routes, sessions long enough to fill and compact the context, and changes
-  whose main work is updating what depends on them, scored for fixing those
-  parts and for breaking them. Stop at the size that answers it. Codex usage
-  isn't capped for this round.
+  an app grows past what an agent can read at once? The app is a private
+  product of Richard's, already about 4,400 lines of Jadpo, grown along its
+  own feature plan. An agent builds its TypeScript twin from the same spec,
+  and a parity check proves both answer every route the same at every
+  step. The product's code, spec and twin stay outside this repository,
+  like the held-out sets, and nothing public names it; results describe
+  the changes only. Blind modification sets at two sizes, sessions long
+  enough to fill and compact the context, and changes chosen for where
+  agents break: a new path to data a rule protects, a rule kept in several
+  places, counts kept in step, coupling by name, a field whose shape
+  changes, work that runs with no user, a rule learned many changes
+  earlier, and stale hints. Roughly half the set where the checker could
+  help and half pure business logic, each pattern reported on its own.
+  Stop at the size that answers it. Codex usage isn't capped for this
+  round. The report says the language was tuned on this product's gaps.
 
 ## What the 0.2.0 run found
 
