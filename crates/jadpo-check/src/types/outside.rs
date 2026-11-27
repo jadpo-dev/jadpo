@@ -87,6 +87,7 @@ pub(super) fn does(node: &Node) -> Does<'_> {
                 if operation != "get"
                     && operation != jadpo_std::audit::HISTORY
                     && operation != crate::resolve::EXPORT
+                    && jadpo_std::read::lookup_field(operation).is_none()
                     && jadpo_std::files::upload_field(operation).is_none() =>
             {
                 Does::Writes

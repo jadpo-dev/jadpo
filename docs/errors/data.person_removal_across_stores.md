@@ -94,8 +94,8 @@ decides how a person leaves your app.
 
 The question is what removing this person should mean.
 
-**If removing them means forgetting them,** call `User.erase`, which applies
-the reference. It needs [an erasure log](data.erasure_log_required.md):
+**If removing them means forgetting them,** call `<User>.erase(id)`, here
+`User.erase`, which applies the reference. It needs [an erasure log](data.erasure_log_required.md):
 
 ```jadpo check project=e-person-removal-erase file=domains/accounts/actions/remove.jadpo
 use accounts/entities { User, UserNotFound }
@@ -287,6 +287,8 @@ statement.
 
 ## Related
 
+- [Erasing someone](../language/15-personal-data.md#erasing-someone)
 - [Records in another store](../language/15-personal-data.md#records-in-another-store)
+- [Deleting someone who signs in](../language/08-identity.md#deleting-someone-who-signs-in)
 - [`data.reference_across_stores`](data.reference_across_stores.md)
 - [Retention](../language/15-personal-data.md#retention)

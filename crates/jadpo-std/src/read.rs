@@ -337,6 +337,24 @@ impl Cardinality {
     }
 }
 
+/// `Entity.lookup(email: x)` (area 15, "Looking up one person by email";
+/// chunk 10.13b), as the graph names the operation: `lookup`, then `:`
+/// and the field it finds by.
+pub const LOOKUP: &str = "lookup";
+
+/// The graph's name for a lookup by `field`: `lookup:email`.
+pub fn lookup_operation(field: &str) -> String {
+    format!("{LOOKUP}:{field}")
+}
+
+/// The field a lookup's operation finds by, when `operation` is one.
+pub fn lookup_field(operation: &str) -> Option<&str> {
+    operation
+        .strip_prefix(LOOKUP)?
+        .strip_prefix(':')
+        .filter(|field| !field.is_empty())
+}
+
 /// Where a parameter's value comes from when the statement runs.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Source {

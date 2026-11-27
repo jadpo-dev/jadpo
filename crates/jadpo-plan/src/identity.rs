@@ -112,7 +112,7 @@ impl Planner<'_> {
                         Some(_) => Some(self.linked_lookup(user, &columns)?),
                         None => None,
                     },
-                    scopes: identity.scopes.as_ref().map(|scopes| {
+                    scopes: identity.external_scopes.as_ref().map(|scopes| {
                         scopes
                             .iter()
                             .map(|scope| (scope.name.clone(), scope.token.clone()))

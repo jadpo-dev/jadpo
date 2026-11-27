@@ -1154,7 +1154,9 @@ impl<'t> Codecs<'t> {
                 let fields = jadpo_std::http::builtin_object_fields(name)
                     .unwrap_or_default()
                     .iter()
-                    .map(|(_, builtin)| self.codec(&TypeRef::Builtin(*builtin)))
+                    .map(|(field, builtin)| {
+                        self.codec(&crate::types::issued_type(name, field, *builtin))
+                    })
                     .collect();
                 Codec::Object {
                     shape,

@@ -12,7 +12,9 @@ never removes such a record. `Article.delete` runs the lifecycle's
 
 Jadpo won't add the transition for you, because it decides what deleting
 an article means: which field records it, and whether the article is
-ever removed for good.
+ever removed for good. A person's record is the exception: to forget
+someone, whatever their lifecycle, call `<User>.erase(id)`
+([Erasing someone](../language/15-personal-data.md#erasing-someone)).
 
 ## What it looks like
 
@@ -272,3 +274,4 @@ deleting one hides them and keeps their articles.
 - [References and `on_delete`](../language/05-data.md#references-and-on_delete)
 - [Transitions](../language/06-reads-and-writes.md#transitions)
 - [The purge schedule](../language/12-jobs-and-events.md#the-purge-schedule)
+- [Deleting someone who signs in](../language/08-identity.md#deleting-someone-who-signs-in)

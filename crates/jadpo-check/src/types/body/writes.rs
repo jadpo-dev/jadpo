@@ -236,6 +236,133 @@ impl Body<'_> {
         Ty::Named(entity.to_string())
     }
 
+    /// `Entity.lookup(email: x)` (area 15, "Looking up one person by
+    /// email"; chunk 10.13b): one record found by an exact match on a
+    /// field that is `unique: true` and built on `Email`, or `none`; only
+    /// in an action. Its one argument is named for the field it finds by.
+    /// The field it finds by, when the call reads cleanly; the action's
+    /// own permission check before it is policy's
+    /// (`policy.lookup_unchecked`), as is a tenant's entity, whose unique
+    /// rule holds only within each tenant.
+    pub(super) fn entity_lookup(
+        &mut self,
+        entity: &str,
+        call: &ast::CallExpr,
+        span: Span,
+    ) -> (Ty, Option<String>) {
+        let written = format!("{entity}.{}", jadpo_std::read::LOOKUP);
+        let found = Ty::Nullable(Box::new(Ty::Named(entity.to_string())));
+        if self.context != super::Context::Action {
+            let who = super::capital(self.context.with_a());
+            self.args_only(call);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_LOOKUP_CONTEXT,
+                    format!("{who} can't call `{written}`"),
+                )
+                .at(span, "outside an action")
+                .reason(format!(
+                    "`{written}` finds one person by their exact email address behind the permission check of the action that calls it, so only an action calls it, never a function, a query, a test or a schedule's code."
+                ))
+                .next(format!(
+                    "Call `{written}` in an action listed under `policy {{ actions: }}`, and call that action from here"
+                )),
+            );
+            return (found, None);
+        }
+        self.read_in_loop(span.clone(), &written);
+        let args = Self::arguments(call);
+        let named = match args.as_slice() {
+            [arg] => Self::arg_name(arg).zip(arg.expr()),
+            _ => None,
+        };
+        let Some((field, value)) = named else {
+            self.args_only(call);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes one argument, named for the field it finds by"),
+                )
+                .at(self.span(call), "one named argument")
+                .reason(format!(
+                    "`{written}(<field>: address)` finds the one `{entity}` whose `<field>`, `unique: true` and built on `Email`, is exactly `address`."
+                ))
+                .next(format!("Call `{written}(email: address)`, naming the field")),
+            );
+            return (found, None);
+        };
+        let fields: Vec<String> = self
+            .table
+            .fields(entity)
+            .unwrap_or(&[])
+            .iter()
+            .map(|field| field.name.clone())
+            .collect();
+        if !fields.contains(&field) {
+            let defs = self.table.fields(entity).unwrap_or(&[]).to_vec();
+            let at = args
+                .first()
+                .and_then(|arg| arg.name())
+                .map_or_else(|| self.span(call), |name| self.span(&name));
+            self.unknown_field(entity, &field, &defs, at, false);
+            self.infer(&value);
+            return (found, None);
+        }
+        let ty = self.table.field_type(entity, std::slice::from_ref(&field));
+        let at = args
+            .first()
+            .and_then(|arg| arg.name())
+            .map_or_else(|| self.span(call), |name| self.span(&name));
+        if self.table.base_prim(&ty) != Some(Prim::Email) {
+            let ty = self
+                .table
+                .field(entity, std::slice::from_ref(&field))
+                .map_or(ty, |found| found.declared.clone());
+            self.infer(&value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_LOOKUP_NOT_EMAIL,
+                    format!("`{written}` finds by `{field}`, which isn't built on `Email`"),
+                )
+                .at(at, format!("`{ty}`"))
+                .reason(format!(
+                    "A lookup finds one person by their exact email address, the one thing about them a person is given to find them by. Any other field would let an action find records by what they hold. `{entity}.{field}` is `{ty}`."
+                ))
+                .next(format!(
+                    "Find the `{entity}` by a field built on `Email`, or by its `id` with `{entity}.get`"
+                )),
+            );
+            return (found, None);
+        }
+        let unique = self.writes.write_rules(entity).is_some_and(|rules| {
+            rules
+                .unique
+                .iter()
+                .any(|rule| rule.field && rule.fields == [field.clone()])
+        });
+        if !unique {
+            self.infer(&value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_LOOKUP_NOT_UNIQUE,
+                    format!("`{written}` finds by `{field}`, which isn't `unique: true`"),
+                )
+                .at(at, "not unique")
+                .reason(format!(
+                    "A lookup gives one record or none. Without `unique: true` several `{entity}` records could hold one address, and which came back would show more than one person's."
+                ))
+                .next_for(
+                    format!("Make `{entity}.{field}` `unique: true`, if one address is one person's"),
+                    jadpo_diag::Decider::Human,
+                ),
+            );
+            return (found, None);
+        }
+        let key = Ty::Field(entity.to_string(), vec![field.clone()]);
+        self.check(&value, &key);
+        (found, Some(field))
+    }
+
     fn argument_count(&mut self, call: &ast::CallExpr, written: &str, entity: &str, given: usize) {
         let snake = crate::case::to_snake(entity);
         self.out.push(

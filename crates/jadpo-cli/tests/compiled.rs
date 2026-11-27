@@ -856,6 +856,19 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&crate::scopes::notebook(), "compiled-scopes").expect("it checks"),
         ),
         (
+            "a person looked up by email".into(),
+            corpus_project(&crate::lookup_by_email::files(), "compiled-lookup-by-email")
+                .expect("it checks"),
+        ),
+        (
+            "a member who left signs in again".into(),
+            corpus_project(
+                &crate::signing_out_on_delete::files(),
+                "compiled-signing-out",
+            )
+            .expect("it checks"),
+        ),
+        (
             "marked fields in logs".into(),
             corpus_project(&crate::marked_logs::files(), "compiled-marked-logs")
                 .expect("it checks"),
@@ -1015,6 +1028,8 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "a subject kept in several columns",
         "a subject kept as JSON",
         "tokens narrowed to their scopes",
+        "a person looked up by email",
+        "a member who left signs in again",
         "marked fields in logs",
         "examples 11-cake-shop",
         "examples 12-recipe-book",

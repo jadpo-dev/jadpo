@@ -193,7 +193,11 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
                 | Fact::Function(_)
                 | Fact::Emits(_)
                 | Fact::Batch(_)
-                | Fact::Runs(_) => continue,
+                | Fact::Runs(_)
+                // A lookup is behind the action's own line, never the
+                // entity's `read:` (chunk 10.13b), which
+                // `policy.lookup_unchecked` holds it to.
+                | Fact::LooksUp(_) => continue,
             };
             found.insert(act);
         }

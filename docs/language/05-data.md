@@ -2930,8 +2930,8 @@ a verifier is a one-way digest that Jadpo can check a secret against, but
 can't turn back into the secret.
 
 - `jadpo_sessions`, browser sessions and API tokens: each one's user, the
-  verifiers of its token and a browser session's CSRF token, and when it
-  started and ends. Only in the store the principal's user entity lives
+  verifiers of its token and a browser session's CSRF token, when it
+  started and ends, and the scopes an API token was issued narrowed to. Only in the store the principal's user entity lives
   in.
 - `jadpo_service_keys`: each key's service, its verifier, and when it was
   issued and expires. Only in the store its service entity lives in.

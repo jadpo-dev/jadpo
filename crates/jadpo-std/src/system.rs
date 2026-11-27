@@ -396,6 +396,10 @@ pub const SESSIONS: SystemTable = SystemTable {
         // passkey, or a provider's `amr` naming a second one); `NULL` for
         // one factor.
         column("strength", SqlType::Text, true),
+        // The scope-tokens an API token was issued narrowed to, separated
+        // by spaces (area 8, "API tokens"; chunk 10.13b): `NULL` for one
+        // that may do whatever its person may, and for a browser session.
+        column("scopes", SqlType::Text, true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {

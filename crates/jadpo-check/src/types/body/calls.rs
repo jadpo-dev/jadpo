@@ -330,6 +330,25 @@ impl Body<'_> {
                     return self.webhook_call(&head, op, call, callee, &written);
                 }
                 let block = self.pending_block.take();
+                // A person found by their exact email (area 15; chunk
+                // 10.13b), unless a lifecycle's transition has the name.
+                if rest[0] == jadpo_std::read::LOOKUP
+                    && !self
+                        .writes
+                        .write_rules(&head)
+                        .is_some_and(|rules| rules.transition(&rest[0]).is_some())
+                {
+                    self.walk(|walk| walk.member_values(block));
+                    let (ty, field) = self.entity_lookup(&head, call, span);
+                    let reach = match field {
+                        Some(field) => Reach::Entity {
+                            entity: head.clone(),
+                            operation: jadpo_std::read::lookup_operation(&field),
+                        },
+                        None => Reach::Unknown,
+                    };
+                    return (ty, CallKind::Read(written), reach);
+                }
                 if self.context.is_pure() {
                     self.persistence(span, &written);
                     self.args_only(call);

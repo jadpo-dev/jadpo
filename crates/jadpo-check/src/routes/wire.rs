@@ -550,7 +550,11 @@ pub fn issued_entry(name: &str) -> jadpo_db::record::Entry {
         .to_vec();
     fields.sort_by_key(|(field, _)| *field);
     for (field, builtin) in fields {
-        entry.push(format!("{field}: {}", builtin.name()));
+        if jadpo_std::http::listed_field(name, field) {
+            entry.push(format!("{field}: List<{}> optional", builtin.name()));
+        } else {
+            entry.push(format!("{field}: {}", builtin.name()));
+        }
     }
     entry
 }
@@ -647,14 +651,29 @@ pub fn issued_schema(name: &str) -> Value {
         } else if name == jadpo_std::http::DECODE_PROBLEM {
             "The first problem a JSON document had: the field's path, list positions as numbers, and the rule it broke, never the value."
         } else {
-            "An API token as it is listed: when it started and when it ends, never the token itself."
+            "An API token as it is listed: when it started and when it ends, and the scopes it was issued narrowed to, null when it may do whatever its person may; never the token itself."
         },
     );
     out.set("type", "object");
     let mut properties = Value::object();
     let mut required = Vec::new();
     for (field, builtin) in jadpo_std::http::builtin_object_fields(name).unwrap_or_default() {
-        properties.set(field, scalar_schema(*builtin, &Rules::default()));
+        let scalar = scalar_schema(*builtin, &Rules::default());
+        // A token's scopes (chunk 10.13b): a list, or null for one that
+        // isn't narrowed.
+        let schema = if jadpo_std::http::listed_field(name, field) {
+            let mut list = Value::object();
+            list.set("type", "array");
+            list.set("items", scalar);
+            let mut null = Value::object();
+            null.set("type", "null");
+            let mut either = Value::object();
+            either.set("anyOf", vec![list, null]);
+            either
+        } else {
+            scalar
+        };
+        properties.set(field, schema);
         required.push(Value::from(*field));
     }
     out.set("properties", properties);

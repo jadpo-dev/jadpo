@@ -2697,6 +2697,90 @@ impl Walk<'_> {
     }
 
     /// With what the action's line checks as it starts.
+    /// What checks this action before the lookup at `site` of `entity`
+    /// runs (chunk 10.13b): its own line, which must be one the runtime
+    /// checks as it starts (`policy.lookup_unchecked`), on an entity whose
+    /// unique rule holds across the whole table (`data.lookup_not_unique`).
+    fn lookup_checked(&mut self, flow: &Flow<'_>, site: SiteId, entity: &str) {
+        use super::lookups::{LookupCheck, Unchecked, lookup_check};
+        let at = self.span(site);
+        let tenant = flow
+            .prover
+            .policies
+            .entity(entity)
+            .is_some_and(|policy| policy.tenancy.is_some());
+        if tenant {
+            self.problems.push(
+                Diagnostic::new(
+                    &rule::DATA_LOOKUP_NOT_UNIQUE,
+                    format!("`{entity}.lookup` finds one of a tenant's records, whose address is unique only within its tenant"),
+                )
+                .at(at.clone(), "unique within each tenant")
+                .reason(format!(
+                    "A lookup gives one record or none. `{entity}`'s records belong to a tenant, and a unique rule holds within its tenant, so two tenants' records may hold one address."
+                ))
+                .next_for(
+                    "Look up the person on an entity every tenant shares, `tenant: Tenancy.shared`, such as the one people sign in as",
+                    jadpo_diag::Decider::Human,
+                ),
+            );
+            return;
+        }
+        let params: Vec<jadpo_graph::TypeRef> = self
+            .body
+            .params
+            .iter()
+            .map(|param| self.body.local(*param).ty.clone())
+            .collect();
+        let action = self.name.clone();
+        let written = self
+            .line
+            .as_ref()
+            .map_or_else(|| action.clone(), |line| line.written.clone());
+        let why = match lookup_check(flow.db, flow.project, &action, &params) {
+            LookupCheck::AtStart | LookupCheck::Scoped(_) => return,
+            LookupCheck::Unchecked(why) => why,
+        };
+        let (label, reason, next) = match why {
+            Unchecked::NotListed => (
+                "no permission check of its own",
+                format!(
+                    "`{entity}.lookup` finds a person by their exact address whoever may read `{entity}`, so it runs only behind its action's own line under root `policy {{ actions: }}`, which says who may look people up. `{action}` isn't listed."
+                ),
+                format!(
+                    "List `{action}` under `policy {{ actions: }}` with who may look people up, such as `[<Role>.owner]`"
+                ),
+            ),
+            Unchecked::Public => (
+                "anyone may run it",
+                format!(
+                    "`{entity}.lookup` would tell anyone at all whether an address has an account: `{written}`'s line names `Access.public`."
+                ),
+                format!("Name who may run `{written}` in place of `Access.public`"),
+            ),
+            Unchecked::NoRecord => (
+                "nothing checked before it",
+                format!(
+                    "`{written}`'s line names only who a record decides, which can't be checked before the lookup: a user field, or a role held in a record whose `id` `{action}` isn't given as exactly one parameter."
+                ),
+                format!(
+                    "Give `{action}` the `id` of the record its role is held in as a parameter, or list it for anyone signed in or a role held across the application"
+                ),
+            ),
+        };
+        self.problems.push(
+            Diagnostic::new(
+                &rule::POLICY_LOOKUP_UNCHECKED,
+                format!(
+                    "`{action}` looks a `{entity}` up by email with no permission check before it"
+                ),
+            )
+            .at(at, label)
+            .reason(reason)
+            .next(next),
+        );
+    }
+
     fn gated(&self, reached: Reached) -> Reached {
         match &self.gate {
             Some(way) => reached.and(Reached::by(way.clone())),
@@ -2758,6 +2842,40 @@ impl Walk<'_> {
             out
         };
         match callee {
+            // A person found by their exact email, behind the action's own
+            // line (area 15, "Looking up one person by email"; chunk
+            // 10.13b): its `id` always comes back, and its other fields to
+            // whoever the entity's `read:` lets read them, proved from
+            // what that line shows of the caller, never from a `read:` the
+            // statement checked, since it checks none.
+            Callee::Entity { entity, operation }
+                if jadpo_std::read::lookup_field(operation).is_some() =>
+            {
+                let entity = entity.name().to_string();
+                if self.report {
+                    self.lookup_checked(flow, site, &entity);
+                }
+                // Which record it finds shows the address it was given.
+                if self.report
+                    && let (Some(Some(arg)), Some(key)) = (args.first(), provs.first())
+                {
+                    self.lookup(flow, *arg, key, &Finding::Finds(entity.clone()));
+                }
+                let way = self
+                    .gate
+                    .clone()
+                    .unwrap_or_else(|| vec![vec![Fact::Grant(Grant::Signed)]]);
+                let origin = self.mint(site);
+                if let Some(origin) = origin {
+                    self.found.remove(&origin);
+                }
+                Prov::of(Src::Record {
+                    entity,
+                    reached: Reached::by(way),
+                    given: Vec::new(),
+                    origin,
+                })
+            }
             Callee::Entity { entity, operation } if operation == "get" => {
                 let entity = entity.name().to_string();
                 let reached = self.gated(flow.prover.read(&entity));

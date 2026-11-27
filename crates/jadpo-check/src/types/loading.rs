@@ -145,7 +145,9 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
         }
         for fact in &facts.facts {
             match fact {
-                Fact::Gets(entity) => found(Loads::Gets(entity.clone()), one(entity), &mut loading),
+                Fact::Gets(entity) | Fact::LooksUp(entity) => {
+                    found(Loads::Gets(entity.clone()), one(entity), &mut loading)
+                }
                 Fact::Queries(query) => {
                     let entity = super::stores::query_entity(
                         db,
