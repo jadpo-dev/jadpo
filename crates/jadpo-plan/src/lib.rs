@@ -1020,11 +1020,31 @@ impl Plan {
                 found.iter().map(|(_, _, _, body)| body.as_ref()),
             )
         });
-        let (queries, entities, identity, webhooks) =
+        let (mut queries, entities, identity, webhooks) =
             queries::plans(db, project, &mut types, &json_types, &|key| {
                 pruning.is_none_or(|pruning| pruning.keep.callables.contains(key))
                     || used.as_ref().is_some_and(|used| used.gets.contains(key))
             });
+        // Each lookup the callables kept make (area 15, "Looking up one
+        // person by email"; chunk 10.13b), run as a query is.
+        let looked_up: std::collections::BTreeSet<(String, String)> = found
+            .iter()
+            .flat_map(|(_, _, _, body)| body.calls().map(|(_, callee)| callee.clone()).collect::<Vec<_>>())
+            .filter_map(|callee| match callee {
+                jadpo_graph::body::Callee::Entity { entity, operation } => {
+                    jadpo_std::read::lookup_field(&operation)
+                        .map(|field| (types.name(&entity).to_string(), field.to_string()))
+                }
+                _ => None,
+            })
+            .collect();
+        queries.extend(queries::lookup_plans(
+            db,
+            project,
+            &mut types,
+            &json_types,
+            &looked_up,
+        ));
         // Every query a cache keeps, whether or not this deployable serves
         // the routes that read it, since each write it runs clears them
         // (area 5, "Caches"; chunk Q9): planned apart for a deployable,
@@ -1194,6 +1214,30 @@ impl Plan {
                         .any(|(key, kind, ..)| *kind == Kind::Action && key.name() == action)
                 })
         });
+        // What each action that looks a person up is checked against as it
+        // starts, when its line names roles held in a record (chunk
+        // 10.13b).
+        let mut lookup_gates: HashMap<String, jadpo_std::policy::Gate> = HashMap::new();
+        for (key, kind, _, body) in &found {
+            let looks_up = *kind == Kind::Action
+                && body.calls().any(|(_, callee)| {
+                    matches!(callee, jadpo_graph::body::Callee::Entity { operation, .. }
+                        if jadpo_std::read::lookup_field(operation).is_some())
+                });
+            if !looks_up || gates.contains_key(key.name()) {
+                continue;
+            }
+            let params: Vec<TypeRef> = body
+                .params
+                .iter()
+                .map(|param| body.local(*param).ty.clone())
+                .collect();
+            if let Some(gate) =
+                policy::lookup_gate(db, project, &mut types, &json_types, key.name(), &params)
+            {
+                lookup_gates.insert(key.name().to_string(), gate);
+            }
+        }
         let model = jadpo_check::data::data_model(db, project);
         // An entity's purge and retentions run where schedules run.
         let mut purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
@@ -1379,7 +1423,15 @@ impl Plan {
             .body(&body, text);
             let gate = (kind == Kind::Action)
                 .then(|| gates.get(key.name()).cloned())
-                .flatten();
+                .flatten()
+                .or_else(|| {
+                    // An action looking a person up is checked as it starts,
+                    // in the record its line's role is held in (chunk
+                    // 10.13b).
+                    (kind == Kind::Action)
+                        .then(|| lookup_gates.get(key.name()).cloned())
+                        .flatten()
+                });
             let caller = body
                 .params
                 .iter()

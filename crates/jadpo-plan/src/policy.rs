@@ -871,6 +871,81 @@ pub(crate) fn uploads(
         .collect()
 }
 
+/// What an action that looks a person up by email is checked against as
+/// it starts, when its line names roles held in a record (area 15,
+/// "Looking up one person by email"; chunk 10.13b): each role in the
+/// record whose `id` its parameter gives, or across the application, as
+/// [`jadpo_check::policy::lookups::lookup_check`] reads them. `None` for
+/// any other action, whose line, if it has one, is checked as it starts
+/// already or by the statements it writes.
+pub(crate) fn lookup_gate(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    types: &mut crate::types::Types,
+    json: &std::cell::RefCell<Vec<jadpo_graph::TypeRef>>,
+    action: &str,
+    params: &[jadpo_graph::TypeRef],
+) -> Option<Gate> {
+    use jadpo_check::policy::lookups::{LookupCheck, lookup_check};
+    let LookupCheck::Scoped(roles) = lookup_check(db, project, action, params) else {
+        return None;
+    };
+    let model = jadpo_check::data::data_model(db, project);
+    let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let access = jadpo_check::policy::access(db, project);
+    let planner = Planner {
+        model,
+        lookup: &lookup,
+        types,
+        access,
+        action: None,
+        json,
+        sign_in: Default::default(),
+        provider_keys: Default::default(),
+        retired: Default::default(),
+        flag_stores: Default::default(),
+    };
+    let mut statement = Statement::default();
+    let mut whos = Vec::new();
+    let mut store = None;
+    for (at, role) in roles.iter().enumerate() {
+        let held = planner.access.membership(&role.membership)?;
+        store = Some(planner.model.entity(&held.entity)?.store.clone()?);
+        let scope = role.param.map(|index| {
+            statement.param(
+                Source::Arg {
+                    index: u32::try_from(index).unwrap_or(u32::MAX),
+                    path: Vec::new(),
+                },
+                jadpo_std::read::SqlType::Uuid,
+            )
+        });
+        let alias = format!("jadpo_m{at}");
+        whos.push(Who::Member(planner.held(
+            &mut statement,
+            held,
+            &alias,
+            scope,
+            Some(vec![role.role.clone()]),
+        )?));
+    }
+    let system = access
+        .root
+        .action(action)
+        .is_some_and(|line| line.who.contains(&jadpo_check::policy::ActionWho::System));
+    Some(Gate {
+        callers: Callers::Roles {
+            store: store?,
+            sql: jadpo_sql::policy::gate(&whos),
+            params: statement.into_params(),
+        },
+        system,
+        // No entity's `scopes:` names a listed action, so a narrowed token
+        // can't call one that is checked as it starts.
+        scopes: access.narrows.then(Vec::new),
+    })
+}
+
 /// Who may call each action listed under root `policy { actions: }` that
 /// `keeps` keeps as it starts, by action name, where its line says without
 /// a record.

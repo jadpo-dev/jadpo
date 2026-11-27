@@ -1193,6 +1193,7 @@ impl Names<'_> {
         if operations.contains(&name)
             || name == ERASE
             || name == EXPORT
+            || name == jadpo_std::read::LOOKUP
             || name == jadpo_std::audit::HISTORY
             || jadpo_std::files::upload_field(&name).is_some()
         {

@@ -54,6 +54,10 @@ pub enum Fact {
     /// `Entity.field_upload()` (area 16, "Uploading"): the entity's name.
     /// Whoever asks needs its `create` or `update` grant.
     Uploads(String),
+    /// `Entity.lookup(email: x)` (area 15, "Looking up one person by
+    /// email"; chunk 10.13b): the entity's name. It reads one record
+    /// behind the action's own line, never the entity's `read:`.
+    LooksUp(String),
 }
 
 /// A batch an action starts, without positions.
@@ -142,6 +146,11 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
                 if jadpo_std::files::upload_field(operation).is_some() =>
             {
                 Fact::Uploads(entity.name().to_string())
+            }
+            Callee::Entity { entity, operation }
+                if jadpo_std::read::lookup_field(operation).is_some() =>
+            {
+                Fact::LooksUp(entity.name().to_string())
             }
             Callee::Query(query) => Fact::Queries(query.name().to_string()),
             Callee::Action(key) => Fact::Action(key.clone()),

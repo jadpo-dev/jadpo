@@ -39,6 +39,7 @@
 
 pub mod calls;
 pub mod flow;
+pub mod lookups;
 pub mod outputs;
 pub mod proof;
 pub mod reach;

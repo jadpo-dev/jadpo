@@ -539,6 +539,12 @@ pub trait ActionBody<'p> {
         None
     }
 
+    /// The arguments it was called with, which a gate asking for a role
+    /// in the record one of them names reads (chunk 10.13b).
+    fn args(&self) -> &[jadpo_value::Value] {
+        &[]
+    }
+
     /// The site it is called from, in the frame on top of the context:
     /// where its gate's refusal is raised.
     fn site(&self) -> u32 {
@@ -589,7 +595,7 @@ pub trait ActionBody<'p> {
 /// never reaches the body, whichever executor supplies it.
 async fn gated<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     if let Some(gate) = body.gate() {
-        match crate::admit(ctx, gate, body.site()).await {
+        match crate::policy::admit_with(ctx, gate, body.args(), body.site()).await {
             Stored::Value(_) => {}
             Stored::Failed(failure) | Stored::Conflict { cause: failure, .. } => {
                 return Outcome::Failed(failure);

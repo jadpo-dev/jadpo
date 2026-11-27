@@ -1558,6 +1558,89 @@ impl Planner<'_> {
         })
     }
 
+    /// `Entity.lookup(<field>: address)` (chunk 10.13b): every field of
+    /// the one record whose `field` is exactly `address`, the read's only
+    /// argument, or none; hidden records aren't found, as a `get` finds
+    /// none. No `read:` grant joins its `WHERE`: the calling action's own
+    /// line decides who may look people up, checked as it starts. A
+    /// narrowed token never looks anyone up, since no scope names a
+    /// lookup.
+    pub fn lookup(&mut self, entity: &EntityModel, by: &str) -> Option<QueryPlan> {
+        if entity.redis {
+            return None;
+        }
+        let store = entity.store.clone()?;
+        let target = field(entity, by)?;
+        let mut columns = Columns::default();
+        let mut fields = Vec::new();
+        for field in &entity.fields {
+            let kind = self.column(entity, field)?;
+            let at = columns.add(&field.name, kind);
+            fields.push((field.name.clone(), Field::Column(at)));
+        }
+        let sensitive = self.sensitive_read(entity, &mut columns, false);
+        let mut statement = Statement::default();
+        let address = statement.param(
+            Source::Arg {
+                index: 0,
+                path: Vec::new(),
+            },
+            column_type(target)?.param(),
+        );
+        let mut conditions = vec![text::equal(&target.column, &address)];
+        conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
+        let (sql, unpoliced, permitted) = granted(
+            &borns(entity, &columns.names),
+            entity,
+            conditions,
+            jadpo_sql::policy::ANYONE.to_string(),
+            &|_| {},
+        );
+        let held = self.rules_held(entity, &columns.names, &columns.kinds);
+        let versions = versions(entity, &columns.names);
+        let gate = self.access.narrows.then(|| jadpo_std::policy::Gate {
+            callers: jadpo_std::policy::Callers::Anyone,
+            system: true,
+            scopes: Some(Vec::new()),
+        });
+        let read = ReadPlan {
+            store,
+            settings: Vec::new(),
+            cardinality: Cardinality::Optional,
+            select: Select {
+                sql,
+                unpoliced,
+                permitted,
+                params: statement.params,
+                columns: columns.kinds,
+                held,
+                record: Record {
+                    ty: entity.name.clone(),
+                    fields,
+                },
+                includes: Vec::new(),
+                versions,
+                sensitive,
+            },
+            page: None,
+            missing: None,
+            recheck: None,
+            layer: false,
+            decided: None,
+            gate,
+            redis: None,
+            every: None,
+        };
+        let key = lookup_key(&entity.name, by);
+        Some(QueryPlan {
+            name: key.name().to_string(),
+            key,
+            read,
+            caller: None,
+            records: None,
+        })
+    }
+
     /// `<Entity>NotFound`, each field (typed `<Entity>.id`, which the
     /// checker holds it to) given `value`, the `id` looked for.
     pub(crate) fn not_found(
@@ -1725,6 +1808,47 @@ pub(crate) fn plans(
     let identity = planner.identity(db, project);
     let webhooks = planner.webhooks(db, project);
     (query_plans, entity_plans, identity, webhooks)
+}
+
+/// The key a lookup's plan is numbered by among the queries (area 15,
+/// "Looking up one person by email"; chunk 10.13b): `User.lookup:email`,
+/// which no declared query can have.
+pub fn lookup_key(entity: &str, field: &str) -> Key {
+    Key::new(
+        Kind::Query,
+        &format!("{entity}.{}", jadpo_std::read::lookup_operation(field)),
+    )
+}
+
+/// The plan of each lookup in `wanted`, by entity and field, as a query
+/// numbered by [`lookup_key`], so both executors run it as they run a
+/// query.
+pub(crate) fn lookup_plans(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    types: &mut Types,
+    json: &RefCell<Vec<TypeRef>>,
+    wanted: &std::collections::BTreeSet<(String, String)>,
+) -> Vec<QueryPlan> {
+    let model = jadpo_check::data::data_model(db, project);
+    let lookup = Lookup::new(db, project);
+    let access = jadpo_check::policy::access(db, project);
+    let mut planner = Planner {
+        model,
+        lookup: &lookup,
+        types,
+        access,
+        action: None,
+        json,
+        sign_in: Default::default(),
+        provider_keys: Default::default(),
+        retired: Default::default(),
+        flag_stores: Default::default(),
+    };
+    wanted
+        .iter()
+        .filter_map(|(entity, field)| planner.lookup(model.entity(entity)?, field))
+        .collect()
 }
 
 /// The name each variant of an enum field's column is stored by, in

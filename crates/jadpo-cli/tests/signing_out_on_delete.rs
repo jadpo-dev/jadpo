@@ -324,6 +324,14 @@ test "a member who left and signs in again with Google joins as someone new" {
     ),
 ];
 
+/// The project, for the compiled run (`compiled.rs`).
+pub(crate) fn files() -> Vec<(String, String)> {
+    FILES
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect()
+}
+
 fn project(name: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("signing-out-{name}"));
     let _ = fs::remove_dir_all(&root);

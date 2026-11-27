@@ -583,6 +583,10 @@ impl<'p> ActionBody<'p> for Action<'_> {
         self.at
     }
 
+    fn args(&self) -> &[Value] {
+        &self.args
+    }
+
     fn callable(&self) -> Option<u32> {
         Some(self.callee)
     }

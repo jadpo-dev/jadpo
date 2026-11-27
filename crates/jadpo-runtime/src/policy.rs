@@ -58,6 +58,14 @@ pub fn call_as(ctx: &mut Ctx<'_>, caller: Option<&Value>) {
 /// then (chunk 6.1a). A call a test makes without a caller isn't checked
 /// (area 13).
 pub async fn admit(ctx: &mut Ctx<'_>, gate: &Gate, site: u32) -> Stored {
+    admit_with(ctx, gate, &[], site).await
+}
+
+/// [`admit`], for an action called with `args`: a role its gate asks for
+/// in the record one of them names, as an action that looks a person up is
+/// checked as it starts (area 15, "Looking up one person by email"; chunk
+/// 10.13b), reads that argument.
+pub async fn admit_with(ctx: &mut Ctx<'_>, gate: &Gate, args: &[Value], site: u32) -> Stored {
     if ctx.unpoliced() {
         return Stored::Value(Value::Unit);
     }
@@ -80,6 +88,12 @@ pub async fn admit(ctx: &mut Ctx<'_>, gate: &Gate, site: u32) -> Stored {
                     Source::Caller(part) => ctx.caller_param(*part),
                     // A role, as the storage codec bound it (chunk 5.5w3b).
                     Source::Stored(value) => value.clone(),
+                    // The record a role is held in, by the `id` the action
+                    // was given (chunk 10.13b); none matches no one.
+                    Source::Arg { index, .. } => args
+                        .get(*index as usize)
+                        .and_then(|arg| crate::to_sql(arg, param.ty).ok())
+                        .unwrap_or(SqlValue::Null(param.ty)),
                     _ => SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
                 })
                 .collect();

@@ -109,6 +109,7 @@ mod launcher;
 mod leaving;
 mod lifecycle;
 mod locales;
+mod lookup_by_email;
 mod lsp;
 mod magic_links;
 mod manifest;
