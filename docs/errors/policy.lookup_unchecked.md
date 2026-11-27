@@ -38,9 +38,9 @@ type Handle = Text {
     max_length: 40
 }
 
-type Membership = Enum {
-    member
-    stranger
+type AddressStanding = Enum {
+    account_held
+    no_account
 }
 
 entity Member {
@@ -59,26 +59,26 @@ entity Member {
 }
 
 /// Whether an address has an account.
-action is_member(email: Member.email) -> Membership {
+action has_account(email: Member.email) -> AddressStanding {
     match Member.lookup(email: email) {
         none -> {
-            return Membership.stranger
+            return AddressStanding.no_account
         }
         some -> {
-            return Membership.member
+            return AddressStanding.account_held
         }
     }
 }
 ```
 
 ```text output
-error: `is_member` looks a `Member` up by email with no permission check before it
+error: `has_account` looks a `Member` up by email with no permission check before it
  --> main.jadpo:37:11
    |
 37 |     match Member.lookup(email: email) {
    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no permission check of its own
-  reason: `Member.lookup` finds a person by their exact address whoever may read `Member`, so it runs only behind its action's own line under root `policy { actions: }`, which says who may look people up. `is_member` isn't listed.
-  next: List `is_member` under `policy { actions: }` with who may look people up, such as `[<Role>.owner]` (human)
+  reason: `Member.lookup` finds a person by their exact address whoever may read `Member`, so it runs only behind its action's own line under root `policy { actions: }`, which says who may look people up. `has_account` isn't listed.
+  next: List `has_account` under `policy { actions: }` with who may look people up, such as `[<Role>.owner]` (human)
   rule: policy.lookup_unchecked
   help: https://jadpo.dev/docs/errors/policy.lookup_unchecked
 
@@ -96,7 +96,7 @@ decides who may learn whether an address has an account.
 ```jadpo fragment
 policy {
     actions: {
-        is_member: [Access.authenticated]
+        has_account: [Access.authenticated]
     }
 }
 ```
@@ -114,7 +114,7 @@ authentication {
 
 policy {
     actions: {
-        is_member: [Access.authenticated]
+        has_account: [Access.authenticated]
     }
 }
 
@@ -122,9 +122,9 @@ type Handle = Text {
     max_length: 40
 }
 
-type Membership = Enum {
-    member
-    stranger
+type AddressStanding = Enum {
+    account_held
+    no_account
 }
 
 entity Member {
@@ -143,13 +143,13 @@ entity Member {
 }
 
 /// Whether an address has an account.
-action is_member(email: Member.email) -> Membership {
+action has_account(email: Member.email) -> AddressStanding {
     match Member.lookup(email: email) {
         none -> {
-            return Membership.stranger
+            return AddressStanding.no_account
         }
         some -> {
-            return Membership.member
+            return AddressStanding.account_held
         }
     }
 }

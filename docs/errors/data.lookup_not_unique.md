@@ -27,7 +27,7 @@ authentication {
 
 policy {
     actions: {
-        is_member: [Access.authenticated]
+        has_account: [Access.authenticated]
     }
 }
 
@@ -35,9 +35,9 @@ type Handle = Text {
     max_length: 40
 }
 
-type Membership = Enum {
-    member
-    stranger
+type AddressStanding = Enum {
+    account_held
+    no_account
 }
 
 entity Member {
@@ -54,13 +54,13 @@ entity Member {
 }
 
 /// Whether an address has an account.
-action is_member(email: Member.email) -> Membership {
+action has_account(email: Member.email) -> AddressStanding {
     match Member.lookup(email: email) {
         none -> {
-            return Membership.stranger
+            return AddressStanding.no_account
         }
         some -> {
-            return Membership.member
+            return AddressStanding.account_held
         }
     }
 }
@@ -107,7 +107,7 @@ authentication {
 
 policy {
     actions: {
-        is_member: [Access.authenticated]
+        has_account: [Access.authenticated]
     }
 }
 
@@ -115,9 +115,9 @@ type Handle = Text {
     max_length: 40
 }
 
-type Membership = Enum {
-    member
-    stranger
+type AddressStanding = Enum {
+    account_held
+    no_account
 }
 
 entity Member {
@@ -136,13 +136,13 @@ entity Member {
 }
 
 /// Whether an address has an account.
-action is_member(email: Member.email) -> Membership {
+action has_account(email: Member.email) -> AddressStanding {
     match Member.lookup(email: email) {
         none -> {
-            return Membership.stranger
+            return AddressStanding.no_account
         }
         some -> {
-            return Membership.member
+            return AddressStanding.account_held
         }
     }
 }
