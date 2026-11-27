@@ -8,7 +8,7 @@
 #
 # An old pinned version leaves apt.postgresql.org's index after a few
 # releases, and the build then fails naming it: bump it here.
-FROM postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+FROM postgres:16.16-bookworm@sha256:cd0e9518bda5f2ea667ff84d22795d089720c883f288e215d97ce57437e8ef37
 
 ARG PGVECTOR_VERSION=0.8.7-1.pgdg12+1
 ARG POSTGIS_VERSION=3.7.0+dfsg-2.pgdg12+1
