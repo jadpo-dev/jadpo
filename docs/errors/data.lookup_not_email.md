@@ -90,7 +90,16 @@ the fix itself: it names the email field.
 field that holds it, an `Email` that is `unique: true`:
 
 ```jadpo fragment
+action has_account(email: Member.email) -> AddressStanding {
     match Member.lookup(email: email) {
+        none -> {
+            return AddressStanding.no_account
+        }
+        some -> {
+            return AddressStanding.account_held
+        }
+    }
+}
 ```
 
 ```jadpo check project=e-lookup-not-email-fix hidden
