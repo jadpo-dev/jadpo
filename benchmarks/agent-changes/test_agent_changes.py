@@ -326,12 +326,16 @@ class Helpdesk(unittest.TestCase):
     def test_fresh_changes_are_their_own_set(self):
         self.assertEqual(harness.SETS['desk-fresh'], ('H11', 'H12', 'H13', 'H14', 'H15', 'H16', 'H17', 'H18', 'H19', 'H20'))
         self.assertEqual(set(harness.SETS['desk']) | set(harness.SETS['desk-fresh']) | set(harness.SETS['desk-held'])
-                         | set(harness.SETS['desk-held2']) | set(harness.SETS['desk-held3']), set(desk_changes.BY_ID))
+                         | set(harness.SETS['desk-held2']) | set(harness.SETS['desk-held3']) | set(harness.SETS['desk-held4']),
+                         set(desk_changes.BY_ID))
         self.assertFalse(set(harness.SETS['desk-held']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])))
         self.assertFalse(set(harness.SETS['desk-held2']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])
                                                            | set(harness.SETS['desk-held'])))
         self.assertFalse(set(harness.SETS['desk-held3']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])
                                                            | set(harness.SETS['desk-held']) | set(harness.SETS['desk-held2'])))
+        self.assertFalse(set(harness.SETS['desk-held4']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])
+                                                           | set(harness.SETS['desk-held']) | set(harness.SETS['desk-held2'])
+                                                           | set(harness.SETS['desk-held3'])))
         self.assertEqual(harness.set_of('H11'), 'desk-fresh')
         self.assertEqual(desk_changes.SESSIONS['S3'] + desk_changes.SESSIONS['S4'], desk_changes.FRESH)
 
@@ -1200,6 +1204,13 @@ class Measure(unittest.TestCase):
             self.assertIn('decisions, information and effort only', prompt)
         self.assertIn('jadpo explain', measure.debrief_prompt('jadpo', 'x'))
         self.assertNotIn('jadpo explain', measure.debrief_prompt('typescript', 'x'))
+
+    def test_a_claude_debrief_keeps_the_whole_answer(self):
+        answer = 'a' * 3000
+        lines = [json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': answer}]}}),
+                 json.dumps({'type': 'result', 'result': answer, 'usage': {'input_tokens': 2, 'output_tokens': 900}})]
+        self.assertEqual(measure.claude_answers(lines), [answer])
+        self.assertEqual(measure.claude_answers([json.dumps({'type': 'result', 'result': ''})]), [])
 
     def test_first_actions_from_either_agent(self):
         claude = [('call', 'Read {"file_path": "README.md"}'), ('call', 'Write {"file_path": "QUESTIONS.md"}')]

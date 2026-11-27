@@ -118,11 +118,12 @@ TUNING = ('F01', 'F03', 'F06', 'C03', 'C11', 'C14')
 SETS = {'tuning': TUNING,
         'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING and c.id not in change_set.FRESH),
         'fresh': change_set.FRESH,
-        'desk': tuple(i for i in desk_set.BY_ID if i not in desk_set.FRESH + desk_set.HELD + desk_set.HELD2 + desk_set.HELD3),
+        'desk': tuple(i for i in desk_set.BY_ID if i not in desk_set.FRESH + desk_set.HELD + desk_set.HELD2 + desk_set.HELD3 + desk_set.HELD4),
         'desk-fresh': desk_set.FRESH,
         'desk-held': desk_set.HELD,
         'desk-held2': desk_set.HELD2,
-        'desk-held3': desk_set.HELD3}
+        'desk-held3': desk_set.HELD3,
+        'desk-held4': desk_set.HELD4}
 
 # The apps a change is made to: the golden todo, and 10.5's helpdesk, whose
 # changes run five to a session (desk_changes.SESSIONS).
