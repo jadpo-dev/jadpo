@@ -1188,7 +1188,7 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
         transcript = folder / 'transcript.jsonl'
         calls = folder / 'tmp/jadpo-calls/calls.jsonl'
         with agent_home(agent, folder, settings, environment, server):
-            identifier, spent, marks = None, scoring.codex_usage({}), []
+            identifier, spent, marks, cost_so_far = None, scoring.codex_usage({}), [], {}
             for step, change in enumerate(changes, 1):
                 marks.append({'transcript': line_count(transcript), 'calls': line_count(calls),
                               'rollout': line_count(folder / 'rollout.jsonl')})
@@ -1228,6 +1228,12 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                     total = thread_usage(transcript)
                     result['tokens'] = {key: max(0, total[key] - spent.get(key, 0)) for key in total}
                     spent = total
+                elif agent == 'claude':
+                    # Claude Code reports the conversation's cost so far: the step is what it added.
+                    reported = scoring.parse_transcript(step_transcript.read_text().splitlines(), language)['cost_so_far']
+                    result['cost_usd'] = round(sum(max(0.0, total - cost_so_far.get(key, 0.0))
+                                                   for key, total in reported.items()), 6)
+                    cost_so_far |= reported
                 result |= {'agent': agent_version(agent), 'set': set_of(change.id), 'frozen': frozen, 'thinking': None,
                            'session': name, 'step': step}
                 if closed:
@@ -1528,7 +1534,9 @@ def command_knowledge_probe(args):
     transcript = folder / 'transcript.jsonl'
     codex = args.agent == 'codex'
     with agent_home(args.agent, folder, settings, environment, tools=False):
-        timing = session(args.agent, settings, KNOWLEDGE_PROMPT, app, folder, environment, transcript, minutes=10,
+        # Thirty minutes: an API stream that goes quiet mid-answer is retried
+        # by Claude Code only after its own ten-minute request timeout.
+        timing = session(args.agent, settings, KNOWLEDGE_PROMPT, app, folder, environment, transcript, minutes=30,
                          tools='')
         save_record(args.agent, folder)
     lines = transcript.read_text().splitlines()

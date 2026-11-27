@@ -233,6 +233,10 @@ def command_sessions(args):
     languages = args.language or list(LANGUAGES)
     if args.label and len(models) != 1:
         raise SystemExit('--label names one model\'s runs; give one --model')
+    if any(agent_for(model) == 'claude' for model in models):
+        # Before the first run, not mid-measurement: the pinned Claude Code and its login.
+        say('claude', f'Claude Code {harness.CLAUDE_CODE_VERSION} at {harness.claude_code()}')
+        harness.claude_token()
     caffeinate = subprocess.Popen(['caffeinate', '-i', '-s', '-w', str(os.getpid())]) if shutil.which('caffeinate') else None
     environment = {key: value for key, value in os.environ.items() if key != 'JADPO_TEST_DATABASE_URL'}
     try:

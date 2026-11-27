@@ -893,6 +893,14 @@ class Results(unittest.TestCase):
 
 
 class CostPerCorrect(unittest.TestCase):
+    def test_a_resumed_claude_session_counts_only_the_cost_it_added(self):
+        def result(session, so_far):
+            return json.dumps({'type': 'result', 'session_id': session, 'total_cost_usd': so_far, 'usage': {}})
+        parsed = scoring.parse_transcript([result('a', 0.5), result('a', 0.8), result('b', 0.1)], 'jadpo')
+        self.assertEqual([s['cost_usd'] for s in parsed['sessions']], [0.5, 0.3, 0.1])
+        self.assertAlmostEqual(parsed['cost_usd'], 0.9)
+        self.assertEqual(parsed['cost_so_far'], {'a': 0.8, 'b': 0.1})
+
     def test_hour_long_cache_writes_are_priced_at_their_own_rate(self):
         usage = {'input_tokens': 0, 'output_tokens': 0, 'cache_creation_input_tokens': 3_000_000, 'cache_read_input_tokens': 0,
                  'cache_creation': {'ephemeral_5m_input_tokens': 1_000_000, 'ephemeral_1h_input_tokens': 2_000_000}}

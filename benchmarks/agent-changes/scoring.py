@@ -135,6 +135,9 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
     calls, seen, spent = {}, set(), Counter()
     verifications, edits, contamination = [], 0, []
     sessions, record, pending, thinking = [], [], {}, 0
+    # Claude Code's total_cost_usd is the conversation's so far, resumes
+    # included; each result counts only what it added.
+    reported = {}
     for event in events(lines):
         kind = event.get('type')
         if kind == 'assistant':
@@ -183,7 +186,10 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
                                       'errors': error_ids(language, text) if bad else [],
                                       'time': entry and entry['time']})
         elif kind == 'result':
-            sessions.append({'session_id': event.get('session_id'), 'cost_usd': float(event.get('total_cost_usd') or 0),
+            so_far = float(event.get('total_cost_usd') or 0)
+            added = max(0.0, so_far - reported.get(event.get('session_id'), 0.0))
+            reported[event.get('session_id')] = so_far
+            sessions.append({'session_id': event.get('session_id'), 'cost_usd': round(added, 6),
                              'turns': int(event.get('num_turns') or 0), 'is_error': bool(event.get('is_error')),
                              'stop': event.get('terminal_reason') or event.get('subtype'),
                              'usage': usage_tokens(event.get('usage')), 'models': sorted((event.get('modelUsage') or {}).keys()),
@@ -196,6 +202,7 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
         tokens = spent
     return {'verifications': verifications, 'edits': edits, 'sessions': sessions,
             'tokens': dict(usage_tokens(tokens)), 'cost_usd': round(sum(s['cost_usd'] for s in sessions), 6),
+            'cost_so_far': reported,
             'turns': sum(s['turns'] for s in sessions), 'contamination': contamination, 'calls': record,
             'reasoning': [], 'thinking_tokens_estimate': thinking // 4}
 
