@@ -63,7 +63,12 @@ pub enum Unchecked {
 
 /// What checks the action called `action`, whose parameters are typed
 /// `params`, before a lookup in its body runs.
-pub fn lookup_check(db: &dyn Db, project: Project, action: &str, params: &[TypeRef]) -> LookupCheck {
+pub fn lookup_check(
+    db: &dyn Db,
+    project: Project,
+    action: &str,
+    params: &[TypeRef],
+) -> LookupCheck {
     let policies = Policies::new(db, project);
     let Some(line) = policies.root().action(action) else {
         return LookupCheck::Unchecked(Unchecked::NotListed);

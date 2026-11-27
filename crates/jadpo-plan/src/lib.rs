@@ -1029,7 +1029,11 @@ impl Plan {
         // person by email"; chunk 10.13b), run as a query is.
         let looked_up: std::collections::BTreeSet<(String, String)> = found
             .iter()
-            .flat_map(|(_, _, _, body)| body.calls().map(|(_, callee)| callee.clone()).collect::<Vec<_>>())
+            .flat_map(|(_, _, _, body)| {
+                body.calls()
+                    .map(|(_, callee)| callee.clone())
+                    .collect::<Vec<_>>()
+            })
             .filter_map(|callee| match callee {
                 jadpo_graph::body::Callee::Entity { entity, operation } => {
                     jadpo_std::read::lookup_field(&operation)

@@ -357,12 +357,22 @@ fn a_token_issued_with_scopes_does_only_what_they_allow() {
     // No scope names delete, so neither narrowed token deletes; the whole
     // one does.
     for token in [&reading, &writing] {
-        let delete = send(request("DELETE", &format!("/notes/{note}"), Some(token), ""));
+        let delete = send(request(
+            "DELETE",
+            &format!("/notes/{note}"),
+            Some(token),
+            "",
+        ));
         assert!(delete.status >= 400, "{}", delete.status);
     }
     let still = send(request("GET", &format!("/notes/{note}"), Some(&whole), ""));
     assert_eq!(still.status, 200);
-    let deleted = send(request("DELETE", &format!("/notes/{note}"), Some(&whole), ""));
+    let deleted = send(request(
+        "DELETE",
+        &format!("/notes/{note}"),
+        Some(&whole),
+        "",
+    ));
     assert!(deleted.status < 300, "{}", deleted.status);
     // The listing names each token's scopes, and never a token.
     let listed = send(request("GET", "/tokens", Some(&whole), ""));

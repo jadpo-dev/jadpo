@@ -599,9 +599,11 @@ person signs in to start a browser session, need `origin:`.
 
 An API token signs in a user, so the app's principal must declare
 `user:`. A service key signs in a service, so the principal must declare
-`service:`. Inside `authentication { }`, each block takes only
-`signing_key:`. Without a revocation delay there is nothing to set, so
-you write `api_token: {}` and `service_key: {}`.
+`service:`. Inside `authentication { }`, each block takes
+`signing_key:`, and `api_token:` also takes `scopes:`, the scopes a token
+may be issued narrowed to ([API tokens](#api-tokens)). Without a
+revocation delay or scopes there is nothing to set, so you write
+`api_token: {}` and `service_key: {}`.
 
 Each travels as `Authorization: Bearer <value>`. An API token is
 `jadpo_token_` and 64 hexadecimal digits, and a service key `jadpo_key_`
@@ -4270,7 +4272,8 @@ action sign_out_everywhere(member: Principal.user) -> Unit {
   signs no one in.
 - `sessions.browser_sessions(user_id)` lists the user's browser sessions
   that haven't ended, oldest first, as `IssuedToken`s, the same `id`,
-  `started_at` and `ends_at` a token lists with, never the cookie;
+  `started_at` and `ends_at` a token lists with and `scopes` always
+  `none`, never the cookie;
   `sessions.revoke_browser_session(session_id)` ends one by its `id`, and
   an `id` no browser session has ends nothing, an API token's included.
   Each needs `browser_session:` in `authentication { }`, and goes through
@@ -4346,13 +4349,52 @@ sends as `Authorization: Bearer`. With magic links, the generated
 - `sessions.end()` ends the token a request came with, as it ends a
   browser session.
 - `sessions.tokens(user_id)` lists the user's tokens that haven't ended,
-  oldest first, as `IssuedToken`s, which code reads `id`, `started_at`
-  and `ends_at` from; `sessions.revoke_token(token_id)` ends one by its
-  `id`, and an `id` no token has ends nothing. Together they let an
+  oldest first, as `IssuedToken`s, which code reads `id`, `started_at`,
+  `ends_at` and `scopes` from; `sessions.revoke_token(token_id)` ends one
+  by its `id`, and an `id` no token has ends nothing. Together they let an
   application end a user's other devices.
 - Like `sessions.start`, only an action calls them, except that a `GET`
   route can run `sessions.tokens` itself (below). Each needs `api_token:`
   in `authentication { }`.
+
+A token for an app that should do less than its person may, such as a
+read-only widget, is issued narrowed to some scopes. `api_token:`
+declares them as `external_token:` does, each a name and its
+scope-token, and `sessions.issue_token` names them:
+
+```jadpo fragment
+authentication {
+    api_token: {
+        scopes: {
+            notes_read: "notes:read"
+            notes_write: "notes:write"
+        }
+    }
+}
+
+action widget_sign_in(token: InvitationToken) fails InvitationExpired -> AppSignedIn {
+    var invitation: Invitation = attempt Invitation.redeem(token)
+    return AppSignedIn {
+        token: sessions.issue_token(invitation.member_id, scopes: [OAuthScope.notes_read])
+    }
+}
+```
+
+- Policy holds a narrowed token exactly as it holds a provider's
+  ([Scopes](09-policy.md#scopes)): it does what both its person's grants
+  and its scopes allow.
+- `scopes:` comes after the user's `id` and lists each scope once, at
+  least one; each is one `api_token:` declares
+  ([`type.token_scopes_invalid`](../errors/type.token_scopes_invalid.md)).
+  A token issued without `scopes:` may do whatever its person may, as
+  every token issued before scopes did.
+- A scope both `api_token:` and `external_token:` declare is one scope:
+  its name reads the same scope-token in both, or it is
+  `semantic.auth_setting_invalid`.
+- `jadpo_sessions` keeps the scope-tokens beside the token's verifier,
+  and with a revocation delay the token's signed part carries them, so a
+  delay never widens a token. `IssuedToken`'s `scopes` lists them, and is
+  `none` for a token that isn't narrowed and for a browser session.
 
 #### Listing from a `GET` route
 
@@ -4381,8 +4423,9 @@ routes Devices {
   those.
 - `IssuedToken` and `IssuedKey` are built-in values an `Output` can hold
   (`tokens: List<IssuedToken>`) and a route can send. On the wire each is
-  an object of its `id`, `started_at` and `ends_at`, never the credential;
-  the API record and OpenAPI give it a section of its own.
+  an object of its `id`, `started_at` and `ends_at`, and a token's
+  `scopes`, a list of scope-tokens or `null`, never the credential; the
+  API record and OpenAPI give it a section of its own.
 - The list goes through [Policy](09-policy.md) like any query's. It holds
   the tokens or keys of a holder whose record the caller may `read`, and is
   empty for any other.
@@ -5201,6 +5244,7 @@ output IssuedKey
 output IssuedToken
     ends_at: Instant
     id: Uuid
+    scopes: List<Text> optional
     started_at: Instant
 
 output NoteView
@@ -5476,6 +5520,7 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Everything else on this page | Built. |
 | `Driver.apple` and `oauth_provider:` | Not built yet. |
 | Scope declarations, `external_token: { scopes: }`, with [policy's scopes](09-policy.md#scopes) | Built. |
+| Scopes on issued tokens, `api_token: { scopes: }` and `sessions.issue_token(user_id, scopes:)` | Built. |
 | Scopes on `oauth_token` | Not built yet: they come with `oauth_provider:`, which declares its own. |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([OAuth grants](11-integrations.md#oauth-grants)) | Not built yet. |
 
@@ -5513,3 +5558,4 @@ sign-in methods sit beside the entity they name; a project keeps them in
 - [`type.auth_sessions_context`](../errors/type.auth_sessions_context.md)
 - [`type.auth_principal_construction`](../errors/type.auth_principal_construction.md)
 - [`type.auth_credential_stored`](../errors/type.auth_credential_stored.md)
+- [`type.token_scopes_invalid`](../errors/type.token_scopes_invalid.md)

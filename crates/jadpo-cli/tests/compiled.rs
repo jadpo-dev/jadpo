@@ -862,8 +862,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
         ),
         (
             "a member who left signs in again".into(),
-            corpus_project(&crate::signing_out_on_delete::files(), "compiled-signing-out")
-                .expect("it checks"),
+            corpus_project(
+                &crate::signing_out_on_delete::files(),
+                "compiled-signing-out",
+            )
+            .expect("it checks"),
         ),
         (
             "marked fields in logs".into(),

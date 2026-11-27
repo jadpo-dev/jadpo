@@ -2719,9 +2719,10 @@ impl Walk<'_> {
                 .reason(format!(
                     "A lookup gives one record or none. `{entity}`'s records belong to a tenant, and a unique rule holds within its tenant, so two tenants' records may hold one address."
                 ))
-                .next(format!(
-                    "Look up the person on an entity every tenant shares, `tenant: Tenancy.shared`, such as the one people sign in as (human)"
-                )),
+                .next_for(
+                    "Look up the person on an entity every tenant shares, `tenant: Tenancy.shared`, such as the one people sign in as",
+                    jadpo_diag::Decider::Human,
+                ),
             );
             return;
         }
@@ -2747,7 +2748,7 @@ impl Walk<'_> {
                     "`{entity}.lookup` finds a person by their exact address whoever may read `{entity}`, so it runs only behind its action's own line under root `policy {{ actions: }}`, which says who may look people up. `{action}` isn't listed."
                 ),
                 format!(
-                    "List `{action}` under `policy {{ actions: }}` with who may look people up, such as `[<Role>.owner]` (human)"
+                    "List `{action}` under `policy {{ actions: }}` with who may look people up, such as `[<Role>.owner]`"
                 ),
             ),
             Unchecked::Public => (
@@ -2755,7 +2756,7 @@ impl Walk<'_> {
                 format!(
                     "`{entity}.lookup` would tell anyone at all whether an address has an account: `{written}`'s line names `Access.public`."
                 ),
-                format!("Name who may run `{written}` in place of `Access.public` (human)"),
+                format!("Name who may run `{written}` in place of `Access.public`"),
             ),
             Unchecked::NoRecord => (
                 "nothing checked before it",
@@ -2763,14 +2764,16 @@ impl Walk<'_> {
                     "`{written}`'s line names only who a record decides, which can't be checked before the lookup: a user field, or a role held in a record whose `id` `{action}` isn't given as exactly one parameter."
                 ),
                 format!(
-                    "Give `{action}` the `id` of the record its role is held in as a parameter, or list it for anyone signed in or a role held across the application (human)"
+                    "Give `{action}` the `id` of the record its role is held in as a parameter, or list it for anyone signed in or a role held across the application"
                 ),
             ),
         };
         self.problems.push(
             Diagnostic::new(
                 &rule::POLICY_LOOKUP_UNCHECKED,
-                format!("`{action}` looks a `{entity}` up by email with no permission check before it"),
+                format!(
+                    "`{action}` looks a `{entity}` up by email with no permission check before it"
+                ),
             )
             .at(at, label)
             .reason(reason)

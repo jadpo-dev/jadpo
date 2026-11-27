@@ -1238,7 +1238,11 @@ pub async fn issue_token(
                     return Stored::Fault(defect(ctx, "a token's scope that isn't text", site));
                 };
                 if token.is_empty() || token.contains(' ') {
-                    return Stored::Fault(defect(ctx, "a token's scope that isn't a scope-token", site));
+                    return Stored::Fault(defect(
+                        ctx,
+                        "a token's scope that isn't a scope-token",
+                        site,
+                    ));
                 }
                 if !tokens.iter().any(|held| held.as_str() == token.as_ref()) {
                     tokens.push(token.to_string());

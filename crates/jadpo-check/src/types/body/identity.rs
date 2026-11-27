@@ -629,7 +629,12 @@ impl Body<'_> {
             },
             |value| self.span(value),
         );
-        let problem = |body: &mut Self, at: jadpo_diag::Span, message: String, label: &str, reason: String, next: String| {
+        let problem = |body: &mut Self,
+                       at: jadpo_diag::Span,
+                       message: String,
+                       label: &str,
+                       reason: String,
+                       next: String| {
             body.out.push(
                 Diagnostic::new(&rule::TYPE_TOKEN_SCOPES_INVALID, message)
                     .at(at, label.to_string())
@@ -712,7 +717,9 @@ impl Body<'_> {
                         "{shape} `api_token:` declares {}.",
                         crate::and_list(&declared)
                     ),
-                    format!("Declare `{name}:` in `api_token: {{ scopes: }}`, or list a scope it declares"),
+                    format!(
+                        "Declare `{name}:` in `api_token: {{ scopes: }}`, or list a scope it declares"
+                    ),
                 );
                 return;
             };
@@ -743,10 +750,9 @@ impl Body<'_> {
             );
             return;
         }
-        self.facts.types.insert(
-            node_key(list.syntax()),
-            Ty::List(Box::new(scope_ty)),
-        );
+        self.facts
+            .types
+            .insert(node_key(list.syntax()), Ty::List(Box::new(scope_ty)));
     }
 
     /// `privacy.request(address, locale)`, `.confirm(token, kind)` and

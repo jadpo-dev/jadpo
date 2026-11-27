@@ -352,6 +352,120 @@ entity Attachment {
 `person:` takes only `true`; an entity that isn't a person leaves the
 line out. A field may still be called `person`.
 
+## Looking up one person by email
+<!-- topic: looking-up-one-person-by-email -->
+
+People find each other by email: a workspace's owner adds a colleague
+by the address of their account. A person's address is theirs, and a
+query may filter on a field only when everyone who may run it may read
+the field ([What else shows a field](09-policy.md#what-else-shows-a-field)).
+So an action finds one person by an exact address with a lookup, behind
+its own permission check:
+
+```jadpo check project=lookup-by-email
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+policy {
+    actions: {
+        is_member: [Access.authenticated]
+    }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+type Membership = Enum {
+    member
+    stranger
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+
+/// Whether an address has an account.
+action is_member(email: Member.email) -> Membership {
+    match Member.lookup(email: email) {
+        none -> {
+            return Membership.stranger
+        }
+        some -> {
+            return Membership.member
+        }
+    }
+}
+```
+
+`<Entity>.lookup(<field>: address)` gives the one record whose field is
+exactly `address`, as the field keeps it, or `none`.
+
+- The field is `unique: true`, built on `Email`, on an entity every
+  tenant shares ([`data.lookup_not_unique`](../errors/data.lookup_not_unique.md),
+  [`data.lookup_not_email`](../errors/data.lookup_not_email.md)). There
+  is no partial match, no list and no ordering by it, so a lookup can't
+  walk the table.
+- Only an action calls it ([`type.lookup_context`](../errors/type.lookup_context.md)),
+  and the action is listed under root `policy { actions: }` with a line
+  other than `Access.public`: that line is the lookup's permission check,
+  in place of the entity's `read:`, checked as the action starts
+  ([`policy.lookup_unchecked`](../errors/policy.lookup_unchecked.md)).
+- The found record's `id` always comes back. Its other fields reach a
+  caller only where the entity's `read:`, and the field's own, let in
+  everyone the line lets in, proved as any output is
+  ([Outputs](09-policy.md#outputs)). Here a member's `handle` stays
+  their own.
+- A record its lifecycle hides isn't found, and a narrowed token never
+  looks anyone up.
+
+A line naming a role held in a record, such as `WorkspaceRole.owner`, is
+checked as the action starts in the record whose `id` the action is
+given as its one parameter of that type. So an owner adds a colleague to
+their workspace by email, and anyone else, an owner of another workspace
+too, is refused with `not_permitted` before the lookup runs, whatever
+the address:
+
+```jadpo fragment
+// policy.jadpo: desk.add_member_by_email: [WorkspaceRole.owner]
+action add_member_by_email(workspace_id: Workspace.id, input: NewMemberByEmail) fails NoOneByThatEmail, AlreadyMember, WorkspaceNotFound -> MemberView {
+    match User.lookup(email: input.email) {
+        none -> {
+            reject NoOneByThatEmail {}
+        }
+        some(person) -> {
+            var member: Membership = attempt Membership.create {
+                set: {
+                    workspace_id: workspace_id
+                    user_id: person.id
+                    role: input.role
+                }
+                ...
+            }
+            ...
+        }
+    }
+}
+```
+
 ## Erasure
 <!-- topic: erasure -->
 
@@ -2305,6 +2419,7 @@ This is not legal advice. A privacy professional reviews the report.
 | `erasure:` on a package and on a connection | Built: each is read and checked, a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance, and after an erasure commits a generated subscriber calls each connection's erasure operation, retried until its provider confirms ([Erasure at providers](#erasure-at-providers)). |
 | Marked fields in logs | Built: a marked field and a standard type that is personal data, written as a keyed hash in a failure's log event and an audited entity's history, interpreted and compiled. |
 | Sensitive fields and access records | Built: `privacy.exported`, `privacy.erased` once it commits, and a `privacy.read` event for each record a read of a sensitive field reads, a search among them, interpreted and compiled. A `create` or `update` that returns the record makes none, since the code wrote what it holds; an aggregate reads no one record, so it makes none. |
+| `<Entity>.lookup(email: address)` | Built, interpreted and compiled: one record by an exact match on a unique `Email` field of an entity every tenant shares, behind the calling action's line, checked as it starts, with its `id` always given and its other fields proved against the entity's `read:`. |
 | Everything else on this page | Not built yet. |
 
 ## Errors
@@ -2323,6 +2438,8 @@ it and the compiler's real output from `jadpo check`.
 - [`data.erase_unreached`](../errors/data.erase_unreached.md)
 - [`data.erasure_log_required`](../errors/data.erasure_log_required.md)
 - [`data.erasure_log_store`](../errors/data.erasure_log_store.md)
+- [`data.lookup_not_email`](../errors/data.lookup_not_email.md)
+- [`data.lookup_not_unique`](../errors/data.lookup_not_unique.md)
 - [`data.field_encryption_key_invalid`](../errors/data.field_encryption_key_invalid.md)
 - [`data.field_encryption_key_required`](../errors/data.field_encryption_key_required.md)
 - [`data.person_removal_across_stores`](../errors/data.person_removal_across_stores.md)
@@ -2337,5 +2454,7 @@ it and the compiler's real output from `jadpo check`.
 - [`data.retention_period`](../errors/data.retention_period.md)
 - [`data.retention_since`](../errors/data.retention_since.md)
 - [`package.provider_invalid`](../errors/package.provider_invalid.md)
+- [`policy.lookup_unchecked`](../errors/policy.lookup_unchecked.md)
 - [`query.include_erased_reads`](../errors/query.include_erased_reads.md)
 - [`query.include_erased_unused`](../errors/query.include_erased_unused.md)
+- [`type.lookup_context`](../errors/type.lookup_context.md)

@@ -422,25 +422,11 @@ fn deleting_a_member_deletes_their_sign_in_state() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Harness::postgres(&url)
-        .at(1_792_400_400_000)
-        .random_from(0);
+    let host = Harness::postgres(&url).at(1_792_400_400_000).random_from(0);
     let runtime = Runtime::new().expect("runtime");
     let (readers, writers) = runtime.block_on(async {
-        let readers = call(
-            &program,
-            &host,
-            "create_club",
-            vec![Value::text("Readers")],
-        )
-        .await;
-        let writers = call(
-            &program,
-            &host,
-            "create_club",
-            vec![Value::text("Writers")],
-        )
-        .await;
+        let readers = call(&program, &host, "create_club", vec![Value::text("Readers")]).await;
+        let writers = call(&program, &host, "create_club", vec![Value::text("Writers")]).await;
         (readers, writers)
     });
     let id = |club: &Value| match club {
@@ -453,13 +439,7 @@ fn deleting_a_member_deletes_their_sign_in_state() {
             (&readers, "bo@club.example"),
             (&writers, "cy@club.example"),
         ] {
-            call(
-                &program,
-                &host,
-                "enrol",
-                vec![id(club), Value::text(email)],
-            )
-            .await;
+            call(&program, &host, "enrol", vec![id(club), Value::text(email)]).await;
         }
     });
     let ann = member_id(&host, &runtime, "ann@club.example");

@@ -351,9 +351,10 @@ impl Body<'_> {
                 .reason(format!(
                     "A lookup gives one record or none. Without `unique: true` several `{entity}` records could hold one address, and which came back would show more than one person's."
                 ))
-                .next(format!(
-                    "Make `{entity}.{field}` `unique: true`, if one address is one person's (human)"
-                )),
+                .next_for(
+                    format!("Make `{entity}.{field}` `unique: true`, if one address is one person's"),
+                    jadpo_diag::Decider::Human,
+                ),
             );
             return (found, None);
         }
