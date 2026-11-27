@@ -19,7 +19,7 @@ Why [Geospatial](../20-geospatial.md) is the way it is: the decisions behind it,
   includes the `geo.` conditions; `order:` includes `geo.distance`.
 - **Area 13:** the test server needs PostGIS. Postgres.app's PostgreSQL 16
   ships PostGIS 3.4.2 (verified). CI runs `tools/fixtures/postgres/Dockerfile`,
-  PostgreSQL 16 with PostGIS 3.6 and pgvector from apt.postgresql.org,
+  PostgreSQL 16 with PostGIS 3.7 and pgvector from apt.postgresql.org,
   since every `postgis/postgis` 16 tag is built on Debian bullseye, whose
   support has ended (area 21, "Without pgvector").
 - **Area 14:** `migration.extension_missing` is raised by `jadpo migrate
@@ -114,7 +114,7 @@ test.
 
 Every geometry, with and without altitude, a `Geometry` of each kind, a
 box and a circle is stored and read back equal on PostGIS 3.4.2 and CI's
-3.6.4 (`jadpo-cli`'s `geography` test). Coordinates come back unchanged
+3.7.0 (`jadpo-cli`'s `geography` test). Coordinates come back unchanged
 because question 2 holds every coordinate as the shortest decimal of a
 double.
 
@@ -128,7 +128,7 @@ double.
   (`ST_DWithin` true where `ST_Covers` is false), and every case of
   `tools/references/geo_cases.py`, run as a query against every case's
   shape at once, gives the code's answer on PostGIS 3.4.2 (Postgres.app)
-  and on CI's 3.6.4.
+  and on CI's 3.7.0.
 - Verified plan for nearest first inside a radius: an index scan on
   `&&`, then `ST_DWithin`, then a sort of the matches.
 - An include's checks are its `IncludeRead`'s `recheck`, and an

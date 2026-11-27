@@ -11,7 +11,7 @@
 FROM postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
 
 ARG PGVECTOR_VERSION=0.8.7-1.pgdg12+1
-ARG POSTGIS_VERSION=3.6.4+dfsg-2.pgdg12+1
+ARG POSTGIS_VERSION=3.7.0+dfsg-2.pgdg12+1
 
 RUN set -eux; \
     apt-get update; \
