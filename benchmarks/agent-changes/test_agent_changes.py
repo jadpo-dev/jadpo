@@ -1031,6 +1031,15 @@ class Claude(unittest.TestCase):
                            'mcp_servers': [{'name': 'x', 'status': 'connected'}], 'plugins': [], 'skills': ['s']})
         self.assertEqual(harness.stream_tools([init]), ['Bash', 'Read', 'mcp:x', 'skill:s'])
 
+    def test_built_in_agents_count_only_with_the_agent_tool(self):
+        def init(tools, agents):
+            return [json.dumps({'type': 'system', 'subtype': 'init', 'tools': tools, 'agents': agents})]
+        built_in = ['claude', 'Explore', 'general-purpose', 'Plan']
+        self.assertEqual(harness.stream_tools(init([], built_in)), [])
+        self.assertEqual(harness.stream_tools(init([], built_in + ['owners-agent'])), ['agent:owners-agent'])
+        self.assertEqual(harness.stream_tools(init(['Agent'], ['Plan'])), ['Agent', 'agent:Plan'])
+        self.assertEqual(harness.stream_tools(init(['Task'], ['Plan'])), ['Task', 'agent:Plan'])
+
 
 class Measure(unittest.TestCase):
     def test_sets_sessions_labels_and_names(self):

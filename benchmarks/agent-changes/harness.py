@@ -1527,16 +1527,24 @@ def command_knowledge_probe(args):
     return 0 if result['passed'] else 1
 
 
+# Claude Code lists its own subagent types in every session's init event. A
+# session can start one only through the Agent tool, so they count as offered
+# only with it; any other agent name means the run picked up someone's config.
+BUILT_IN_AGENTS = ('claude', 'Explore', 'general-purpose', 'Plan')
+
+
 def stream_tools(lines):
-    """The tools, MCP servers, plugins and skills a Claude Code session was
-    given, from its stream's init event."""
+    """The tools, MCP servers, plugins, skills and agents a Claude Code session
+    was given, from its stream's init event."""
     for event in events(lines):
         if event.get('type') == 'system' and event.get('subtype') == 'init':
             named = list(event.get('tools') or [])
             named += ['mcp:' + str((server or {}).get('name', server)) for server in event.get('mcp_servers') or []]
             named += ['plugin:' + str((plugin or {}).get('name', plugin)) for plugin in event.get('plugins') or []]
             named += ['skill:' + str(skill) for skill in event.get('skills') or []]
-            named += ['agent:' + str(agent) for agent in event.get('agents') or []]
+            delegates = {'Agent', 'Task'} & set(named)
+            named += ['agent:' + str(agent) for agent in event.get('agents') or []
+                      if delegates or agent not in BUILT_IN_AGENTS]
             named += ['command:' + str(command) for command in event.get('slash_commands') or []]
             return named
     return []
