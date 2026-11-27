@@ -148,6 +148,25 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.13 What building Selling found**: [Tenant proof across actions](language/09-policy.md#tenant-proof-across-actions), signing out everywhere under [Starting and ending a session](language/08-identity.md#starting-and-ending-a-session) and its naming in [the notes](language/notes/08-identity.md), `text.from` under [Values as text](language/19-standard-library.md#values-as-text-from-parse-and-format), [What can be sorted](language/06-reads-and-writes.md#what-can-be-sorted) and [`query.order_field`](errors/query.order_field.md), and the baseline under [`jadpo check`](language/14-tooling.md#jadpo-check) and [`acceptance.unmatched`](errors/acceptance.unmatched.md).
 - [x] **10.13b Exact-email lookup and scopes on issued tokens**: [Looking up one person by email](language/15-personal-data.md#looking-up-one-person-by-email) and [`policy.lookup_unchecked`](errors/policy.lookup_unchecked.md), [Narrowing an API token to scopes](language/08-identity.md#narrowing-an-api-token-to-scopes), [Deleting someone who signs in](language/08-identity.md#deleting-someone-who-signs-in), and their decisions in the notes of areas [8](language/notes/08-identity.md), [9](language/notes/09-policy.md) and [15](language/notes/15-personal-data.md).
 - [x] **10.14 A final measurement anyone can rerun**: in [agent-changes](../benchmarks/agent-changes/README.md), `measure.py` runs a held-out set on several models and writes the report's tables, cost per correct change included, `writer-brief.md` briefs the next set's blind writer, Claude Code runs Opus 5.5 on the subscription in its own sandbox, and a run's PostgreSQL socket no longer depends on its label.
+- [ ] **10.15 Three models on a fresh held-out set** `opus · high`: Sol,
+  Luna and Opus 5.5, three runs each in both languages, on H51–H60 (written
+  blind, kept out of the repository until measured), against the Jadpo
+  frozen where 10.14b merged. The report gives correctness, unsafe changes,
+  tokens and cost per correct change for each model, with debriefs of the
+  misses.
+- [ ] **10.16 A large app, grown in both languages** `opus · high` after
+  10.15 (Richard, 2026-11-27): does TypeScript lose more than Jadpo as an
+  app grows past what an agent can read at once? A new rule-heavy domain
+  (pet insurance: waiting periods, pre-existing conditions, excess and
+  co-pay, per-condition limits, renewals, who may see a claim's medical
+  notes), written as a spec from domain knowledge, never from existing
+  code. Agents grow it in both languages through scored changes, the
+  parity check proving both answer every route the same at every step.
+  Blind modification sets at about 100 and 200 routes, sessions long
+  enough to fill and compact the context, and changes whose main work is
+  updating what depends on them, scored for fixing those parts and for
+  breaking them. Stop at the size that answers it. Codex usage isn't
+  capped for this round.
 
 ## What the 0.2.0 run found
 
