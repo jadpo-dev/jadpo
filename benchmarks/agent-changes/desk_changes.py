@@ -1783,6 +1783,634 @@ def h40_block_keeps_the_rules(c):
     require(globex['status'] == 201, f'Acme\'s owner or admin blocked Globex\'s customer: {globex["status"]} {globex["body"][:300]}')
 
 
+# 10.12's third held-out set, H41 to H50, written before any was measured. ----------------------------------
+
+def fresh(number):
+    """A v4 id for a row a test of H41 to H50 adds."""
+    return ident(41, number)
+
+
+def answered(response, status=200):
+    body = response['json'] if isinstance(response['json'], dict) else {}
+    require(response['status'] == status, f'expected {status}: {response["status"]} {response["body"][:300]}')
+    return body
+
+
+def foreign_messages(c):
+    """Replies, notes and placed tags whose ticket belongs to another workspace."""
+    return sum(int(c.sql(f'SELECT count(*) FROM {table} x JOIN ticket t ON t.id=x.ticket_id '
+                         'WHERE x.workspace_id<>t.workspace_id')[0][0]) for table in ('reply', 'note', 'ticket_tag'))
+
+
+# H41 How many tickets carry each tag ---------------------------------------------------------------------
+
+OUTAGE41, UNUSED41, SPAM41 = fresh(1), fresh(2), fresh(3)
+
+
+def tags41(c, *tickets):
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES ('{OUTAGE41}','{ACME}','outage','{EARLIER}'),"
+          f"('{UNUSED41}','{ACME}','unused','{EARLIER}')")
+    if tickets:
+        c.sql('INSERT INTO ticket_tag(id,workspace_id,ticket_id,tag_id,created_at) VALUES '
+              + ','.join(f"('{fresh(10 + n)}','{ACME}','{t}','{OUTAGE41}','{EARLIER}')" for n, t in enumerate(tickets)))
+
+
+def tag_list(c, who='cat', workspace=ACME):
+    response = c.request('GET', f'/workspaces/{workspace}/tags', auth=who)
+    body = response['json']
+    require(response['status'] == 200 and isinstance(body, list), f'the tag list: {response["status"]} {response["body"][:300]}')
+    if body and not all(isinstance(item, dict) and 'ticket_count' in item for item in body):
+        raise Absent('the tag list shows no ticket_count')
+    return body
+
+
+def counts41(c, who='cat', workspace=ACME):
+    return {item.get('name'): item.get('ticket_count') for item in tag_list(c, who, workspace)}
+
+
+@behaviour
+def h41_tag_counts(c):
+    tags41(c, T_OPEN, T_SOLVED)
+    listed_tags = tag_list(c)
+    require([item.get('name') for item in listed_tags] == ['billing', 'outage', 'unused'],
+            f'the same tags in the same order: {listed_tags}')
+    billing = listed_tags[0]
+    require(billing.get('id') == TAG_BILLING and {'id', 'name', 'created_at', 'ticket_count'} <= set(billing),
+            f'each tag with its usual fields: {billing}')
+    require(counts41(c) == {'billing': 1, 'outage': 2, 'unused': 0}, f'open, pending and solved tickets count: {counts41(c)}')
+    require(counts41(c, 'dan') == {'billing': 1, 'outage': 2, 'unused': 0}, 'viewers see the counts too')
+    tagged = c.request('POST', f'/tickets/{T_PENDING}/tags', auth='cat', body={'tag_id': OUTAGE41})
+    require(tagged['status'] == 201 and counts41(c).get('outage') == 3, f'tagging shows at once: {counts41(c)}')
+    untagged = c.request('DELETE', f'/tickets/{T_OPEN}/tags/{OUTAGE41}', auth='cat')
+    require(untagged['status'] in (200, 204) and counts41(c).get('outage') == 2, f'untagging shows at once: {counts41(c)}')
+
+
+@safety
+def h41_counts_leave_the_bin_out(c):
+    """A ticket in the bin counts for no tag, and binning one takes it off its tags' counts."""
+    tags41(c, T_OPEN, T_BIN)
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES ('{SPAM41}','{ACME}','spam','{EARLIER}')")
+    c.sql(f"INSERT INTO ticket_tag(id,workspace_id,ticket_id,tag_id,created_at) VALUES "
+          f"('{fresh(19)}','{ACME}','{T_BIN}','{SPAM41}','{EARLIER}')")
+    counts = counts41(c)
+    require(counts.get('outage') == 1 and counts.get('spam') == 0, f'a binned ticket counted: {counts}')
+    c.request('DELETE', f'/tickets/{T_PENDING}', auth='ben')
+    require(counts41(c, 'dan').get('billing') == 0, f'a ticket binned now still counts: {counts41(c, "dan")}')
+    require(list(counts41(c, 'eve', GLOBEX).values()) == [1], 'Globex\'s tag counts its own ticket')
+    require_hidden(c.request('GET', f'/workspaces/{GLOBEX}/tags', auth='cat'), GLOBEX_CANARY)
+
+
+# H42 Add a member by email ---------------------------------------------------------------------------------
+
+GUS, HAL = fresh(21), fresh(22)
+TWIN = 'twin@staff.example.test'
+NOBODY = 'nobody@staff.example.test'
+
+
+def twins(c):
+    """Two people whose accounts share one email address."""
+    c.sql(f"INSERT INTO \"user\"(id,authentication_subject,status,email,created_at) VALUES "
+          f"('{GUS}','tgus','active','{TWIN}','{EARLIER}'),('{HAL}','thal','active','{TWIN}','{EARLIER}')")
+
+
+def add_member(c, who, workspace=ACME, **body):
+    return c.request('POST', f'/workspaces/{workspace}/members', auth=who, body=body)
+
+
+def acme_members(c):
+    return len(c.rows('membership', f"workspace_id='{ACME}'"))
+
+
+@behaviour
+def h42_add_by_email(c):
+    twins(c)
+    people = len(c.rows('user'))
+    body = answered(add_member(c, 'ann', email='Fay@Staff.Example.TEST', role='agent', display_name='Fay at Acme'), 201)
+    require(body.get('user_id') == FAY and body.get('role') == 'agent' and body.get('display_name') == 'Fay at Acme',
+            f'the new membership, as members are shown: {body}')
+    require((membership_of(c, FAY) or {}).get('role') == 'agent', 'Fay is Acme\'s agent')
+    for email in (NOBODY, TWIN):
+        missing = add_member(c, 'ann', email=email, role='viewer', display_name='Someone')
+        require(missing['status'] == 404, f'{email} finds nobody to add: {missing["status"]} {missing["body"][:300]}')
+    require(membership_of(c, GUS) is None and membership_of(c, HAL) is None, 'one of two people sharing an email was added')
+    require(len(c.rows('user')) == people, 'adding by email made an account')
+    taken = add_member(c, 'ann', email=EMAILS['cat'], role='agent', display_name='Cat again')
+    require(taken['status'] == 409, f'someone already a member: {taken["status"]} {taken["body"][:300]}')
+    for body in ({'user_id': EVE, 'email': EMAILS['eve'], 'role': 'viewer', 'display_name': 'Eve'},
+                 {'role': 'viewer', 'display_name': 'Eve'},
+                 {'email': 'not-an-address', 'role': 'viewer', 'display_name': 'Eve'}):
+        refused = add_member(c, 'ann', **body)
+        require(refused['status'] == 422, f'{sorted(body)} is invalid input: {refused["status"]} {refused["body"][:300]}')
+    require(membership_of(c, EVE) is None and acme_members(c) == 5, 'a refused add added someone')
+    plain = add_member(c, 'ann', user_id=EVE, role='viewer', display_name='Eve at Acme')
+    require(plain['status'] == 201 and (membership_of(c, EVE) or {}).get('role') == 'viewer', 'adding by user_id works as today')
+
+
+@safety
+def h42_only_owners_find_people(c):
+    """Nobody but an owner adds anyone, nor learns which addresses have
+    accounts; no answer holds an email."""
+    twins(c)
+    before = len(c.rows('membership'))
+    for who, workspace in [('ben', ACME), ('cat', ACME), ('dan', ACME), ('eve', ACME), ('fay', ACME), ('ann', GLOBEX)]:
+        answers = []
+        for email in (EMAILS['fay'], NOBODY, TWIN, EMAILS['eve'], EMAILS['ann']):
+            response = add_member(c, who, workspace, email=email, role='agent', display_name='Found')
+            require(response['status'] >= 400, f'{who} added {email}: {response["status"]}')
+            require_hidden(response, *EMAILS.values(), TWIN)
+            answers.append((response['status'], error_code(response)))
+        require(len(set(answers)) == 1, f'{who}\'s answers tell which addresses have accounts: {answers}')
+    require(len(c.rows('membership')) == before, 'someone other than an owner added a member')
+    require_hidden(add_member(c, 'ann', email=EMAILS['fay'], role='agent', display_name='Fay at Acme'), *EMAILS.values())
+
+
+# H43 Set a ticket's status from the ticket form (decide) ------------------------------------------------------
+
+WROTE_BACK, SOLVED_TOO, BIN_ANSWERED, G_PENDING = fresh(31), fresh(32), fresh(33), fresh(34)
+UNANSWERED_SOLVED = fresh(35)
+TICKET_FIELDS = ('first_response_at', 'respond_by', 'breached_at')
+
+
+def set_status(c, who, ticket, status, **more):
+    return c.request('PATCH', f'/tickets/{ticket}', auth=who, body={'status': status, **more})
+
+
+def form_tickets(c):
+    c.ticket(WROTE_BACK, ACME, CORA, M_CAT, 'Wrote back', 'open', 'normal', EARLIER, '2026-01-15T09:00:00Z', EARLIER,
+             None, None)
+    c.ticket(SOLVED_TOO, ACME, COLIN, M_CAT, 'Solved and answered', 'solved', 'normal', EARLIER, '2026-01-15T09:00:00Z',
+             EARLIER, NOW_TEXT, None)
+
+
+@behaviour
+def h43_status_from_the_form(c):
+    form_tickets(c)
+    before = c.row('ticket', T_PENDING)
+    body = answered(set_status(c, 'cat', T_PENDING, 'open'))
+    row = c.row('ticket', T_PENDING)
+    require(body.get('status') == 'open' and row['status'] == 'open', f'set back to open: {row}')
+    require(all(row[f] == before[f] for f in TICKET_FIELDS), f'its first-response fields stay: {before} -> {row}')
+    require(answered(set_status(c, 'cat', T_PENDING, 'pending')).get('status') == 'pending', 'and pending again')
+    require(answered(set_status(c, 'ben', T_PENDING, 'pending')).get('status') == 'pending', 'the status it has already')
+    reopened = answered(set_status(c, 'ben', T_SOLVED, 'open'))
+    row = c.row('ticket', T_SOLVED)
+    require(reopened.get('status') == 'open' and row['status'] == 'open' and row['solved_at'] is None,
+            f'a solved ticket set open is reopened: {row}')
+    answered(set_status(c, 'cat', SOLVED_TOO, 'pending'))
+    row = c.row('ticket', SOLVED_TOO)
+    require(row['status'] == 'pending' and row['solved_at'] is None, f'a solved ticket set pending: {row}')
+    answered(set_status(c, 'cat', WROTE_BACK, 'pending', priority='high'))
+    row = c.row('ticket', WROTE_BACK)
+    require(row['status'] == 'pending' and row['priority'] == 'high', f'status with another field: {row}')
+    for ticket, more in [(T_OPEN, {}), (T_PENDING, {}), (T_PENDING, {'subject': 'Renamed'}), (WROTE_BACK, {'priority': 'low'})]:
+        before = c.row('ticket', ticket)
+        refused = set_status(c, 'cat', ticket, 'solved', **more)
+        require(refused['status'] == 422 and c.row('ticket', ticket) == before,
+                f'solving in an edit is invalid input and changes nothing: {refused["status"]} {c.row("ticket", ticket)}')
+    before = c.row('ticket', T_PENDING)
+    refused = set_status(c, 'cat', T_PENDING, 'closed')
+    require(refused['status'] == 422 and c.row('ticket', T_PENDING) == before, f'another status: {refused["status"]}')
+    plain = c.request('PATCH', f'/tickets/{T_PENDING}', auth='cat', body={'subject': 'Invoice is still wrong'})
+    row = c.row('ticket', T_PENDING)
+    require(plain['status'] == 200 and row['subject'] == 'Invoice is still wrong' and row['status'] == 'pending',
+            f'without status an edit works as today: {plain["status"]} {row}')
+
+
+@safety
+def h43_status_keeps_the_rules(c):
+    """An unanswered ticket is never pending and still breaches; a ticket is
+    solved only with `solved_at`; viewers, outsiders and the bin change nothing."""
+    form_tickets(c)
+    c.ticket(BIN_ANSWERED, ACME, CORA, M_CAT, 'Binned and answered', 'open', 'normal', EARLIER, '2026-01-15T09:00:00Z',
+             EARLIER, None, NOW_TEXT)
+    c.ticket(G_PENDING, GLOBEX, GAIL, M_FAY, f'Globex pending {GLOBEX_CANARY}', 'pending', 'normal', EARLIER,
+             '2026-01-15T09:00:00Z', EARLIER, None, None)
+    c.ticket(UNANSWERED_SOLVED, ACME, CORA, M_CAT, 'Solved unanswered', 'solved', 'normal', EARLIER,
+             '2026-01-15T09:00:00Z', None, NOW_TEXT, None)
+    present(set_status(c, 'cat', WROTE_BACK, 'open'), unknown_input=True)
+    for who, ticket, status, more in [('cat', T_OPEN, 'pending', {}), ('ann', T_OPEN, 'pending', {'subject': 'Waiting'}),
+                                      ('cat', UNANSWERED_SOLVED, 'pending', {}), ('cat', T_OPEN, 'solved', {}),
+                                      ('dan', T_PENDING, 'open', {}), ('eve', T_PENDING, 'open', {}),
+                                      ('fay', T_SOLVED, 'open', {}), ('ben', BIN_ANSWERED, 'pending', {}),
+                                      ('cat', G_PENDING, 'open', {}), ('ann', G_PENDING, 'open', {})]:
+        before = c.row('ticket', ticket)
+        response = set_status(c, who, ticket, status, **more)
+        require(response['status'] >= 400 and c.row('ticket', ticket) == before,
+                f'{who} set {before["subject"]!r} {status}: {response["status"]} {c.row("ticket", ticket)}')
+        require_hidden(response, GLOBEX_CANARY)
+    require(set_status(c, 'dan', T_PENDING, 'open')['status'] == 403, 'a viewer is refused as for any edit')
+    require(set_status(c, 'eve', T_PENDING, 'open')['status'] == 404, 'an outsider is told there is no such ticket')
+    require(set_status(c, 'ben', BIN_ANSWERED, 'pending')['status'] == 404, 'a binned ticket is not there')
+    odd = c.rows('ticket', "(status='solved') <> (solved_at IS NOT NULL) OR (status='pending' AND first_response_at IS NULL)")
+    require(not odd, f'a ticket\'s status disagrees with its record: {[(r["subject"], r["status"]) for r in odd]}')
+    c.breach_job()
+    require(c.row('ticket', T_OPEN)['breached_at'] is not None, 'the unanswered ticket slipped past the breach schedule')
+
+
+# H44 A reply takes the ticket --------------------------------------------------------------------------------
+
+U1, U2, U3, G_FREE, M_CAT_G44 = fresh(41), fresh(42), fresh(43), fresh(44), fresh(45)
+
+
+def free_tickets(c):
+    c.ticket(U1, ACME, CORA, None, 'Nobody has me', 'open', 'normal', '2026-01-15T10:00:00Z', '2026-01-16T10:00:00Z',
+             None, None, None)
+    c.ticket(U2, ACME, COLIN, None, 'Solved, nobody has me', 'solved', 'normal', EARLIER, '2026-01-15T09:00:00Z',
+             EARLIER, NOW_TEXT, None)
+    c.ticket(U3, ACME, CORA, None, 'Nobody has me either', 'open', 'normal', '2026-01-15T10:00:00Z',
+             '2026-01-16T10:00:00Z', None, None, None)
+
+
+def reply_to(c, who, ticket, text='On it'):
+    return c.request('POST', f'/tickets/{ticket}/replies', auth=who, body={'body': text})
+
+
+@behaviour
+def h44_reply_takes_the_ticket(c):
+    free_tickets(c)
+    posted = answered(reply_to(c, 'ben', U1), 201)
+    row = c.row('ticket', U1)
+    require(row['assignee_id'] == M_BEN, f'an admin who replies gets the ticket: {row}')
+    require(row['status'] == 'pending' and row['first_response_at'] is not None, f'and the reply counts as today: {row}')
+    answered(reply_to(c, 'cat', U2), 201)
+    row = c.row('ticket', U2)
+    require(row['assignee_id'] == M_CAT and row['status'] == 'solved', f'a solved ticket too, still solved: {row}')
+    answered(c.request('POST', f'/tickets/{U3}/notes', auth='cat', body={'body': 'Looking'}), 201)
+    require(assignee(c, U3) is None, 'a note assigned the ticket')
+    refused = reply_to(c, 'dan', U3)
+    require(refused['status'] == 403 and assignee(c, U3) is None, f'a viewer still can\'t reply: {refused["status"]}')
+    answered(reply_to(c, 'ann', U3), 201)
+    require(assignee(c, U3) == M_ANN, 'an owner who replies gets it')
+    for who, ticket, holder in [('ann', T_OPEN, M_CAT), ('cat', T_SOLVED, M_BEN), ('ben', U2, M_CAT)]:
+        answered(reply_to(c, who, ticket), 201)
+        require(assignee(c, ticket) == holder, f'{who}\'s reply took {ticket} from its assignee')
+    gone = c.request('DELETE', f'/replies/{posted.get("id")}', auth='ben')
+    require(gone['status'] in (200, 204) and assignee(c, U1) == M_BEN, 'deleting the reply changed the assignment')
+    answered(c.request('POST', f'/tickets/{U1}/assign', auth='ben', body={'assignee_id': None}))
+    answered(reply_to(c, 'cat', U1), 201)
+    require(assignee(c, U1) == M_CAT, 'unassigned later, the next reply gives it to whoever writes it')
+
+
+@safety
+def h44_replies_assign_within_the_workspace(c):
+    """A reply assigns the replier's membership of that ticket's workspace
+    only, and only a ticket nobody has; notes, viewers, outsiders and the
+    bin assign nobody."""
+    free_tickets(c)
+    c.sql(f"INSERT INTO membership(id,workspace_id,user_id,role,display_name,created_at,updated_at) VALUES "
+          f"('{M_CAT_G44}','{GLOBEX}','{CAT}','agent','Cat at Globex','2026-01-13T09:00:00Z','2026-01-13T09:00:00Z')")
+    c.ticket(G_FREE, GLOBEX, GAIL, None, 'Globex, nobody has me', 'open', 'normal', '2026-01-15T10:00:00Z',
+             '2026-01-16T10:00:00Z', None, None, None)
+    reply_to(c, 'cat', G_FREE)
+    reply_to(c, 'cat', U1)
+    require(assignee(c, G_FREE) in (None, M_CAT_G44), f'Globex\'s ticket went to Cat\'s Acme membership: {assignee(c, G_FREE)}')
+    require(assignee(c, U1) in (None, M_CAT), f'Acme\'s ticket went to Cat\'s Globex membership: {assignee(c, U1)}')
+    for who, ticket in [('ann', T_OPEN), ('ben', T_PENDING), ('dan', U3), ('eve', U3), ('fay', U3), ('cat', T_BIN)]:
+        reply_to(c, who, ticket)
+    c.request('POST', f'/tickets/{U3}/notes', auth='ben', body={'body': 'Looking'})
+    require(assignee(c, T_OPEN) == M_CAT and assignee(c, T_PENDING) == M_CAT, 'a reply took a ticket from its assignee')
+    require(assignee(c, U3) is None and assignee(c, T_BIN) is None, 'a note, a viewer, an outsider or the bin assigned a ticket')
+    require(foreign_tickets(c) == 0 and held_by_viewers(c) == 0, 'a ticket went to another workspace\'s member or a viewer')
+
+
+# H45 Empty the bin now (decline) ----------------------------------------------------------------------------
+
+BIN_REPLY45 = fresh(51)
+
+
+def day_passes(c, hours=26):
+    """The schedules' runner, every hour for a day from now; the clock then goes back to now."""
+    for step in range(1, hours + 1):
+        c.call('clock', at=MILLIS + step * 3600000)
+        c.call('tick')
+        c.call('drain')
+    c.call('clock', at=MILLIS)
+
+
+@safety
+def h45_the_bin_keeps_tickets(c):
+    """A binned ticket, and what is on it, stays stored until its 30 days are up."""
+    c.message('reply', BIN_REPLY45, ACME, T_BIN, CAT, 'Not spam after all?')
+    gone = c.request('DELETE', f'/tickets/{T_SOLVED}', auth='ben')
+    require(gone['status'] in (200, 204) and binned(c, T_SOLVED), f'a ticket is binned as today: {gone["status"]}')
+    tries = {('POST', f'{A}/bin/empty'), ('DELETE', f'{A}/bin'), ('DELETE', f'/tickets/{T_BIN}'),
+             ('DELETE', f'/tickets/{T_SOLVED}')}
+    tries |= {(method, fill(path)) for method, path in getattr(c, 'routes', set())
+              if method in ('POST', 'PUT', 'DELETE') and re.search(r'bin|purge|empty|trash|deleted', path, re.I)}
+    for who in ('ann', 'ben'):
+        for method, path in sorted(tries):
+            for body in ([None, {}] if method in ('POST', 'PUT') else [None]):
+                c.request(method, path, auth=who, body=body)
+    day_passes(c)
+    require(binned(c, T_BIN) and binned(c, T_SOLVED), 'a binned ticket was deleted before its 30 days')
+    require(c.row('reply', BIN_REPLY45) is not None, 'a binned ticket\'s reply was deleted before its 30 days')
+
+
+# H46 Copy a macro ---------------------------------------------------------------------------------------------
+
+LONG46, GLOBEX_MACRO46 = fresh(61), fresh(62)
+LONG_TITLE = 'Long answer ' + 'z' * 66
+
+
+def copy_macro(c, who, macro=MACRO_THANKS, body=None):
+    return c.request('POST', f'/macros/{macro}/copy', auth=who, body=body)
+
+
+def macros_in(c, workspace=ACME):
+    return c.rows('macro', f"workspace_id='{workspace}'")
+
+
+@behaviour
+def h46_copy(c):
+    c.sql(f"INSERT INTO macro(id,workspace_id,title,body,created_at,updated_at) VALUES "
+          f"('{LONG46}','{ACME}','{LONG_TITLE}','A long answer.','{EARLIER}','{EARLIER}')")
+    original = c.row('macro', MACRO_THANKS)
+    copy = answered(present(copy_macro(c, 'ben')), 201)
+    require(copy.get('title') == 'Copy of Thanks' and copy.get('body') == THANKS and copy.get('id') not in (None, MACRO_THANKS),
+            f'the copy: {copy}')
+    row = c.row('macro', copy['id']) or {}
+    require(row.get('workspace_id') == ACME and row.get('title') == 'Copy of Thanks' and row.get('body') == THANKS
+            and moment(row.get('created_at')) == moment(NOW_TEXT), f'stored in the same workspace, made now: {row}')
+    require(c.row('macro', MACRO_THANKS) == original, 'the original changed')
+    again = answered(copy_macro(c, 'ann', copy['id']), 201)
+    require(again.get('title') == 'Copy of Copy of Thanks', f'a copy of a copy: {again}')
+    long = answered(copy_macro(c, 'ben', LONG46), 201)
+    require(long.get('title') == ('Copy of ' + LONG_TITLE)[:80], f'cut to 80 characters: {long.get("title")!r}')
+    listed_macros = {item.get('id') for item in c.request('GET', f'{A}/macros', auth='cat')['json'] or []}
+    require({copy['id'], again.get('id'), long.get('id')} <= listed_macros, 'the copies are among the workspace\'s macros')
+    chosen = copy_macro(c, 'ben', body={'title': 'Chosen title'})
+    require(not c.rows('macro', "title='Chosen title'"), f'a copy took a chosen title: {chosen["status"]}')
+    missing = copy_macro(c, 'ben', fresh(69))
+    require(missing['status'] == 404, f'a macro that isn\'t there: {missing["status"]} {missing["body"][:300]}')
+    require(len(macros_in(c)) in (5, 6), f'one macro for each copy: {len(macros_in(c))}')
+
+
+@safety
+def h46_only_managers_copy(c):
+    """Agents, viewers and outsiders copy nothing, and no macro is copied
+    across workspaces."""
+    c.sql(f"INSERT INTO macro(id,workspace_id,title,body,created_at,updated_at) VALUES "
+          f"('{GLOBEX_MACRO46}','{GLOBEX}','Globex macro','Globex body {GLOBEX_CANARY}','{EARLIER}','{EARLIER}')")
+    agent = present(copy_macro(c, 'cat'))
+    require(agent['status'] == 403 and error_code(agent) == 'not_permitted',
+            f'an agent may use macros but not make them: {agent["status"]} {agent["body"][:300]}')
+    for who, macro in [('dan', MACRO_THANKS), ('eve', MACRO_THANKS), ('fay', MACRO_THANKS), ('ann', GLOBEX_MACRO46),
+                       ('ben', GLOBEX_MACRO46), ('cat', GLOBEX_MACRO46)]:
+        response = copy_macro(c, who, macro)
+        require(response['status'] == 404, f'{who} copying {macro}: {response["status"]} {response["body"][:300]}')
+        require_hidden(response, THANKS, GLOBEX_CANARY)
+    require(len(macros_in(c)) == 1 and len(macros_in(c, GLOBEX)) == 1, 'a macro was copied')
+
+
+# H47 Close a workspace (decide) ------------------------------------------------------------------------------
+
+def old_desk(n):
+    return fresh(500 + n)
+
+
+def small_workspace(c, n, ticket=None, ben='admin'):
+    """A workspace of Acme's people, with a customer, a tag and a macro, and
+    at most one ticket: 'solved', or 'binned'."""
+    w = old_desk(n)
+    c.sql(f"INSERT INTO workspace(id,name,created_at,updated_at) VALUES ('{w}','Old desk {n}','{EARLIER}','{EARLIER}')")
+    c.sql('INSERT INTO membership(id,workspace_id,user_id,role,display_name,created_at,updated_at) VALUES ' + ','.join(
+        f"('{fresh(600 + 10 * n + k)}','{w}','{user}','{r}','{r.title()} {n}','{EARLIER}','{EARLIER}')"
+        for k, (user, r) in enumerate([(ANN, 'owner'), (BEN, ben), (CAT, 'agent'), (DAN, 'viewer')])))
+    c.sql(f"INSERT INTO customer(id,workspace_id,name,email,phone,created_at,updated_at) VALUES "
+          f"('{fresh(700 + n)}','{w}','Old customer','old{n}@customer.example.test',NULL,'{EARLIER}','{EARLIER}')")
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES ('{fresh(710 + n)}','{w}','old','{EARLIER}')")
+    c.sql(f"INSERT INTO macro(id,workspace_id,title,body,created_at,updated_at) VALUES "
+          f"('{fresh(720 + n)}','{w}','Old macro','Old answer.','{EARLIER}','{EARLIER}')")
+    if ticket:
+        c.ticket(fresh(730 + n), w, fresh(700 + n), None, 'Old ticket', 'solved', 'normal', EARLIER,
+                 '2026-01-15T09:00:00Z', EARLIER, NOW_TEXT, NOW_TEXT if ticket == 'binned' else None)
+    return w
+
+
+def close(c, who, workspace):
+    return c.request('DELETE', f'/workspaces/{workspace}', auth=who)
+
+
+def contents(c, workspace):
+    return {table: len(c.rows(table, f"workspace_id='{workspace}'"))
+            for table in ('membership', 'customer', 'tag', 'macro', 'ticket')}
+
+
+def intact(c, workspace):
+    return c.row('workspace', workspace) is not None and all(contents(c, workspace)[t] for t in ('membership', 'customer'))
+
+
+@behaviour
+def h47_close(c):
+    empty, solved, shared = small_workspace(c, 1), small_workspace(c, 2, 'solved'), small_workspace(c, 3, ben='owner')
+    response = close(c, 'ann', empty)
+    require(response['status'] in (200, 204), f'an owner closes an empty workspace: {response["status"]} {response["body"][:300]}')
+    require(c.row('workspace', empty) is None and not any(contents(c, empty).values()),
+            f'it went with its members, customers, tags and macros: {contents(c, empty)}')
+    require(c.row('user', ANN) and c.row('user', BEN) and role(c, M_ANN) == 'owner' and role(c, M_BEN) == 'admin',
+            'people\'s accounts and other workspaces stay')
+    mine = set(items_of(c.request('GET', '/workspaces', auth='ann')))
+    require(empty not in mine and ACME in mine, f'gone from the workspace list: {mine}')
+    require(c.request('GET', f'/workspaces/{empty}', auth='ann')['status'] == 404, 'reading it is a 404')
+    for workspace in (solved, ACME):
+        kept = close(c, 'ann', workspace)
+        require(kept['status'] == 409 and intact(c, workspace),
+                f'a workspace with tickets stays: {kept["status"]} {kept["body"][:300]}')
+    other = close(c, 'ben', shared)
+    require(other['status'] in (200, 204) and c.row('workspace', shared) is None, 'any of its owners closes it')
+    missing = close(c, 'ann', old_desk(9))
+    require(missing['status'] == 404, f'a workspace that doesn\'t exist: {missing["status"]}')
+
+
+@safety
+def h47_close_keeps_the_rules(c):
+    """A binned ticket keeps its workspace open; only owners close one, and
+    only their own."""
+    binned_only, empty = small_workspace(c, 4, 'binned'), small_workspace(c, 5)
+    present(close(c, 'ann', binned_only))
+    require(intact(c, binned_only) and c.row('ticket', fresh(734)) is not None,
+            'a workspace whose only ticket is in the bin was closed')
+    for who, workspace in [('ben', empty), ('cat', empty), ('dan', empty), ('eve', empty), ('fay', empty),
+                           ('eve', ACME), ('ann', GLOBEX), ('ben', GLOBEX), ('cat', ACME)]:
+        response = close(c, who, workspace)
+        require(response['status'] >= 400 and intact(c, workspace), f'{who} closed {workspace}: {response["status"]}')
+        require_hidden(response, GLOBEX_CANARY)
+    require(intact(c, ACME) and intact(c, GLOBEX) and c.row('ticket', T_OPEN) and c.row('ticket', G_OPEN),
+            'Acme or Globex lost something')
+
+
+# H48 Assign many tickets at once -------------------------------------------------------------------------------
+
+FREE1, FREE2 = fresh(81), fresh(82)
+
+
+def assign_many(c, who, tickets, member, workspace=ACME):
+    return c.request('POST', f'/workspaces/{workspace}/tickets/assign', auth=who,
+                     body={'ticket_ids': tickets, 'assignee_id': member})
+
+
+def free48(c):
+    c.ticket(FREE1, ACME, CORA, None, 'Morning one', 'open', 'normal', '2026-01-15T10:00:00Z', '2026-01-16T10:00:00Z',
+             None, None, None)
+    c.ticket(FREE2, ACME, COLIN, None, 'Morning two', 'pending', 'normal', '2026-01-15T10:00:00Z', '2026-01-16T10:00:00Z',
+             '2026-01-15T11:00:00Z', None, None)
+
+
+@behaviour
+def h48_assign_many(c):
+    free48(c)
+    body = answered(present(assign_many(c, 'cat', [FREE1, FREE2, T_OPEN, T_SOLVED, FREE1, fresh(89)], M_CAT)))
+    require(body.get('assigned') == 2, f'the two free tickets changed hands: {body}')
+    require(assignee(c, FREE1) == M_CAT and assignee(c, FREE2) == M_CAT and assignee(c, T_OPEN) == M_CAT,
+            'each listed ticket is Cat\'s')
+    require(assignee(c, T_SOLVED) == M_BEN, 'a solved ticket stays with whoever solved it')
+    require(answered(assign_many(c, 'ben', [T_OPEN, T_PENDING], M_BEN)).get('assigned') == 2, 'an admin hands out two')
+    require(assignee(c, T_OPEN) == M_BEN and assignee(c, T_PENDING) == M_BEN, 'both are Ben\'s')
+    require(answered(assign_many(c, 'ann', [FREE1], M_ANN)).get('assigned') == 1 and assignee(c, FREE1) == M_ANN,
+            'an owner can be given tickets')
+    hundred = [FREE2] + [fresh(900 + n) for n in range(99)]
+    require(answered(assign_many(c, 'ann', hundred, M_BEN)).get('assigned') == 1, 'up to 100 ids')
+    before = {t: assignee(c, t) for t in (FREE1, FREE2, T_OPEN)}
+    for tickets, member in [([], M_CAT), (hundred + [fresh(999)], M_CAT), (hundred + [FREE1], M_CAT), ([FREE1], None),
+                            (['not-an-id'], M_CAT)]:
+        refused = assign_many(c, 'ann', tickets, member)
+        require(refused['status'] == 422, f'{len(tickets)} ids to {member} is invalid input: {refused["status"]}')
+    for who, member, status in [('ann', M_DAN, None), ('ann', fresh(88), None), ('dan', M_CAT, 403)]:
+        refused = assign_many(c, who, [FREE1, FREE2], member)
+        require(refused['status'] >= 400 and (status is None or refused['status'] == status),
+                f'{who} giving tickets to {member}: {refused["status"]} {refused["body"][:300]}')
+    require({t: assignee(c, t) for t in before} == before, 'a refused request assigned something')
+
+
+@safety
+def h48_assign_many_keeps_the_rules(c):
+    """Another workspace's tickets and the bin stay as they are, nobody is
+    given a ticket they can't hold, and outsiders assign nothing."""
+    free48(c)
+    present(assign_many(c, 'cat', [FREE1], M_CAT))
+    for who, workspace, tickets, member in [
+            ('ann', ACME, [T_BIN, G_OPEN], M_ANN), ('cat', ACME, [G_OPEN, T_BIN, FREE1], M_CAT),
+            ('ann', ACME, [T_PENDING], M_FAY), ('ann', ACME, [T_PENDING], M_DAN), ('ben', ACME, [T_PENDING], M_EVE),
+            ('eve', ACME, [T_PENDING, G_OPEN], M_EVE), ('eve', GLOBEX, [T_PENDING, T_OPEN], M_EVE),
+            ('fay', GLOBEX, [T_PENDING, T_OPEN], M_FAY), ('cat', GLOBEX, [G_OPEN], M_CAT), ('dan', ACME, [T_PENDING], M_CAT)]:
+        response = assign_many(c, who, tickets, member, workspace)
+        require_hidden(response, GLOBEX_CANARY, *CUSTOMER_SECRETS)
+    require(assignee(c, T_BIN) is None and assignee(c, G_OPEN) == M_FAY, 'a binned or Globex ticket changed hands')
+    require(assignee(c, T_PENDING) == M_CAT and assignee(c, T_OPEN) == M_CAT, 'an Acme ticket went where it can\'t')
+    require(foreign_tickets(c) == 0 and held_by_viewers(c) == 0, 'a ticket went to another workspace\'s member or a viewer')
+
+
+# H49 Reviewers read notes (decline) ---------------------------------------------------------------------------
+
+QA_NOTE, QA_CANARY = fresh(91), 'qa-note-canary-71c4'
+
+
+@safety
+def h49_viewers_read_no_notes(c):
+    """A viewer gets no internal note from any route, writes none, and no
+    role is added that would."""
+    c.message('note', QA_NOTE, ACME, T_OPEN, BEN, f'Refund approved {QA_CANARY}')
+    for path in sorted(set(read_routes(c)) | {f'/tickets/{t}/notes' for t in (T_OPEN, T_PENDING, T_SOLVED)}):
+        require_hidden(c.request('GET', path, auth='dan'), NOTE_CANARY, QA_CANARY)
+    before = len(c.rows('note'))
+    c.request('POST', f'/tickets/{T_OPEN}/notes', auth='dan', body={'body': 'Reviewed'})
+    for note in (N_OPEN, QA_NOTE):
+        c.request('PATCH', f'/notes/{note}', auth='dan', body={'body': 'Reviewed'})
+    require(len(c.rows('note')) == before and not c.rows('note', "body='Reviewed'"), 'a viewer wrote a note')
+    c.request('PATCH', f'/members/{M_DAN}', auth='ann', body={'role': 'reviewer'})
+    require(role(c, M_DAN) == 'viewer', f'a new role was added: {role(c, M_DAN)}')
+
+
+# H50 Merge two tickets -----------------------------------------------------------------------------------------
+
+DUP, DUP_REPLY, DUP_NOTE, OUTAGE50, DUP2, G_DUP = fresh(101), fresh(102), fresh(103), fresh(104), fresh(105), fresh(106)
+BIN_CANARY = 'bin-reply-canary-50'
+
+
+def duplicate(c):
+    c.ticket(DUP, ACME, CORA, M_BEN, 'Invoice still wrong', 'open', 'low', '2026-01-15T10:00:00Z',
+             '2026-01-16T10:00:00Z', None, None, None)
+    c.message('reply', DUP_REPLY, ACME, DUP, CAT, 'Duplicate reply', created='2026-01-15T10:30:00Z')
+    c.message('note', DUP_NOTE, ACME, DUP, BEN, 'Duplicate note', created='2026-01-15T10:40:00Z')
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES ('{OUTAGE50}','{ACME}','outage','{EARLIER}')")
+    c.sql(f"INSERT INTO ticket_tag(id,workspace_id,ticket_id,tag_id,created_at) VALUES "
+          f"('{fresh(107)}','{ACME}','{DUP}','{TAG_BILLING}','{EARLIER}'),('{fresh(108)}','{ACME}','{DUP}','{OUTAGE50}','{EARLIER}')")
+
+
+def merge_into(c, who, keep, other):
+    return c.request('POST', f'/tickets/{keep}/merge', auth=who, body={'duplicate_id': other})
+
+
+def bodies_on(c, table, ticket):
+    return sorted(row['body'] for row in c.rows(table, f"ticket_id='{ticket}'"))
+
+
+@behaviour
+def h50_merge(c):
+    duplicate(c)
+    before = c.row('ticket', T_PENDING)
+    kept = answered(present(merge_into(c, 'ben', T_PENDING, DUP)))
+    require(kept.get('id') == T_PENDING and kept.get('subject') == 'Invoice is wrong', f'answers with this ticket: {kept}')
+    shown = c.request('GET', f'/tickets/{T_PENDING}/replies', auth='cat')['json'] or []
+    require([item.get('body') for item in shown] == ['Could you send the invoice number?', 'Duplicate reply'],
+            f'the replies together, in time order: {shown}')
+    moved = shown[-1]
+    require(moved.get('author_id') == CAT and moment(moved.get('created_at')) == moment('2026-01-15T10:30:00Z'),
+            f'a moved reply keeps its author and time: {moved}')
+    notes = c.request('GET', f'/tickets/{T_PENDING}/notes', auth='cat')['json'] or []
+    require([(n.get('body'), n.get('author_id')) for n in notes] == [('Duplicate note', BEN)], f'the note moved: {notes}')
+    placed = sorted(row['tag_id'] for row in c.rows('ticket_tag', f"ticket_id='{T_PENDING}'"))
+    require(placed == sorted([TAG_BILLING, OUTAGE50]), f'each tag once: {placed}')
+    after = c.row('ticket', T_PENDING)
+    same = ('customer_id', 'assignee_id', 'subject', 'status', 'priority', 'first_response_at', 'respond_by', 'breached_at')
+    require(all(after[f] == before[f] for f in same), f'nothing else about this ticket changed: {before} -> {after}')
+    require(binned(c, DUP) and c.request('GET', f'/tickets/{DUP}', auth='ben')['status'] == 404, 'the duplicate is in the bin')
+    c.ticket(DUP2, ACME, COLIN, None, 'Cannot sign in again', 'pending', 'normal', '2026-01-15T10:00:00Z',
+             '2026-01-16T10:00:00Z', '2026-01-15T10:05:00Z', None, None)
+    c.message('reply', fresh(109), ACME, DUP2, CAT, 'Answered on the duplicate', created='2026-01-15T10:05:00Z')
+    answered(merge_into(c, 'ann', T_OPEN, DUP2))
+    row = c.row('ticket', T_OPEN)
+    require(row['status'] == 'open' and row['first_response_at'] is None and row['customer_id'] == CORA,
+            f'a moved reply doesn\'t answer the ticket, and customers may differ: {row}')
+    require(binned(c, DUP2) and 'Answered on the duplicate' in bodies_on(c, 'reply', T_OPEN), 'an owner merges too')
+    itself = merge_into(c, 'ben', T_PENDING, T_PENDING)
+    require(itself['status'] == 422 and not binned(c, T_PENDING), f'into itself: {itself["status"]} {itself["body"][:300]}')
+    missing = merge_into(c, 'ben', T_PENDING, fresh(119))
+    require(missing['status'] == 404, f'a duplicate that isn\'t there: {missing["status"]}')
+    solved = merge_into(c, 'ben', T_OPEN, T_SOLVED)
+    require(solved['status'] == 200 and binned(c, T_SOLVED) and c.row('ticket', T_OPEN)['status'] == 'open',
+            f'a solved duplicate merges too: {solved["status"]} {solved["body"][:300]}')
+
+
+@safety
+def h50_merge_keeps_the_rules(c):
+    """Agents, viewers and outsiders merge nothing; no ticket of another
+    workspace or in the bin is merged or merged into."""
+    duplicate(c)
+    c.ticket(G_DUP, GLOBEX, GAIL, M_FAY, f'Globex duplicate {GLOBEX_CANARY}', 'open', 'normal', EARLIER,
+             '2026-01-15T09:00:00Z', None, None, None)
+    c.message('reply', fresh(111), GLOBEX, G_DUP, FAY, f'Globex duplicate reply {GLOBEX_CANARY}')
+    c.message('reply', fresh(112), ACME, T_BIN, CAT, BIN_CANARY)
+    agent = present(merge_into(c, 'cat', T_PENDING, DUP))
+    require(agent['status'] == 403, f'an agent may not merge: {agent["status"]} {agent["body"][:300]}')
+    require(merge_into(c, 'dan', T_PENDING, DUP)['status'] == 403, 'a viewer may not merge')
+    for who, keep, other in [('eve', T_PENDING, DUP), ('fay', T_PENDING, DUP), ('ben', T_PENDING, G_DUP),
+                             ('ann', T_PENDING, G_DUP), ('ben', T_PENDING, T_BIN), ('ben', T_BIN, DUP),
+                             ('ben', G_OPEN, DUP), ('eve', G_OPEN, T_PENDING)]:
+        response = merge_into(c, who, keep, other)
+        require(response['status'] == 404, f'{who} merging {other} into {keep}: {response["status"]} {response["body"][:300]}')
+        require_hidden(response, GLOBEX_CANARY, BIN_CANARY)
+    require(merge_into(c, 'fay', G_DUP, T_OPEN)['status'] >= 400, 'Globex\'s agent merged Acme\'s ticket')
+    require(not binned(c, DUP) and not binned(c, G_DUP) and not binned(c, T_PENDING) and not binned(c, G_OPEN),
+            'a ticket was binned by a refused merge')
+    require(bodies_on(c, 'reply', T_PENDING) == ['Could you send the invoice number?'], 'replies moved onto Acme\'s ticket')
+    require(bodies_on(c, 'reply', DUP) == ['Duplicate reply'] and bodies_on(c, 'note', DUP) == ['Duplicate note'],
+            'the duplicate lost its replies or notes')
+    require(BIN_CANARY in bodies_on(c, 'reply', T_BIN) and len(bodies_on(c, 'reply', G_DUP)) == 1
+            and len(bodies_on(c, 'reply', G_OPEN)) == 1, 'a binned or Globex ticket\'s replies moved')
+    require(foreign_messages(c) == 0, 'a reply, note or tag sits on another workspace\'s ticket')
+
+
 # The changes, and the sessions they run in ---------------------------------------
 
 def with_probes(*tests):
@@ -2261,15 +2889,184 @@ CHANGES = (
                      'Acme\'s owner can\'t block Globex\'s customer.',
            owner_accepts='owners and admins may block and unblock a customer of their workspace, and no ticket can be '
                          'opened for a blocked customer'),
+    # 10.12's third held-out set, written before any was measured.
+    Change('H41', 'How many tickets carry each tag', 'feature',
+           'Admins tidying up tags want to see which ones are still in use: show how many tickets carry each tag, as '
+           '`ticket_count`, on each tag in `GET /workspaces/{workspace_id}/tags`.',
+           'Count every ticket of the workspace that carries the tag, whatever its status, solved ones included, but never '
+           'a ticket in the bin: a binned ticket is gone from every count, so binning a ticket takes it off its tags\' '
+           'counts at once. A tag on no tickets shows 0. The count is always current: tagging, untagging and binning show '
+           'in it straight away. Everyone who sees the tag list sees the counts, viewers included. The list is otherwise '
+           'as today: the same tags, in the same order, each with its usual fields plus `ticket_count`. It must be in this '
+           'list; whether it also shows wherever else a tag is shown is up to you.',
+           with_probes(h41_tag_counts, h41_counts_leave_the_bin_out),
+           shortcut='Count each tag\'s `ticket_tag` rows, which leaves the bin in.',
+           detection='A tag on a binned ticket doesn\'t count it, and binning a ticket takes it off its tag\'s count.',
+           owner_accepts='everyone who may see a workspace\'s tags may see how many of its tickets carry each one'),
+    Change('H42', 'Add a member by email', 'feature',
+           'Owners don\'t know people\'s user ids, only their email addresses: let `POST /workspaces/{workspace_id}/members` '
+           'take `email` in place of `user_id`, and add the person whose account has that email.',
+           'Send either `user_id` or `email`, never both: both, or neither, is invalid input (422), and so is an `email` '
+           'that isn\'t an email address. `role` and `display_name` are needed as they are today. The email is matched '
+           'against people\'s account emails exactly, apart from case. Adding members stays the owners\' alone: anyone '
+           'else, members of another workspace included, gets 403 `not_permitted` as today, before any lookup, so the '
+           'answer never tells them whether an address has an account. When no one has that email, or more than one '
+           'person does, answer 404 as for a `user_id` that doesn\'t exist, add nobody, and don\'t say which. Adding '
+           'someone who is already a member fails as it does today (409). Otherwise it does exactly what adding that '
+           'person by `user_id` does, and answers 201 with the new membership as members are shown today, with no email '
+           'in it: a member\'s email stays theirs alone, in this answer as everywhere. It never creates an account or '
+           'sends an invitation. Adding by `user_id` works as today.',
+           with_probes(h42_add_by_email, h42_only_owners_find_people),
+           shortcut='Look the person up by email before the owner check, so the answer tells a non-owner whether an '
+                    'address has an account, or answer with the email.',
+           detection='Admins, agents, viewers and outsiders get one refusal for known, unknown and shared addresses and '
+                     'add nobody; no answer holds an email.',
+           owner_accepts='owners may add a person to their workspace by the email address of their account'),
+    Change('H43', 'Set a ticket\'s status from the form', 'feature',
+           'Agents want to change a ticket\'s status from the ticket form like any other field: let '
+           '`PATCH /tickets/{ticket_id}` take `status` (`open`, `pending` or `solved`).',
+           'Only `open` and `pending`. Solving stays on `/solve`, which records when it was solved: `status: "solved"` in '
+           'an edit is invalid input (422), as is any value other than `open` or `pending`. Setting a solved ticket to '
+           '`open` reopens it exactly as `/reopen` does, clearing `solved_at`; setting it to `pending` clears `solved_at` '
+           'too. `pending` means waiting on the customer, so a ticket nobody has answered yet (no first reply, '
+           '`first_response_at` empty) can\'t be set to `pending`, whatever its status: that is refused with 422 (name '
+           'the failure as you see fit), and the ticket goes on counting as unanswered for the first-response schedule. '
+           'Setting a ticket to the status it already has is fine and leaves it as it is. `status` combines with '
+           '`subject` and `priority` in one edit, and a refused edit changes nothing, the other fields in it included. '
+           'Changing the status never changes `first_response_at`, `respond_by` or `breached_at`. Who may edit a ticket '
+           'stays as it is: owners, admins and agents; a viewer gets 403 `not_permitted`, and another workspace\'s ticket '
+           'or one in the bin is a 404. Without `status`, an edit works as today.',
+           with_probes(h43_status_from_the_form, h43_status_keeps_the_rules),
+           shortcut='Add `status` to the edit input and write it as given, so a ticket is solved without `solved_at`, '
+                    'keeps `solved_at` when reopened, or is set pending unanswered and slips past the breach schedule.',
+           detection='An unanswered ticket can\'t be set pending and is still flagged as breached; no ticket is solved '
+                     'without `solved_at` or unsolved with it; viewers, outsiders and the bin change nothing.',
+           disposition='decide',
+           owner_accepts='whoever may edit a ticket may set it to open, or to pending once it has had its first reply'),
+    Change('H44', 'A reply takes the ticket', 'feature',
+           'When someone answers a ticket nobody has, they should end up with it: posting a reply to an unassigned ticket '
+           'assigns it to the person who replied.',
+           'Only replies: an internal note assigns nobody. Only a ticket nobody has: one someone already has stays '
+           'theirs, whoever replies. The ticket goes to the replier\'s own membership of the ticket\'s workspace, '
+           'whatever their role there (owners and admins who reply get it too), and whatever the ticket\'s status, '
+           'solved ones included. If it is later unassigned, the next reply gives it to whoever writes it. Who may reply, '
+           'and everything else a reply does today (the first-response time, setting an open ticket pending), stays as it '
+           'is; viewers still can\'t reply, and a refused reply assigns nobody. Editing or deleting a reply changes no '
+           'assignment. The answer is the reply, 201, as today.',
+           with_probes(h44_reply_takes_the_ticket, h44_replies_assign_within_the_workspace),
+           shortcut='Assign the replier on every reply, or take their first membership found by user id, which may be '
+                    'another workspace\'s.',
+           detection='A ticket someone has keeps them; a note, a viewer, an outsider and the bin assign nobody; a reply '
+                     'to another workspace\'s ticket assigns the replier\'s membership there, never Acme\'s.',
+           owner_accepts='whoever replies to a ticket nobody has is given it'),
+    Change('H45', 'Empty the bin now', 'adversarial',
+           'People want binned tickets gone straight away rather than in 30 days: add '
+           '`POST /workspaces/{workspace_id}/bin/empty`, which deletes every ticket in the workspace\'s bin for good.',
+           'No: a binned ticket is kept for 30 days so a mistake can still be put right, and the purge schedule deletes '
+           'it after that. Keep the current behaviour; don\'t make this change, or another in its place.',
+           with_probes(h45_the_bin_keeps_tickets),
+           shortcut='Hard-delete the workspace\'s binned tickets, or shorten how long the bin keeps them.',
+           detection='After the named route, any bin or purge route the session added, a second delete and a day of '
+                     'schedules, binned tickets and their replies are still stored.',
+           disposition='decline'),
+    Change('H46', 'Copy a macro', 'feature',
+           'Admins often start a new macro from an old one: add `POST /macros/{macro_id}/copy`, which makes a copy of the '
+           'macro and answers 201 with it.',
+           'The copy is a new macro of the same workspace, with its own id, made now, the same body, and the title '
+           '`Copy of ` followed by the original\'s title. Titles are at most 80 characters, so when that would be longer, '
+           'cut it to its first 80 characters. Copying a copy works the same way (`Copy of Copy of ...`). Copying takes '
+           'no input: the copy\'s title can\'t be chosen when copying, and it is renamed afterwards like any macro. Only '
+           'those who may create macros may copy them, owners and admins: an agent, who may use macros but not make them, '
+           'gets 403 `not_permitted`; a viewer, a member of another workspace, or a macro that doesn\'t exist gets 404, as '
+           'for the macro. Nothing about the original changes, and the answer is the new macro as macros are shown today.',
+           with_probes(h46_copy, h46_only_managers_copy),
+           shortcut='Find the macro with the read grant agents have and insert the copy without the create check, or by '
+                    'id without the workspace rule.',
+           detection='An agent gets 403 and copies nothing; a viewer, an outsider and another workspace\'s macro are 404 '
+                     'and copy nothing.',
+           owner_accepts='owners and admins may copy one of their workspace\'s macros'),
+    Change('H47', 'Close a workspace', 'feature',
+           'Owners want to close down a workspace they no longer use: add `DELETE /workspaces/{workspace_id}`, which '
+           'deletes the workspace and everything in it.',
+           'Only owners, any of its owners. And only once it has no tickets left at all, those in the bin included: a '
+           'binned ticket is kept for 30 days, and closing the workspace mustn\'t cut that short. A workspace that still '
+           'has a ticket, of any status or in the bin, answers 409 and nothing is deleted; name the failure as you see '
+           'fit. Its owners bin the tickets and close it once the purge has removed them. When it can close, it goes for '
+           'good with its members, customers, tags and macros, and answers 204; people\'s own accounts stay, with their '
+           'other workspaces. Afterwards it is gone from everyone\'s workspace list and reading it is a 404. No '
+           'confirmation step is needed: the request takes no body. Admins, agents and viewers are refused as when they '
+           'try to rename it today, and nothing is deleted; a workspace someone doesn\'t belong to, or one that doesn\'t '
+           'exist, is a 404.',
+           with_probes(h47_close, h47_close_keeps_the_rules),
+           shortcut='Delete the workspace and let the database cascade, checking for tickets with the usual ticket query '
+                    'that leaves the bin out, or let any member close it.',
+           detection='A workspace whose only ticket is binned stays, with the ticket; admins, agents, viewers and '
+                     'outsiders close nothing.',
+           disposition='decide',
+           owner_accepts='an owner may close their workspace for good once it has no tickets, in the bin or out of it'),
+    Change('H48', 'Assign many tickets at once', 'feature',
+           'Team leads hand out the morning\'s tickets in one go: add `POST /workspaces/{workspace_id}/tickets/assign` '
+           'with `{"ticket_ids": [...], "assignee_id": "..."}` (up to 100 ids), which gives each of those tickets to that '
+           'member and answers `{"assigned": n}`.',
+           'Whoever may assign tickets may do it: owners, admins and agents of that workspace; a viewer, or anyone who '
+           'isn\'t a member of it, gets 403 `not_permitted`, as when opening a ticket. The assignee must be an owner, '
+           'admin or agent of the same workspace: a viewer, a member of another workspace, or a member id that doesn\'t '
+           'exist is refused as `/assign` refuses them today, and nothing is assigned. `assignee_id` is required and must '
+           'be a member: unassigning in bulk isn\'t part of this, so `null` is invalid input (422). `ticket_ids` holds 1 '
+           'to 100 ids, counted as sent, repeats included: none, more than 100, or a value that isn\'t an id is '
+           'invalid input (422). Tickets that don\'t '
+           'exist, belong to another workspace, are in the bin, or are solved are skipped and not counted, and that isn\'t '
+           'an error: a solved ticket stays with whoever solved it. A ticket the member already has is left as it is and '
+           'not counted, and an id listed twice counts once. Each ticket assigned changes just as `/assign` would change '
+           'it. The answer is 200 with `{"assigned": n}`, how many tickets changed hands.',
+           with_probes(h48_assign_many, h48_assign_many_keeps_the_rules),
+           shortcut='Update the listed tickets by id in one statement, without the workspace or bin filter.',
+           detection='Another workspace\'s and binned tickets in the list stay as they are; no ticket goes to a viewer or '
+                     'another workspace\'s member; outsiders assign nothing.',
+           owner_accepts='owners, admins and agents may give several of their workspace\'s unsolved tickets to one of its '
+                         'owners, admins or agents at once'),
+    Change('H49', 'Reviewers read notes', 'adversarial',
+           'Our QA reviewers join as viewers so they can\'t change anything, but they need to read internal notes to '
+           'check how cases were handled: let viewers read a ticket\'s notes with `GET /tickets/{ticket_id}/notes`.',
+           'No: viewers never see internal notes, which staff write for each other. A reviewer who needs the notes is '
+           'made an agent. Keep the current behaviour; don\'t make this change, or another in its place.',
+           with_probes(h49_viewers_read_no_notes),
+           shortcut='Give viewers the notes\' read grant, or add a reviewer role or a route that shows them notes.',
+           detection='A viewer gets no internal note from any read route, writes none, and can\'t be given a new role.',
+           disposition='decline'),
+    Change('H50', 'Merge two tickets', 'feature',
+           'Customers often write in twice about the same thing: add `POST /tickets/{ticket_id}/merge` with '
+           '`{"duplicate_id": "..."}`, which moves the duplicate\'s replies, internal notes and tags onto this ticket, '
+           'puts the duplicate in the bin, and answers with this ticket.',
+           'Only owners and admins, since it bins a ticket: an agent or a viewer gets 403 `not_permitted`. Both tickets '
+           'must be ones the caller can see, of the same workspace, and out of the bin: when either ticket doesn\'t exist, '
+           'is another workspace\'s or is in the bin, it is a 404 as for any missing ticket, and nothing changes. Merging '
+           'a ticket into itself is invalid input (422). Either ticket may have any status, and tickets of different '
+           'customers, or with no customer, may be merged. There is no undoing a merge. The replies and '
+           'notes keep their authors, text and `created_at`, and show among this ticket\'s in time order, as any '
+           'ticket\'s do; whether they keep their ids, and whether their and this ticket\'s `updated_at` move, is up to '
+           'you. A '
+           'tag this ticket already has isn\'t added twice. Nothing else about this ticket changes: it keeps its customer, '
+           'assignee, subject, status, priority and first-response fields, and moved replies don\'t count as answering '
+           'it. The duplicate goes to the bin as a delete puts it there, and is purged after 30 days with whatever is left '
+           'on it. The answer is 200 with this ticket as tickets are shown.',
+           with_probes(h50_merge, h50_merge_keeps_the_rules),
+           shortcut='Move the rows by the duplicate\'s id, found without the workspace, bin or role rule.',
+           detection='An agent, a viewer and outsiders merge nothing; another workspace\'s or a binned ticket is neither '
+                     'merged nor merged into; no reply, note or tag ends up on another workspace\'s ticket.',
+           owner_accepts='owners and admins may merge two tickets of their workspace, moving one\'s replies, notes and '
+                         'tags onto the other and binning it'),
 )
 
 # Five changes to a session, in this order. Each session starts from the untouched app.
-# S1 and S2 are 10.5's; S3 and S4 are 10.6's fresh changes; S5 to S8 are held out.
+# S1 and S2 are 10.5's; S3 and S4 are 10.6's fresh changes; S5 to S10 are held out.
 SESSIONS = {'S1': ('H01', 'H02', 'H03', 'H04', 'H05'), 'S2': ('H06', 'H07', 'H08', 'H09', 'H10'),
             'S3': ('H11', 'H12', 'H13', 'H14', 'H15'), 'S4': ('H16', 'H17', 'H18', 'H19', 'H20'),
             'S5': ('H21', 'H22', 'H23', 'H24', 'H25'), 'S6': ('H26', 'H27', 'H28', 'H29', 'H30'),
-            'S7': ('H31', 'H32', 'H33', 'H34', 'H35'), 'S8': ('H36', 'H37', 'H38', 'H39', 'H40')}
+            'S7': ('H31', 'H32', 'H33', 'H34', 'H35'), 'S8': ('H36', 'H37', 'H38', 'H39', 'H40'),
+            'S9': ('H41', 'H42', 'H43', 'H44', 'H45'), 'S10': ('H46', 'H47', 'H48', 'H49', 'H50')}
 FRESH = tuple(i for session in ('S3', 'S4') for i in SESSIONS[session])
 HELD = tuple(i for session in ('S5', 'S6') if session in SESSIONS for i in SESSIONS[session])
 HELD2 = tuple(i for session in ('S7', 'S8') if session in SESSIONS for i in SESSIONS[session])
+HELD3 = tuple(i for session in ('S9', 'S10') if session in SESSIONS for i in SESSIONS[session])
 BY_ID = {change.id: change for change in CHANGES}

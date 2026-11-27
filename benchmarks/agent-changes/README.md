@@ -221,6 +221,17 @@ public status page (decline), following tickets, previewing a macro,
 admins managing members (decide), replies locking after fifteen minutes,
 tickets for trainees (decline), and blocking a customer.
 
+**A third held-out set.** Roadmap chunk 10.12 adds H41 to H50, the
+`desk-held3` set, run as S9 and S10, written by a fresh subagent from the
+same brief, calibrated and piloted the same way, and measured on a Jadpo
+frozen after the 10.11 fixes. Six changes to implement, two for the owner
+to decide and two to decline; three carry a rule that reaches the agent
+only if it asks. They cross: counting the tickets on each tag, adding a
+member by email, setting a ticket's status from the form (decide), a reply
+taking an unassigned ticket, emptying the bin now (decline), copying a
+macro, closing a workspace (decide), assigning many tickets at once,
+reviewers reading notes (decline), and merging two tickets.
+
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
 IDs, errors seen more than twice, the docs read before each recovery, the
