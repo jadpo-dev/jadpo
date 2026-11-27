@@ -90,6 +90,7 @@ enum Flavour
 output IssuedToken
     ends_at: Instant
     id: Uuid
+    scopes: List<Text> optional
     started_at: Instant
 
 input MenuFilter

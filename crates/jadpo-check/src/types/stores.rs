@@ -62,7 +62,7 @@ fn reaches_of(fact: &Fact) -> Vec<Reach> {
     vec![match fact {
         Fact::Writes(write) => Reach::Writes(write.entity.clone()),
         Fact::Action(callee) => Reach::Calls(callee.name().to_string()),
-        Fact::Gets(entity) => Reach::Reads(entity.clone()),
+        Fact::Gets(entity) | Fact::LooksUp(entity) => Reach::Reads(entity.clone()),
         Fact::Queries(query) => Reach::Queries(query.clone()),
         Fact::Session(op) if op.on_webhooks() => Reach::Addresses(!op.reads_only()),
         Fact::Session(op) if op.reads_only() => Reach::ReadsSessions(op.on_service()),

@@ -1053,6 +1053,16 @@ impl Decoder<'_> {
                     self.json_type(written)
                 }
                 Callee::Query(key) => Decoded::Query((self.query)(key)),
+                // A lookup runs as a query does (chunk 10.13b).
+                Callee::Entity { entity, operation }
+                    if jadpo_std::read::lookup_field(operation).is_some() =>
+                {
+                    let field = jadpo_std::read::lookup_field(operation).unwrap_or_default();
+                    Decoded::Query((self.query)(&crate::queries::lookup_key(
+                        self.types.name(entity),
+                        field,
+                    )))
+                }
                 Callee::Entity { entity, operation } if operation == "get" => {
                     Decoded::Get((self.entity)(entity))
                 }

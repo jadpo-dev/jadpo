@@ -280,6 +280,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::identity::START.to_string(),
         ),
         (
+            "http::identity::ISSUE_SCOPED",
+            crate::http::identity::ISSUE_SCOPED.to_string(),
+        ),
+        (
             "http::identity::TOKENS",
             crate::http::identity::TOKENS.to_string(),
         ),

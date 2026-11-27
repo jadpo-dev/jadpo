@@ -2809,6 +2809,21 @@ runs a library's erasure through `jadpo test` and reads the rows and the
 bytes it leaves; its tests run compiled with the interpreter's records
 in the gate's compiled step.
 
+**A delete of someone who signs in** (area 8, "Deleting someone who
+signs in"; chunk 10.13b). A delete that removes records for good, by
+`id` or of a loaded record, wraps its `DELETE ... RETURNING "id"` in
+`jadpo_sql::statement::with_removed`, as retention does
+(`purge::signing_out`), when it or a cascade from it deletes a record of
+an entity someone signs in as: one statement deletes their
+`SIGN_IN_STATE` rows (sessions and tokens, kept AI calls, service keys,
+passkeys and ceremonies, sign-in links) beside them, following only the
+cascades that lead to such an entity. `WritePlan::signs_out` says its
+rows are read rather than counted, so a refused delete still asks its
+probe. A lifecycle's `delete` transition keeps the record and is
+unchanged. `crates/jadpo-cli/tests/signing_out_on_delete.rs` reads the
+rows after a delete and a cascade, and signs a deleted member in again
+through Google, interpreted and compiled.
+
 **Past the person's transaction** (area 15, "Records in another store" and
 "What erasure doesn't rewrite"; chunk P4c). `writes::erasure_plan` gives
 `EventsPlan::erasure`: for each person entity a `StoreErasure` for their own
@@ -3138,6 +3153,31 @@ wrong kind for the route with `not_permitted`; a service caller is keyed
 repeat. A route test's `as:` keeps a real credential of the kind the
 route's API accepts (`http::identity::test_credentials`).
 
+**Looking a person up by email** (area 15, "Looking up one person by
+email"; chunk 10.13b). The checker types `<Entity>.lookup(<field>: x)`
+in `Body::entity_lookup` as `<Entity>?`, reached as
+`Callee::Entity` with the operation `lookup:<field>`
+(`jadpo_std::read::lookup_operation`), and refuses it outside an action,
+on a field not built on `Email` or not `unique: true`. Its fact,
+`Fact::LooksUp`, places the action's store and its loading, and is no
+`Act`, so no `read:` grant is reached. `policy::lookups::lookup_check`
+says what checks the action before the lookup: its line as it starts, or
+for a line naming roles held in a record, each in the record its one
+parameter of that `<Scope>.id` type names (`ScopedRole`); the flow walk
+reports `policy.lookup_unchecked`, and a tenant's entity
+`data.lookup_not_unique`, and gives the found record the facts that line
+shows, anyone signed in when it depends on a record, so its `id` is free
+and its other fields are proved as any output's. The plan writes each
+lookup the program makes as a query keyed `<Entity>.lookup:<field>`
+(`queries::lookup_plans`): every field by an exact match, the entity's
+lifecycle and erasure conditions and no `read:`, `Cardinality::Optional`,
+with a gate refusing a narrowed token. An action looking someone up whose
+line names roles held in a record gets a start gate
+(`policy::lookup_gate`) of `Callers::Roles` whose scope is
+`Source::Arg`, which `policy::admit_with` binds from the action's own
+arguments (`ActionBody::args`). `crates/jadpo-cli/tests/lookup_by_email.rs`
+runs the helpdesk's add-a-member-by-email both ways.
+
 **Provisioned external JWT subjects** (area 8).
 `Identity::external_token` reads the issuer's `Url` setting and audience's
 `Text` setting into `ExternalTokenPlan`, together with the subject's JSON
@@ -3300,7 +3340,19 @@ declared tokens; `external_token::check_token` reads the `scope` claim
 into `Checked::scopes` (`scopes_carried`), which `authenticate` puts on
 the `Caller`, bound as a space-joined text and read by
 `policy::admit`; `http::session` refuses `sessions.start` and
-`sessions.issue_token` to a narrowed caller. A route test's `scopes:` is
+`sessions.issue_token` to a narrowed caller. An app's own API tokens
+are narrowed too (chunk 10.13b): `api_token: { scopes: }` reads into
+`Identity::issued_scopes`, merged with the external token's into
+`Identity::scopes` by `merge_scopes`, one scope-token per name, and
+`Identity::narrows` is either way's. `sessions.issue_token(user_id,
+scopes: [...])` lowers each `OAuthScope.<name>` to its scope-token
+(`BodyFacts::scope_tokens`), a second argument the runtime's
+`identity::issue_token` keeps space-joined in `jadpo_sessions.scopes`
+(`ISSUE_SCOPED`); `caller_lookup` reads the column into
+`SignedInBy::scopes`, and so `Caller::scopes`, and a signed part carries
+it as `o`. `IssuedToken`'s fourth field, `scopes`, is the one
+`jadpo_std::http::listed_field`, a `List<Text>?` the checker, the plan's
+shapes and codecs, the API record and OpenAPI each widen. A route test's `scopes:` is
 one text site after `strength:` (`Expr::Request::scopes`, the fifth
 `given` flag), which `test_credentials_scoped` signs into the local
 issuer's token (`LocalIssuer::token_scoped`); `jadpo dev token` signs in

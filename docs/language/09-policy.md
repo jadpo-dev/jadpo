@@ -2145,6 +2145,18 @@ A change that matches no record when it runs changes nothing, so no line
 and no grant is checked
 ([A change that may match nothing](#a-change-that-may-match-nothing)).
 
+An action that looks a person up by email,
+[`<Entity>.lookup`](15-personal-data.md#looking-up-one-person-by-email),
+is checked as it starts whatever its line names, since the lookup reads
+behind that line rather than the entity's `read:`. A role held in a
+record, such as `CompanyRole.owner`, is checked in the record whose `id`
+the action is given as its one parameter of that type, so an owner of
+one company never learns who has an account by adding them to another.
+An entry naming a user field lets no one past the lookup, and a line
+with nothing left to check is
+[`policy.lookup_unchecked`](../errors/policy.lookup_unchecked.md). The
+line's entries still decide the action's writes, as above.
+
 ### A call the listing doesn't cover
 
 Because a called action keeps its own grants, a listed action can call
@@ -4213,9 +4225,11 @@ A person can let another application act for them, such as a partner's app
 holding a token their company's identity provider issued it. Such a token
 carries scopes: what the person let that application do.
 [`external_token:`](08-identity.md#external_token) declares the scopes its
-tokens carry, and every such token is narrowed to them. It may do what
-both the person's grants and its scopes allow, and never more than the
-person could do themselves.
+tokens carry, and every such token is narrowed to them. Your own app can
+issue its API tokens narrowed the same way, from the scopes
+[`api_token:`](08-identity.md#narrowing-an-api-token-to-scopes) declares. A narrowed token may
+do what both the person's grants and its scopes allow, and never more
+than the person could do themselves.
 
 An entity's `policy:` says, in `scopes:`, which scope a narrowed token
 needs for each effect, as well as a grant. Here a partner's app reads a
@@ -4292,9 +4306,11 @@ entity Note {
   no scope: a new entity is never open to other applications by accident.
 - `Access.public` and `Access.authenticated` are grants like any other: a
   narrowed token still needs the effect's scope.
-- Browser sessions, API tokens and service keys carry no scopes, and
-  neither do schedules and subscribers, so scopes never touch them. Nor do
-  they touch a token from a provider whose `external_token:` declares none.
+- Browser sessions and service keys carry no scopes, and neither do
+  schedules and subscribers, so scopes never touch them. Nor do they touch
+  a token from a provider whose `external_token:` declares none, or an API
+  token issued without `scopes:`. An API token issued with them is
+  narrowed exactly as a provider's token is.
 
 A narrowed token is refused as any caller policy refuses is ([When policy
 says no](#when-policy-says-no)): a note it may not read is the code's own
@@ -4310,6 +4326,9 @@ Some things no effect's scope covers, so a narrowed token is refused them:
 - starting a session or issuing an API token, `sessions.start` and
   `sessions.issue_token` (403 `not_permitted`), since either would carry
   the person's whole authority;
+- looking a person up by email, `<Entity>.lookup`
+  ([Looking up one person by email](15-personal-data.md#looking-up-one-person-by-email)),
+  since no scope names a lookup;
 - a slot for an upload, unless it carries the scope of its entity's
   `create:` or `update:`.
 
@@ -4386,6 +4405,7 @@ beside the entities they name; a project keeps them in `app.jadpo` and
 - [`policy.event_tenant_unproved`](../errors/policy.event_tenant_unproved.md)
 - [`policy.batch_tenant_missing`](../errors/policy.batch_tenant_missing.md)
 - [`policy.public_grant_missing`](../errors/policy.public_grant_missing.md)
+- [`policy.lookup_unchecked`](../errors/policy.lookup_unchecked.md)
 ### Fields
 
 - [`type.field_update_forbidden`](../errors/type.field_update_forbidden.md)

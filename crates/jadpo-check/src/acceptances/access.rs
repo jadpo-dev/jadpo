@@ -94,11 +94,19 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
     if let Some(tenant) = &access.root.tenant {
         out.push(Entry::new(format!("tenant {tenant}")));
     }
-    // The scopes external tokens are narrowed to, each by its name and the
-    // scope-token it reads (chunk N2): removing them, or a name reading
-    // another token, lets tokens do more.
+    // The scopes tokens are narrowed to, each by its name and the
+    // scope-token it reads (chunk N2), and the ways in that narrow by them,
+    // external tokens and API tokens issued with scopes (chunk 10.13b):
+    // removing them, or a name reading another token, lets tokens do more.
     if let Some(scopes) = identity.scopes.as_ref().filter(|_| access.narrows) {
-        let mut entry = Entry::new("scopes external_token");
+        let mut ways = Vec::new();
+        if identity.external_narrows() {
+            ways.push("external_token");
+        }
+        if identity.issued_scopes.is_some() {
+            ways.push("api_token");
+        }
+        let mut entry = Entry::new(format!("scopes {}", ways.join(" ")));
         let mut scopes: Vec<&crate::identity::Scope> = scopes.iter().collect();
         scopes.sort_by(|a, b| a.name.cmp(&b.name));
         for scope in scopes {

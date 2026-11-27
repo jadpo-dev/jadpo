@@ -1843,6 +1843,7 @@ mod tests {
             files: Vec::new(),
             audit: None,
             erased: Vec::new(),
+            signs_out: false,
             clears: Vec::new(),
             redis: Some(Box::new(RedisWrite {
                 entity: counter(),

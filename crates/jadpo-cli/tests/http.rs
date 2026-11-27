@@ -2515,8 +2515,9 @@ fn member_id(dev: &Dev, handle: &str) -> String {
     jadpo_runtime::uuid_text(id)
 }
 
-/// A listing's items: each holds an `id`, `started_at` and `ends_at` and
-/// nothing else, never the credential.
+/// A listing's items: each holds an `id`, `started_at` and `ends_at`, and
+/// a token its `scopes`, `null` for one issued without them (chunk
+/// 10.13b), and nothing else, never the credential.
 fn listed(reply: &Reply) -> Vec<serde_json::Value> {
     assert_eq!(reply.status, 200, "{}", reply.body);
     let items = reply.json().as_array().expect("a list").clone();
@@ -2528,7 +2529,12 @@ fn listed(reply: &Reply) -> Vec<serde_json::Value> {
             .map(String::as_str)
             .collect();
         fields.sort_unstable();
-        assert_eq!(fields, ["ends_at", "id", "started_at"], "{item}");
+        if fields.contains(&"scopes") {
+            assert_eq!(fields, ["ends_at", "id", "scopes", "started_at"], "{item}");
+            assert!(item["scopes"].is_null(), "{item}");
+        } else {
+            assert_eq!(fields, ["ends_at", "id", "started_at"], "{item}");
+        }
     }
     items
 }
@@ -2752,11 +2758,12 @@ fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
         );
         let built_in = &document["components"]["schemas"][schema];
         assert_eq!(built_in["type"], "object", "{schema}");
-        assert_eq!(
-            built_in["required"],
-            serde_json::json!(["id", "started_at", "ends_at"]),
-            "{schema}"
-        );
+        let required = if schema == "IssuedToken" {
+            serde_json::json!(["id", "started_at", "ends_at", "scopes"])
+        } else {
+            serde_json::json!(["id", "started_at", "ends_at"])
+        };
+        assert_eq!(built_in["required"], required, "{schema}");
         assert_eq!(built_in["properties"]["id"]["format"], "uuid", "{schema}");
         assert_eq!(
             built_in["properties"]["ends_at"]["format"], "date-time",
@@ -3754,7 +3761,8 @@ fn a_member_lists_their_browsers_and_signs_out_of_every_one() {
             .map(String::as_str)
             .collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["ends_at", "id", "started_at"]);
+        assert_eq!(keys, ["ends_at", "id", "scopes", "started_at"]);
+        assert!(session["scopes"].is_null(), "{session}");
     }
     // Signing out everywhere ends both.
     let out = send("POST", "/browsers/sign-out", &from(&other, &other_csrf));

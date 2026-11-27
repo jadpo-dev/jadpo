@@ -493,7 +493,7 @@ impl Body<'_> {
         key_span: &jadpo_diag::Span,
     ) -> Option<Vec<String>> {
         let identity = self.identity();
-        if !identity.narrows() {
+        if !identity.external_narrows() {
             self.out.push(
                 Diagnostic::new(
                     &rule::SEMANTIC_REQUEST_INVALID,
@@ -529,7 +529,12 @@ impl Body<'_> {
                 self.scopes_problem(at, "`scopes:` lists scopes, each `OAuthScope.<name>`");
                 return None;
             };
-            let Some(scope) = identity.scope(&name) else {
+            let external = identity
+                .external_scopes
+                .iter()
+                .flatten()
+                .find(|scope| scope.name == name);
+            let Some(scope) = external else {
                 self.scopes_problem(
                     at,
                     &format!("`OAuthScope.{name}` isn't a scope `external_token:` declares"),

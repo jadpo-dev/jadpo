@@ -1411,9 +1411,15 @@ impl Body<'_> {
             };
             let left_out = issued == jadpo_std::files::UPLOAD_SLOT
                 && jadpo_std::files::UPLOAD_SLOT_LEFT_OUT.contains(&field.as_str());
+            let listed = jadpo_std::http::listed_field(issued, &field);
             self.facts
                 .fields
                 .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
+            // A token's scopes, `none` when it isn't narrowed (chunk
+            // 10.13b).
+            if listed {
+                return Ty::Nullable(Box::new(Ty::List(Box::new(Ty::Prim(*builtin)))));
+            }
             return if left_out {
                 Ty::Nullable(Box::new(Ty::Prim(*builtin)))
             } else {
@@ -2905,7 +2911,14 @@ pub(crate) fn members_of(
     {
         return object
             .iter()
-            .map(|(name, builtin)| plain(name, Ty::Prim(*builtin)))
+            .map(|(name, builtin)| {
+                let ty = if jadpo_std::http::listed_field(issued, name) {
+                    Ty::Nullable(Box::new(Ty::List(Box::new(Ty::Prim(*builtin)))))
+                } else {
+                    Ty::Prim(*builtin)
+                };
+                plain(name, ty)
+            })
             .collect();
     }
     if let Some(object) = super::batches::batch_fields(receiver)

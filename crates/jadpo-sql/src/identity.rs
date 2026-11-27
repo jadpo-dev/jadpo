@@ -17,7 +17,7 @@ pub fn holder() -> String {
 /// caller may read: `$1` the user, `$2` the time now.
 pub fn tokens(held: &str) -> String {
     format!(
-        "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\""
+        "SELECT \"id\", \"started_at\", \"ends_at\", \"scopes\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\""
     )
 }
 
@@ -33,7 +33,7 @@ pub fn revoke_token(held: &str) -> String {
 /// the caller may read: `$1` the user, `$2` the time now (chunk 10.13).
 pub fn browser_sessions(held: &str) -> String {
     format!(
-        "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NOT NULL AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\""
+        "SELECT \"id\", \"started_at\", \"ends_at\", \"scopes\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NOT NULL AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\""
     )
 }
 
@@ -153,7 +153,8 @@ pub fn passkey_lookup(table: &str, entity_table: &str, active: &str, wheres: &[S
 /// `entity_table`'s record where `wheres` hold, its `active` worked out as
 /// given; for a session or an API token (`session`), its `csrf_verifier`
 /// too, and after those how it was started, its `sign_in_method` and
-/// `strength` (chunk A10); and last its subject, each of `subject`'s
+/// `strength` (chunk A10), and the scopes an API token was issued
+/// narrowed to (chunk 10.13b); and last its subject, each of `subject`'s
 /// columns ([`subject_columns`]).
 pub fn caller_lookup(
     table: &str,
@@ -166,7 +167,12 @@ pub fn caller_lookup(
     let (csrf, started) = if session {
         (
             format!("s.{}, ", ident("csrf_verifier")),
-            format!(", s.{}, s.{}", ident("sign_in_method"), ident("strength")),
+            format!(
+                ", s.{}, s.{}, s.{}",
+                ident("sign_in_method"),
+                ident("strength"),
+                ident("scopes")
+            ),
         )
     } else {
         (String::new(), String::new())

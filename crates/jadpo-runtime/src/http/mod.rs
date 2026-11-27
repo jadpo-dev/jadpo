@@ -2358,7 +2358,10 @@ pub async fn session(
         )),
         (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
         (SessionOp::End, []) => identity::end(ctx, plan, at).await,
-        (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,
+        (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, None, at).await,
+        (SessionOp::IssueToken, [user, scopes]) => {
+            identity::issue_token(ctx, plan, user, Some(scopes), at).await
+        }
         (SessionOp::IssueKey, [service, expires_at]) => {
             identity::issue_key(ctx, plan, service, expires_at, at).await
         }
@@ -2468,6 +2471,7 @@ impl<'a> RequestValues<'a> {
             ),
             multi_factor: name(strength).as_deref()
                 == Some(jadpo_std::AuthenticationStrength::MultiFactor.name()),
+            scopes: None,
         };
         RequestValues {
             args: rest,

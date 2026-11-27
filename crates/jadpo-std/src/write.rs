@@ -153,6 +153,13 @@ pub struct WritePlan {
     /// row its statement returns, the person entity's name, each row a
     /// person whose `PersonErased` commits with it.
     pub erased: Vec<(i32, String)>,
+    /// A delete that takes the sign-in state of someone who signs in with
+    /// their record (area 8, "Deleting someone who signs in"; chunk
+    /// 10.13b): its statement deletes the record inside a `WITH` and gives
+    /// back a row for each record it deleted, so its rows are read rather
+    /// than counted.
+    #[serde(default)]
+    pub signs_out: bool,
     /// The cached entries it may change, cleared once it commits (area 5,
     /// "Caches"; chunk Q9): by cache, every entity it writes and, for a
     /// delete, every entity referring to one; for an erasure, everything
