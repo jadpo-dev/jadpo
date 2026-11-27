@@ -1,15 +1,16 @@
 # `query.order_field`
 
-A query sorts records by a field, such as a `Bool` or an enum, that the database and Jadpo don't order the same way.
+A query sorts records by a field, such as a `Bool` or an enum with data, that the database and Jadpo don't order the same way.
 
 ## Why Jadpo refuses it
 
 A query's `order:` is carried out by the database, and Jadpo compares
 the same values itself, so both must order them the same way. Numbers,
 times, dates, durations, quantities, percentages, text and identities
-sort the same way in both.
+sort the same way in both, and so does an enum whose variants carry
+nothing, in its declared order.
 
-An enum, a `Bool` or a structured field doesn't. The database could put
+A `Bool`, an enum with data or a structured field doesn't. The database could put
 `true` first where Jadpo puts it last, so records would come back in an
 order the code can't rely on.
 
@@ -47,7 +48,7 @@ error: Records can't be sorted by `Book.available`
    |
 14 |     order: [Book.available desc]
    |             ^^^^^^^^^^^^^^^^^^^ `Bool`
-  reason: A query sorts by numbers, times, dates, durations, quantities, percentages, text and identities, which the database and Jadpo order the same way; `Book.available` is `Bool`.
+  reason: A query sorts by numbers, times, dates, durations, quantities, percentages, text, identities and enums whose variants carry nothing, which the database and Jadpo order the same way; `Book.available` is `Bool`.
   next: Sort by another field (agent)
   rule: query.order_field
   help: https://jadpo.dev/docs/errors/query.order_field

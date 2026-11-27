@@ -1658,7 +1658,10 @@ gets a type without it ([Fields shown by role](09-policy.md#fields-shown-by-role
 ### What can be sorted
 
 Text sorts by code point, as Jadpo compares it, whatever the database's
-collation. An enum, a `Bool` or a structured field can't be sorted by,
+collation. An enum whose variants carry nothing sorts in its declared
+order, `open` before `done` for `Status { open done }`, as a group of one
+does (`array_position` of the codes it is stored as), on a page too. A
+`Bool`, an enum with data or a structured field can't be sorted by,
 since the database and Jadpo would disagree on their order. A standard
 type kept in named columns sorts by them in turn where the contract
 orders it so (a `YearMonth`, a `LocalTime`), and an amount of money by

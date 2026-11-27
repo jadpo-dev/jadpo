@@ -113,7 +113,10 @@ impl Reader<'_> {
                 )
                 // An ordered standard type in named columns, sorted by them
                 // in turn, or money in one currency, by its minor units.
-                || (field.compound.is_some() && self.kept_sortable(field));
+                || (field.compound.is_some() && self.kept_sortable(field))
+                // An enum whose variants carry nothing, in its declared
+                // order (chunk 10.13).
+                || (field.sql_type.as_deref() != Some("jsonb") && self.plain_enum(&ty));
             if !sortable {
                 let reason = match field.compound_entry() {
                     Some(entry) if entry.name == "Money" => format!(
@@ -124,7 +127,7 @@ impl Reader<'_> {
                         field.ty
                     ),
                     None => format!(
-                        "A query sorts by numbers, times, dates, durations, quantities, percentages, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
+                        "A query sorts by numbers, times, dates, durations, quantities, percentages, text, identities and enums whose variants carry nothing, which the database and Jadpo order the same way; `{written}` is `{}`.",
                         field.ty
                     ),
                 };
