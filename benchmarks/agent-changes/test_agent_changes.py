@@ -1117,6 +1117,27 @@ class Measure(unittest.TestCase):
             limits = measure.rate_limits([older, newer])
         self.assertEqual((limits['used'], limits['resets_at']), (41.0, 1796000000))
 
+    def test_the_codex_week_is_read_from_codex_records_only(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / 'run').mkdir()
+            rollout = root / 'run' / 'rollout.jsonl'
+            rollout.write_text(json.dumps({'timestamp': '2026-11-27T10:00:00Z', 'payload': {'rate_limits': {
+                'primary': {'used_percent': 41.0, 'window_minutes': 10080}}}}) + '\n')
+            for n in range(50):
+                (root / 'run' / f'claude-{n}.transcript.jsonl').write_text('{}\n')
+                (root / 'run' / f'transcript-{n}.jsonl').write_text('{}\n')
+            self.assertEqual(measure.codex_records(roots=[root]), [rollout])
+            self.assertEqual(measure.rate_limits(measure.codex_records(roots=[root]))['used'], 41.0)
+
+    def test_no_codex_reading_stops_a_capped_run(self):
+        with mock.patch.object(measure, 'on_mains', lambda: True), mock.patch.object(measure, 'free_gb', lambda: 500), \
+                mock.patch.object(measure, 'codex_records', lambda: []), mock.patch.object(measure, 'say', lambda *a: None):
+            with self.assertRaises(SystemExit):
+                measure.wait_for_room('x', 'codex', 60, 2.5, 40)
+            measure.wait_for_room('x', 'codex', 100, 2.5, 40)
+            measure.wait_for_room('x', 'claude', 60, 2.5, 40)
+
     def test_a_usage_limit_is_told_apart_from_a_harness_failure(self):
         hit = {'sessions': [{'is_error': True, 'text': "You've hit your limit · resets 4pm"}], 'tokens': {'input_tokens': 5}}
         plain = {'sessions': [{'is_error': True, 'text': 'API Error: 500'}], 'tokens': {'input_tokens': 5}}

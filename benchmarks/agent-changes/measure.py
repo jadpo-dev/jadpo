@@ -156,16 +156,16 @@ def rate_limits(paths):
     return best
 
 
-def codex_records(days=8):
+def codex_records(days=8, roots=None):
     """Codex session records from the last week: the owner's own and those
-    the measurement saved."""
+    the measurement saved. Only Codex's own records (rollouts) carry the
+    week's usage; Claude Code's transcripts would crowd them out."""
     since = time.time() - days * 86400
-    roots = [Path.home() / '.codex/sessions', harness.RESULTS]
+    roots = roots or [Path.home() / '.codex/sessions', harness.RESULTS]
     found = []
     for root in roots:
         if root.is_dir():
-            found += [path for path in root.rglob('*.jsonl') if path.name.startswith(('rollout', 'transcript'))
-                      and path.stat().st_mtime >= since]
+            found += [path for path in root.rglob('*.jsonl') if 'rollout' in path.name and path.stat().st_mtime >= since]
     return sorted(found, key=lambda path: path.stat().st_mtime)[-40:]
 
 
@@ -179,6 +179,10 @@ def wait_for_room(label, agent, cap, per_run, min_free):
         time.sleep(120)
     while agent == 'codex':
         limits = rate_limits(codex_records())
+        if limits is None and cap < 100:
+            # No reading is no room: pause rather than exceed.
+            raise SystemExit(f'{label}: no Codex usage reading in the last week\'s records, so the {cap}% cap '
+                             'cannot be checked; pass --codex-cap 100 to run without it')
         if limits is None or limits['used'] + per_run <= cap:
             if limits:
                 say(label, f'Codex week {limits["used"]:.0f}% used')
