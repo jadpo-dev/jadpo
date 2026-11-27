@@ -252,6 +252,14 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::identity::END.to_string(),
         ),
         (
+            "http::identity::BROWSER_SESSIONS",
+            crate::http::identity::BROWSER_SESSIONS.to_string(),
+        ),
+        (
+            "http::identity::REVOKE_BROWSER_SESSION",
+            crate::http::identity::REVOKE_BROWSER_SESSION.to_string(),
+        ),
+        (
             "http::identity::ISSUE_KEY",
             crate::http::identity::ISSUE_KEY.to_string(),
         ),
