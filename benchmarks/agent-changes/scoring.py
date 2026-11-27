@@ -63,7 +63,9 @@ def events(lines):
 
 
 def blocks(message):
-    content = (message.get('message') or {}).get('content')
+    # Some events carry a plain-text message, such as Claude Code's permission_denied.
+    inner = message.get('message')
+    content = inner.get('content') if isinstance(inner, dict) else None
     return content if isinstance(content, list) else []
 
 
@@ -81,14 +83,23 @@ def failed(block, text):
     return bool(match and match.group(1) != '0')
 
 
+TOKEN_KEYS = ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
+# The part of the cache writes kept for an hour, which Anthropic prices higher
+# than five-minute writes. It is inside cache_creation_input_tokens, not added.
+HOUR_WRITES = 'cache_creation_1h_input_tokens'
+
+
 def usage_tokens(usage):
     usage = usage or {}
-    return {key: int(usage.get(key) or 0) for key in
-            ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')}
+    tokens = {key: int(usage.get(key) or 0) for key in TOKEN_KEYS}
+    hour = int(usage.get(HOUR_WRITES) or (usage.get('cache_creation') or {}).get('ephemeral_1h_input_tokens') or 0)
+    if hour:
+        tokens[HOUR_WRITES] = hour
+    return tokens
 
 
 def total(tokens):
-    return sum(tokens.values())
+    return sum(tokens.get(key, 0) for key in TOKEN_KEYS)
 
 
 OUTPUT_KEPT = 1500
@@ -117,6 +128,9 @@ def call_input(name, data):
     return json.dumps(data)[:1000]
 
 
+CUT_OFF = 'Your response above was cut off mid-stream'
+
+
 def parse_transcript(lines, language, run_root=None, forbidden=()):
     """Verifications in order (check or test, failed or not, tokens spent
     before it), edits, the final result's usage and cost, and any tool input
@@ -124,6 +138,13 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
     calls, seen, spent = {}, set(), Counter()
     verifications, edits, contamination = [], 0, []
     sessions, record, pending, thinking = [], [], {}, 0
+    # Claude Code's total_cost_usd is the conversation's so far, resumes
+    # included; each result counts only what it added.
+    reported = {}
+    # Claude Code's own recovery when the API stream stops mid-answer: a
+    # synthetic message asking the model to resume. What streamed before the
+    # cut is not in any reported usage.
+    cutoffs = 0
     for event in events(lines):
         kind = event.get('type')
         if kind == 'assistant':
@@ -152,6 +173,8 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
                     if categories:
                         calls[block.get('id')] = (command, categories, sum(spent.values()), edits)
         elif kind == 'user':
+            if event.get('isSynthetic') and any(str(block.get('text', '')).startswith(CUT_OFF) for block in blocks(event)):
+                cutoffs += 1
             for block in blocks(event):
                 entry = None
                 if block.get('type') == 'tool_result' and block.get('tool_use_id') in pending:
@@ -172,7 +195,10 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
                                       'errors': error_ids(language, text) if bad else [],
                                       'time': entry and entry['time']})
         elif kind == 'result':
-            sessions.append({'session_id': event.get('session_id'), 'cost_usd': float(event.get('total_cost_usd') or 0),
+            so_far = float(event.get('total_cost_usd') or 0)
+            added = max(0.0, so_far - reported.get(event.get('session_id'), 0.0))
+            reported[event.get('session_id')] = so_far
+            sessions.append({'session_id': event.get('session_id'), 'cost_usd': round(added, 6),
                              'turns': int(event.get('num_turns') or 0), 'is_error': bool(event.get('is_error')),
                              'stop': event.get('terminal_reason') or event.get('subtype'),
                              'usage': usage_tokens(event.get('usage')), 'models': sorted((event.get('modelUsage') or {}).keys()),
@@ -185,6 +211,7 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
         tokens = spent
     return {'verifications': verifications, 'edits': edits, 'sessions': sessions,
             'tokens': dict(usage_tokens(tokens)), 'cost_usd': round(sum(s['cost_usd'] for s in sessions), 6),
+            'cost_so_far': reported, 'stream_cutoffs': cutoffs,
             'turns': sum(s['turns'] for s in sessions), 'contamination': contamination, 'calls': record,
             'reasoning': [], 'thinking_tokens_estimate': thinking // 4}
 
@@ -576,9 +603,12 @@ PRICE_SOURCES = {
     'openai': ('https://developers.openai.com/api/docs/pricing', '2026-11-27'),
 }
 PRICES = {
-    'claude-opus-5-5': {'provider': 'anthropic', 'input': 4.00, 'cache_write': 5.00, 'cache_read': 0.20, 'output': 20.00},
-    'claude-sonnet-5-5': {'provider': 'anthropic', 'input': 2.00, 'cache_write': 2.50, 'cache_read': 0.10, 'output': 10.00},
-    'claude-haiku-5-5': {'provider': 'anthropic', 'input': 0.10, 'cache_write': 0.125, 'cache_read': 0.01, 'output': 0.50},
+    'claude-opus-5-5': {'provider': 'anthropic', 'input': 4.00, 'cache_write': 5.00, 'cache_write_1h': 8.00, 'cache_read': 0.20,
+                        'output': 20.00},
+    'claude-sonnet-5-5': {'provider': 'anthropic', 'input': 2.00, 'cache_write': 2.50, 'cache_write_1h': 4.00, 'cache_read': 0.10,
+                          'output': 10.00},
+    'claude-haiku-5-5': {'provider': 'anthropic', 'input': 0.10, 'cache_write': 0.125, 'cache_write_1h': 0.20, 'cache_read': 0.01,
+                         'output': 0.50},
     'gpt-6.1-sol': {'provider': 'openai', 'input': 2.00, 'cache_write': 2.50, 'cache_read': 0.10, 'output': 10.00},
     'gpt-6-luna': {'provider': 'openai', 'input': 0.10, 'cache_write': 0.125, 'cache_read': 0.01, 'output': 0.50},
 }
@@ -589,8 +619,10 @@ def price(tokens, model):
     rates = PRICES.get(model)
     if rates is None:
         return None
+    hour = tokens.get(HOUR_WRITES, 0)
     return (tokens.get('input_tokens', 0) * rates['input'] + tokens.get('output_tokens', 0) * rates['output']
-            + tokens.get('cache_creation_input_tokens', 0) * rates['cache_write']
+            + (tokens.get('cache_creation_input_tokens', 0) - hour) * rates['cache_write']
+            + hour * rates.get('cache_write_1h', rates['cache_write'])
             + tokens.get('cache_read_input_tokens', 0) * rates['cache_read']) / 1_000_000
 
 

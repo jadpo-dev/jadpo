@@ -112,7 +112,12 @@ without the hidden results; the language can't be hidden.
   `jadpo check` has a before side and judges acceptances. (Until 10.5 the
   copy was a single commit with the agent working on top of it, so no
   acceptance was ever judged.) It has a clean environment holding none of the host
-  session's variables. Claude Code runs on the owner's Claude subscription
+  session's variables. Claude Code is pinned to one exact release,
+  2.1.326 (`CLAUDE_CODE_VERSION`), installed for the benchmark alone with
+  `npm install --prefix <dir> --save-exact @anthropic-ai/claude-code@2.1.326`
+  and named by absolute path in `JADPO_CLAUDE_CODE`, never the owner's own
+  CLI; the harness refuses any other version, and every result records
+  it. It runs on the owner's Claude subscription
   from a `CLAUDE_CONFIG_DIR` of its own that starts empty, in its safe and
   restricted modes (no CLAUDE.md, memory, skills, plugins, hooks or MCP
   servers; file tools confined to the copy and the docs), with `Bash`,
@@ -277,7 +282,9 @@ its decisions, information and effort, outside the scores.
 correct change costs, for each model and language: every change's fresh
 input plus output tokens, and its dollars at the provider's published
 standard prices, with fresh input, cache writes, cache reads and output
-each priced apart, over the changes scored correct. The prices, their
+each priced apart, over the changes scored correct. Claude Code keeps
+some cache entries for an hour, which Anthropic prices above five-minute
+writes; those are counted and priced apart too. The prices, their
 source pages and the date they were read are in `scoring.py`
 (`PRICES`, `PRICE_SOURCES`). Both agents run on subscriptions, so the
 dollars are what the same tokens would cost on the API, not what was

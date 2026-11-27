@@ -188,17 +188,18 @@ class Isolation(unittest.TestCase):
             app = Path(scratch)
             (app / 'AGENTS.md').write_text('x')
             # CI has no `claude`; the command's shape doesn't depend on where it is.
-            with mock.patch.object(harness, 'tool', lambda name: name):
+            with mock.patch.object(harness, 'claude_code', lambda: 'claude'):
                 command = harness.agent_command('claude', harness.PINNED, 'do it', app, HERE)
         text = ' '.join(command)
         for flag in ['--model claude-opus-5-5', '--effort high', '--safe-mode', '--restricted', '--strict-mcp-config',
                      '--disable-slash-commands', f'--settings {HERE / harness.CLAUDE_SETTINGS}',
-                     '--tools Bash,Read,Edit,Write,Glob,Grep', '--permission-prompts none', '--output-format stream-json']:
+                     '--tools Bash,Read,Edit,Write,Glob,Grep', '--allowedTools Bash,Read,Edit,Write,Glob,Grep',
+                     '--permission-prompts none', '--output-format stream-json']:
             self.assertIn(flag, text)
         self.assertNotIn('WebFetch', text)
         # On the subscription a run is capped by time, as Codex is; a dollar cap only when asked for.
         self.assertNotIn('--max-budget-usd', text)
-        with mock.patch.object(harness, 'tool', lambda name: name):
+        with mock.patch.object(harness, 'claude_code', lambda: 'claude'):
             capped = harness.agent_command('claude', harness.PINNED | {'budget_usd': 6.0}, 'do it', app, HERE)
         self.assertIn('--max-budget-usd 6.00', ' '.join(capped))
         self.assertEqual(harness.agent_command('python3 replay.py s.json', {}, 'p', app, HERE), ['python3', 'replay.py', 's.json', 'p'])
@@ -892,6 +893,32 @@ class Results(unittest.TestCase):
 
 
 class CostPerCorrect(unittest.TestCase):
+    def test_claude_codes_stream_cutoffs_are_counted(self):
+        cut = json.dumps({'type': 'user', 'isSynthetic': True, 'message': {'role': 'user', 'content': [
+            {'type': 'text', 'text': 'Your response above was cut off mid-stream. Resume directly from where it stops.'}]}})
+        typed = json.dumps({'type': 'user', 'message': {'role': 'user', 'content': [
+            {'type': 'text', 'text': 'Your response above was cut off mid-stream.'}]}})
+        self.assertEqual(scoring.parse_transcript([cut, cut, typed], 'jadpo')['stream_cutoffs'], 2)
+
+    def test_a_resumed_claude_session_counts_only_the_cost_it_added(self):
+        def result(session, so_far):
+            return json.dumps({'type': 'result', 'session_id': session, 'total_cost_usd': so_far, 'usage': {}})
+        parsed = scoring.parse_transcript([result('a', 0.5), result('a', 0.8), result('b', 0.1)], 'jadpo')
+        self.assertEqual([s['cost_usd'] for s in parsed['sessions']], [0.5, 0.3, 0.1])
+        self.assertAlmostEqual(parsed['cost_usd'], 0.9)
+        self.assertEqual(parsed['cost_so_far'], {'a': 0.8, 'b': 0.1})
+
+    def test_hour_long_cache_writes_are_priced_at_their_own_rate(self):
+        usage = {'input_tokens': 0, 'output_tokens': 0, 'cache_creation_input_tokens': 3_000_000, 'cache_read_input_tokens': 0,
+                 'cache_creation': {'ephemeral_5m_input_tokens': 1_000_000, 'ephemeral_1h_input_tokens': 2_000_000}}
+        tokens = scoring.usage_tokens(usage)
+        self.assertEqual(tokens[scoring.HOUR_WRITES], 2_000_000)
+        self.assertEqual(scoring.total(tokens), 3_000_000, 'the hour-long writes are part of the writes, not added')
+        self.assertEqual(scoring.usage_tokens(tokens), tokens, 'summed records keep the split')
+        self.assertAlmostEqual(scoring.price(tokens, 'claude-opus-5-5'), 1 * 5 + 2 * 8)
+        self.assertAlmostEqual(scoring.price(tokens, 'gpt-6.1-sol'), 3 * 2.5, msg='OpenAI has one write price')
+        self.assertNotIn(scoring.HOUR_WRITES, scoring.usage_tokens({'cache_creation_input_tokens': 5}))
+
     def test_cache_reads_are_priced_apart(self):
         tokens = {'input_tokens': 1_000_000, 'output_tokens': 1_000_000, 'cache_creation_input_tokens': 1_000_000,
                   'cache_read_input_tokens': 1_000_000}
@@ -954,6 +981,10 @@ class Claude(unittest.TestCase):
         self.assertEqual(sandbox['network']['allowedDomains'], [])
         self.assertEqual(sandbox['network']['allowUnixSockets'], ['/s/x', '/s/x/.s.PGSQL.5'])
         self.assertFalse(sandbox['network']['allowLocalBinding'])
+        self.assertEqual(self.settings()['permissions']['allow'], ['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep'])
+        self.assertEqual(self.settings()['enabledPlugins'],
+                         {'cc-plugin-agents-md@builtin': False, 'cc-plugin-privacy@builtin': False,
+                          'cc-plugin-plugin-authoring@builtin': False})
 
     def test_environment_starts_empty_and_scrubs_the_login(self):
         environment = harness.claude_environment(self.folder)
@@ -1000,7 +1031,7 @@ class Claude(unittest.TestCase):
             token.write_text('sk-ant-oat-secret')
             token.chmod(0o600)
             folder = Path(scratch)
-            with mock.patch.object(harness, 'CLAUDE_TOKEN', token), mock.patch.object(harness, 'tool', lambda n: n), \
+            with mock.patch.object(harness, 'CLAUDE_TOKEN', token), mock.patch.object(harness, 'claude_code', lambda: 'claude'), \
                     mock.patch.object(harness.subprocess, 'run', fake_run):
                 environment = {'PATH': '/usr/bin'}
                 harness.session('claude', harness.PINNED, 'p', folder, folder, environment, folder / 't.jsonl')
@@ -1031,6 +1062,40 @@ class Claude(unittest.TestCase):
                            'mcp_servers': [{'name': 'x', 'status': 'connected'}], 'plugins': [], 'skills': ['s']})
         self.assertEqual(harness.stream_tools([init]), ['Bash', 'Read', 'mcp:x', 'skill:s'])
 
+    def test_claude_code_is_the_pinned_release_by_absolute_path(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            def fake(version):
+                path = Path(scratch) / f'claude-{version}'
+                path.write_text(f'#!/bin/sh\necho "{version} (Claude Code)"\n')
+                path.chmod(0o700)
+                return str(path)
+            cases = [(fake(harness.CLAUDE_CODE_VERSION), None), (fake('2.1.267'), 'not the pinned'),
+                     ('claude', 'absolute path'), ('', 'absolute path'), (scratch + '/missing', 'absolute path')]
+            for path, refusal in cases:
+                harness.claude_code.cache_clear()
+                with mock.patch.dict(os.environ, {harness.CLAUDE_CODE_PATH: path}):
+                    if refusal is None:
+                        self.assertEqual(harness.claude_code(), path)
+                    else:
+                        with self.assertRaises(SystemExit) as refused:
+                            harness.claude_code()
+                        self.assertIn(refusal, str(refused.exception))
+            harness.claude_code.cache_clear()
+
+    def test_a_plain_text_message_is_read_as_no_blocks(self):
+        denied = {'type': 'system', 'subtype': 'permission_denied', 'tool_name': 'Read', 'message': '/x is outside /app'}
+        self.assertEqual(scoring.blocks(denied), [])
+        self.assertEqual(harness.stream_calls([json.dumps(denied)]), [])
+
+    def test_built_in_agents_count_only_with_the_agent_tool(self):
+        def init(tools, agents):
+            return [json.dumps({'type': 'system', 'subtype': 'init', 'tools': tools, 'agents': agents})]
+        built_in = ['claude', 'Explore', 'general-purpose', 'Plan']
+        self.assertEqual(harness.stream_tools(init([], built_in)), [])
+        self.assertEqual(harness.stream_tools(init([], built_in + ['owners-agent'])), ['agent:owners-agent'])
+        self.assertEqual(harness.stream_tools(init(['Agent'], ['Plan'])), ['Agent', 'agent:Plan'])
+        self.assertEqual(harness.stream_tools(init(['Task'], ['Plan'])), ['Task', 'agent:Plan'])
+
 
 class Measure(unittest.TestCase):
     def test_sets_sessions_labels_and_names(self):
@@ -1051,6 +1116,27 @@ class Measure(unittest.TestCase):
                 'primary': {'used_percent': 3.0, 'window_minutes': 300}, 'secondary': week}}}) + '\n')
             limits = measure.rate_limits([older, newer])
         self.assertEqual((limits['used'], limits['resets_at']), (41.0, 1796000000))
+
+    def test_the_codex_week_is_read_from_codex_records_only(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / 'run').mkdir()
+            rollout = root / 'run' / 'rollout.jsonl'
+            rollout.write_text(json.dumps({'timestamp': '2026-11-27T10:00:00Z', 'payload': {'rate_limits': {
+                'primary': {'used_percent': 41.0, 'window_minutes': 10080}}}}) + '\n')
+            for n in range(50):
+                (root / 'run' / f'claude-{n}.transcript.jsonl').write_text('{}\n')
+                (root / 'run' / f'transcript-{n}.jsonl').write_text('{}\n')
+            self.assertEqual(measure.codex_records(roots=[root]), [rollout])
+            self.assertEqual(measure.rate_limits(measure.codex_records(roots=[root]))['used'], 41.0)
+
+    def test_no_codex_reading_stops_a_capped_run(self):
+        with mock.patch.object(measure, 'on_mains', lambda: True), mock.patch.object(measure, 'free_gb', lambda: 500), \
+                mock.patch.object(measure, 'codex_records', lambda: []), mock.patch.object(measure, 'say', lambda *a: None):
+            with self.assertRaises(SystemExit):
+                measure.wait_for_room('x', 'codex', 60, 2.5, 40)
+            measure.wait_for_room('x', 'codex', 100, 2.5, 40)
+            measure.wait_for_room('x', 'claude', 60, 2.5, 40)
 
     def test_a_usage_limit_is_told_apart_from_a_harness_failure(self):
         hit = {'sessions': [{'is_error': True, 'text': "You've hit your limit · resets 4pm"}], 'tokens': {'input_tokens': 5}}

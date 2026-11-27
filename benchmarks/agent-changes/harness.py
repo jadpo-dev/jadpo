@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import dataclasses
 import hashlib
 import importlib.util
@@ -557,10 +558,10 @@ def agent_command(agent, settings, prompt, app, folder, resume=None, tools=TOOLS
         return codex_command(settings, prompt, resume)
     if agent != 'claude':
         return [*shlex.split(agent), prompt]
-    command = [tool('claude'), '-p', prompt, '--model', settings['model'], '--effort', settings['effort'],
+    command = [claude_code(), '-p', prompt, '--model', settings['model'], '--effort', settings['effort'],
                '--output-format', 'stream-json', '--verbose', '--safe-mode', '--restricted', '--strict-mcp-config',
                '--disable-slash-commands', '--settings', str(folder / CLAUDE_SETTINGS),
-               '--tools', tools, '--allowedTools', 'Bash', '--permission-mode', 'acceptEdits', '--permission-prompts', 'none',
+               '--tools', tools, *(['--allowedTools', tools] if tools else []), '--permission-mode', 'acceptEdits', '--permission-prompts', 'none',
                *(['--max-budget-usd', f'{settings["budget_usd"]:.2f}'] if settings.get('budget_usd') is not None else []),
                *(['--append-system-prompt', system_prompt(app)] if (app / 'AGENTS.md').is_file() else [])]
     if (folder / 'docs').is_dir():
@@ -718,6 +719,11 @@ def claude_environment(folder):
             'TMPPREFIX': str(folder / 'tmp/zsh'), **CLAUDE_ENVIRONMENT}
 
 
+# Plugins the pinned Claude Code ships and loads even in safe mode; the run's
+# settings turn each off, and the probes fail on any plugin a session lists.
+CLAUDE_BUILT_IN_PLUGINS = ('cc-plugin-agents-md', 'cc-plugin-privacy', 'cc-plugin-plugin-authoring')
+
+
 def claude_settings(folder, environment, sockets=()):
     own = [str(folder / name) for name in ('app', 'tmp', 'home')]
     readable = [str(path) for path in codex_readable(folder, environment) if 'codex-home' not in path.parts]
@@ -728,7 +734,30 @@ def claude_settings(folder, environment, sockets=()):
                                        'allowWrite': own},
                         'network': {'allowedDomains': [], 'allowUnixSockets': [str(path) for path in sockets],
                                     'allowLocalBinding': False}},
-            'permissions': {'defaultMode': 'acceptEdits', 'allow': ['Bash'], 'deny': ['WebFetch', 'WebSearch']}}
+            'permissions': {'defaultMode': 'acceptEdits', 'allow': TOOLS.split(','), 'deny': ['WebFetch', 'WebSearch']},
+            'enabledPlugins': {plugin + '@builtin': False for plugin in CLAUDE_BUILT_IN_PLUGINS}}
+
+
+# Claude Code is pinned for the measurement: one exact release, installed for
+# the benchmark alone, never the owner's own CLI. The probes and every run use
+# the same binary, and each result records its version.
+CLAUDE_CODE_VERSION = '2.1.326'
+CLAUDE_CODE_PATH = 'JADPO_CLAUDE_CODE'
+
+
+@functools.cache
+def claude_code():
+    """The pinned Claude Code binary, by the absolute path in JADPO_CLAUDE_CODE."""
+    install = (f'install it for the benchmark alone with `npm install --prefix <dir> --save-exact '
+               f'@anthropic-ai/claude-code@{CLAUDE_CODE_VERSION}` and set {CLAUDE_CODE_PATH} to <dir>/node_modules/.bin/claude')
+    path = os.environ.get(CLAUDE_CODE_PATH, '')
+    if not path or not Path(path).is_absolute() or not Path(path).is_file():
+        raise SystemExit(f'{CLAUDE_CODE_PATH} must be the absolute path of Claude Code {CLAUDE_CODE_VERSION}: {install}')
+    done = subprocess.run([path, '--version'], capture_output=True, text=True, check=False)
+    if done.stdout.split()[:1] != [CLAUDE_CODE_VERSION]:
+        raise SystemExit(f'{path} is Claude Code {done.stdout.strip() or "of no known version"}, '
+                         f'not the pinned {CLAUDE_CODE_VERSION}: {install}')
+    return path
 
 
 def claude_token():
@@ -824,7 +853,8 @@ def session(agent, settings, prompt, app, folder, environment, transcript, resum
 def agent_version(agent):
     if agent not in AGENTS:
         return agent
-    done = subprocess.run([tool(agent), '--version'], capture_output=True, text=True, check=False)
+    done = subprocess.run([claude_code() if agent == 'claude' else tool(agent), '--version'], capture_output=True,
+                          text=True, check=False)
     return done.stdout.strip() if agent == 'codex' else 'claude ' + done.stdout.strip()
 
 
@@ -1158,7 +1188,7 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
         transcript = folder / 'transcript.jsonl'
         calls = folder / 'tmp/jadpo-calls/calls.jsonl'
         with agent_home(agent, folder, settings, environment, server):
-            identifier, spent, marks = None, scoring.codex_usage({}), []
+            identifier, spent, marks, cost_so_far = None, scoring.codex_usage({}), [], {}
             for step, change in enumerate(changes, 1):
                 marks.append({'transcript': line_count(transcript), 'calls': line_count(calls),
                               'rollout': line_count(folder / 'rollout.jsonl')})
@@ -1198,6 +1228,12 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                     total = thread_usage(transcript)
                     result['tokens'] = {key: max(0, total[key] - spent.get(key, 0)) for key in total}
                     spent = total
+                elif agent == 'claude':
+                    # Claude Code reports the conversation's cost so far: the step is what it added.
+                    reported = scoring.parse_transcript(step_transcript.read_text().splitlines(), language)['cost_so_far']
+                    result['cost_usd'] = round(sum(max(0.0, total - cost_so_far.get(key, 0.0))
+                                                   for key, total in reported.items()), 6)
+                    cost_so_far |= reported
                 result |= {'agent': agent_version(agent), 'set': set_of(change.id), 'frozen': frozen, 'thinking': None,
                            'session': name, 'step': step}
                 if closed:
@@ -1323,6 +1359,7 @@ def score(change, language, number, label, settings, transcript, diff, visible, 
         'mistakes': scoring.mistakes(parsed['verifications'], tests + regression),
         'verifications': parsed['verifications'], 'edits': parsed['edits'],
         'tokens': parsed['tokens'], 'cost_usd': parsed['cost_usd'], 'turns': parsed['turns'],
+        'stream_cutoffs': parsed.get('stream_cutoffs', 0),
         'review': scoring.review_metrics(diff, language), 'visible': visible, 'hidden': reports,
         'contamination': parsed['contamination'], 'subagents': parsed.get('subagents', 0), 'diff': diff,
         'calls': parsed['calls'], 'docs_reads': scoring.docs_reads(parsed['calls'], docs_listing(folder)), 'jadpo_calls': jadpo_calls,
@@ -1498,7 +1535,9 @@ def command_knowledge_probe(args):
     transcript = folder / 'transcript.jsonl'
     codex = args.agent == 'codex'
     with agent_home(args.agent, folder, settings, environment, tools=False):
-        timing = session(args.agent, settings, KNOWLEDGE_PROMPT, app, folder, environment, transcript, minutes=10,
+        # Thirty minutes: an API stream that goes quiet mid-answer is retried
+        # by Claude Code only after its own ten-minute request timeout.
+        timing = session(args.agent, settings, KNOWLEDGE_PROMPT, app, folder, environment, transcript, minutes=30,
                          tools='')
         save_record(args.agent, folder)
     lines = transcript.read_text().splitlines()
@@ -1527,16 +1566,24 @@ def command_knowledge_probe(args):
     return 0 if result['passed'] else 1
 
 
+# Claude Code lists its own subagent types in every session's init event. A
+# session can start one only through the Agent tool, so they count as offered
+# only with it; any other agent name means the run picked up someone's config.
+BUILT_IN_AGENTS = ('claude', 'Explore', 'general-purpose', 'Plan')
+
+
 def stream_tools(lines):
-    """The tools, MCP servers, plugins and skills a Claude Code session was
-    given, from its stream's init event."""
+    """The tools, MCP servers, plugins, skills and agents a Claude Code session
+    was given, from its stream's init event."""
     for event in events(lines):
         if event.get('type') == 'system' and event.get('subtype') == 'init':
             named = list(event.get('tools') or [])
             named += ['mcp:' + str((server or {}).get('name', server)) for server in event.get('mcp_servers') or []]
             named += ['plugin:' + str((plugin or {}).get('name', plugin)) for plugin in event.get('plugins') or []]
             named += ['skill:' + str(skill) for skill in event.get('skills') or []]
-            named += ['agent:' + str(agent) for agent in event.get('agents') or []]
+            delegates = {'Agent', 'Task'} & set(named)
+            named += ['agent:' + str(agent) for agent in event.get('agents') or []
+                      if delegates or agent not in BUILT_IN_AGENTS]
             named += ['command:' + str(command) for command in event.get('slash_commands') or []]
             return named
     return []

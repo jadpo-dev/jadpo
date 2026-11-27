@@ -156,16 +156,16 @@ def rate_limits(paths):
     return best
 
 
-def codex_records(days=8):
+def codex_records(days=8, roots=None):
     """Codex session records from the last week: the owner's own and those
-    the measurement saved."""
+    the measurement saved. Only Codex's own records (rollouts) carry the
+    week's usage; Claude Code's transcripts would crowd them out."""
     since = time.time() - days * 86400
-    roots = [Path.home() / '.codex/sessions', harness.RESULTS]
+    roots = roots or [Path.home() / '.codex/sessions', harness.RESULTS]
     found = []
     for root in roots:
         if root.is_dir():
-            found += [path for path in root.rglob('*.jsonl') if path.name.startswith(('rollout', 'transcript'))
-                      and path.stat().st_mtime >= since]
+            found += [path for path in root.rglob('*.jsonl') if 'rollout' in path.name and path.stat().st_mtime >= since]
     return sorted(found, key=lambda path: path.stat().st_mtime)[-40:]
 
 
@@ -179,6 +179,10 @@ def wait_for_room(label, agent, cap, per_run, min_free):
         time.sleep(120)
     while agent == 'codex':
         limits = rate_limits(codex_records())
+        if limits is None and cap < 100:
+            # No reading is no room: pause rather than exceed.
+            raise SystemExit(f'{label}: no Codex usage reading in the last week\'s records, so the {cap}% cap '
+                             'cannot be checked; pass --codex-cap 100 to run without it')
         if limits is None or limits['used'] + per_run <= cap:
             if limits:
                 say(label, f'Codex week {limits["used"]:.0f}% used')
@@ -233,6 +237,10 @@ def command_sessions(args):
     languages = args.language or list(LANGUAGES)
     if args.label and len(models) != 1:
         raise SystemExit('--label names one model\'s runs; give one --model')
+    if any(agent_for(model) == 'claude' for model in models):
+        # Before the first run, not mid-measurement: the pinned Claude Code and its login.
+        say('claude', f'Claude Code {harness.CLAUDE_CODE_VERSION} at {harness.claude_code()}')
+        harness.claude_token()
     caffeinate = subprocess.Popen(['caffeinate', '-i', '-s', '-w', str(os.getpid())]) if shutil.which('caffeinate') else None
     environment = {key: value for key, value in os.environ.items() if key != 'JADPO_TEST_DATABASE_URL'}
     try:
@@ -375,7 +383,8 @@ def command_analyse(args):
                   f'to green median {k(median((d.get("green") or {}).get("tokens") for d in runs))}; '
                   f'check errors {sum(d["mistakes"]["check"] for d in runs)}, test errors {sum(d["mistakes"]["test"] for d in runs)}, '
                   f'contaminated {sum(bool(d.get("contamination")) for d in runs)}, '
-                  f'harness failures {sum(bool(d.get("harness_failure")) for d in runs)}')
+                  f'harness failures {sum(bool(d.get("harness_failure")) for d in runs)}, '
+                  f'stream cut-offs {sum(d.get("stream_cutoffs", 0) for d in runs)}')
 
     print('\n## Per session: correct at its step, kept, fresh in+out, wall minutes')
     for label in labels:
@@ -646,7 +655,7 @@ def debrief_claude(folder, session_record, settings, prompt, identifier, cwd):
     transcript = folder / 'debrief.jsonl'
     try:
         with transcript.open('w') as output, (folder / 'stderr').open('w') as errors:
-            subprocess.run([harness.tool('claude'), '-p', prompt, '--resume', identifier, '--model', settings['model'],
+            subprocess.run([harness.claude_code(), '-p', prompt, '--resume', identifier, '--model', settings['model'],
                             '--effort', settings['effort'], '--output-format', 'stream-json', '--verbose', '--safe-mode',
                             '--restricted', '--strict-mcp-config', '--disable-slash-commands', '--tools', '',
                             '--settings', str(folder / CLAUDE_EMPTY), '--permission-prompts', 'none'],
