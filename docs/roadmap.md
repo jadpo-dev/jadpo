@@ -169,8 +169,15 @@ D1 first: the site starts once D1 has merged.
   changes, work that runs with no user, a rule learned many changes
   earlier, and stale hints. Roughly half the set where the checker could
   help and half pure business logic, each pattern reported on its own.
-  Stop at the size that answers it. Codex usage isn't capped for this
-  round. The report says the language was tuned on this product's gaps.
+  Each change scores four counts: correct (its hidden tests), unsafe (a
+  safety rule broken anywhere, by probes over every route), broke something
+  (an earlier feature now failing, by the full regression suite) and, for
+  changes that need edits elsewhere, how many of those places it fixed.
+  The headline is correct and harmless: correct, nothing unsafe, nothing
+  broken, rechecked at the end of the session. Each count by app size and
+  by pattern, with cost per correct-and-harmless change. Stop at the size
+  that answers it. Codex usage isn't capped for this round. The report says
+  the language was tuned on this product's gaps.
 
 ## What the 0.2.0 run found
 
