@@ -416,3 +416,28 @@ fn the_json_held_values_are_stored_and_compared_but_not_sorted_in_a_query() {
         "never sorted"
     );
 }
+
+#[test]
+fn text_from_gives_a_value_built_on_text_as_it_is() {
+    // Chunk 10.13: `Email`, `Url`, a type held as text and the
+    // application's own type built on `Text` are each their text.
+    for (declared, ty) in [
+        ("", "Email"),
+        ("", "Url"),
+        ("", "Slug"),
+        ("type Handle = Text {\n    max_length: 40\n}\n\n", "Handle"),
+    ] {
+        assert_eq!(
+            rules(&format!(
+                "{declared}function sent(value: {ty}) -> Wire {{\n    return Wire(text.from(value))\n}}\n"
+            )),
+            NONE,
+            "{ty}"
+        );
+    }
+    // A secret still never leaves as text.
+    assert_eq!(
+        rules("function sent(value: Password) -> Wire {\n    return Wire(text.from(value))\n}\n"),
+        ["type.secret_exposed"]
+    );
+}

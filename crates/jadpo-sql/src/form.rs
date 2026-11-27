@@ -324,6 +324,8 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
         {
             one(format!("({x})::text"))
         }
+        // A value built on `Text` is its text (area 19; chunk 10.13).
+        (Op::TextFrom, [Value(x, held), Absent]) if text(held) => one(x.to_string()),
         (Op::HashSha256, [Value(x, held)]) if text(held) => {
             one(format!("sha256(convert_to({x}, 'UTF8'))"))
         }
