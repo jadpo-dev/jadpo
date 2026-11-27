@@ -1262,6 +1262,32 @@ impl Planner<'_> {
                 }
             }
         };
+        // A delete that removes a record for good takes the sign-in state
+        // of everyone it deletes who signs in, in the same statement, as
+        // retention and erasure do (area 8, "Deleting someone who signs
+        // in"; chunk 10.13b). A lifecycle's `delete` transition keeps the
+        // record, and with it whatever its `active:` still decides.
+        let mut signs_out = false;
+        let (sql, unpoliced) = if *op == WriteOp::Delete && transition.is_none() {
+            let wrap = |sql: &str| {
+                let mut returning_ids = sql.to_string();
+                text::returning(&mut returning_ids, &["id"]);
+                crate::purge::signing_out(model, entity_model, &returning_ids, &self.sign_in)
+            };
+            match wrap(&sql) {
+                Some(wrapped) => {
+                    signs_out = true;
+                    let plain = match unpoliced {
+                        Some(plain) => Some(wrap(&plain)?),
+                        None => None,
+                    };
+                    (wrapped, plain)
+                }
+                None => (sql, unpoliced),
+            }
+        } else {
+            (sql, unpoliced)
+        };
         // What each refusal raises: an arm's failure, a missing record's
         // not-found failure, or a record deleted since it was loaded.
         let mut refusals: Vec<Refusal> = Vec::new();
@@ -1390,6 +1416,7 @@ impl Planner<'_> {
                 files: writing.files,
                 audit,
                 erased: Vec::new(),
+                signs_out,
                 redis: None,
             },
             inputs: writing.inputs,
@@ -1545,6 +1572,7 @@ impl Planner<'_> {
                 files: Vec::new(),
                 audit: None,
                 erased: Vec::new(),
+                signs_out: false,
                 clears: Vec::new(),
                 redis: Some(Box::new(jadpo_std::redis::RedisWrite {
                     entity: redis_entity,
@@ -1689,6 +1717,7 @@ impl Planner<'_> {
                 files: Vec::new(),
                 audit: None,
                 erased,
+                signs_out: false,
                 redis: None,
             },
             inputs: writing.inputs,

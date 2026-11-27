@@ -227,11 +227,19 @@ pub struct Identity {
     /// Each declared method, in written order.
     pub methods: Vec<Method>,
     pub external_token: Option<ExternalToken>,
-    /// The scopes `external_token: { scopes: }` declares it reads, each
-    /// that read cleanly, when `scopes:` is written (chunk N2): every token
-    /// through it is narrowed to the scopes it carries of these. `None`
-    /// when no way in declares any, so no token is narrowed.
+    /// Every scope a way in declares, each that read cleanly, by the name
+    /// policy gives it: `external_token: { scopes: }`'s and `api_token: {
+    /// scopes: }`'s together (chunks N2 and 10.13b), one name always one
+    /// scope-token. `None` when no way in declares any, so no token is
+    /// narrowed.
     pub scopes: Option<Vec<Scope>>,
+    /// The scopes `external_token: { scopes: }` declares it reads, when
+    /// `scopes:` is written there: every token through it is narrowed to
+    /// the scopes it carries of these.
+    pub external_scopes: Option<Vec<Scope>>,
+    /// The scopes `api_token: { scopes: }` declares (chunk 10.13b): what
+    /// `sessions.issue_token(user_id, scopes:)` may narrow a token to.
+    pub issued_scopes: Option<Vec<Scope>>,
     /// `application { revocation_delay: }` in milliseconds, when it is a
     /// duration above zero.
     pub revocation_delay: Option<i64>,
@@ -275,9 +283,25 @@ impl Identity {
 
     /// Whether a way in narrows its tokens to their scopes (area 9,
     /// "Scopes"; chunk N2): an external token whose method declares the
-    /// scopes it reads. Every other caller is unaffected.
+    /// scopes it reads, or API tokens whose method declares the scopes
+    /// one may be issued with (chunk 10.13b). Every other caller is
+    /// unaffected.
     pub fn narrows(&self) -> bool {
-        self.scopes.is_some() && self.external_token.is_some()
+        self.external_narrows() || self.issued_scopes.is_some()
+    }
+
+    /// Whether external tokens are narrowed to the scopes they carry.
+    pub fn external_narrows(&self) -> bool {
+        self.external_scopes.is_some() && self.external_token.is_some()
+    }
+
+    /// The scope `api_token: { scopes: }` declares called `name`, when it
+    /// does.
+    pub fn issued_scope(&self, name: &str) -> Option<&Scope> {
+        self.issued_scopes
+            .iter()
+            .flatten()
+            .find(|scope| scope.name == name)
     }
 
     /// The type of field `field` of a caller of kind `kind`: its `id`, its
@@ -897,6 +921,7 @@ impl Reader<'_> {
         if let Some(authentication) = self.once("authentication") {
             self.authentication(&authentication);
         }
+        self.merge_scopes();
         // Each sign-in provider's connection, read with its settings.
         self.out.problems.extend(
             crate::sign_in_providers::oidc_connections(self.db, self.project)
@@ -1708,6 +1733,71 @@ impl Reader<'_> {
         out
     }
 
+    /// Every scope the ways in declare, under one name each (chunk
+    /// 10.13b): `api_token:`'s beside `external_token:`'s. A name both
+    /// declare is one scope when both give it the same scope-token, so a
+    /// policy naming it is met by either token; any other name or token
+    /// declared twice is refused, as within one `scopes:`.
+    fn merge_scopes(&mut self) {
+        let external = self.out.external_scopes.clone();
+        let issued = self.out.issued_scopes.clone();
+        if external.is_none() && issued.is_none() {
+            return;
+        }
+        let mut merged: Vec<Scope> = external.unwrap_or_default();
+        let mut kept_issued: Vec<Scope> = Vec::new();
+        for scope in issued.into_iter().flatten() {
+            if let Some(first) = merged.iter().find(|other| other.name == scope.name) {
+                if first.token == scope.token {
+                    kept_issued.push(scope);
+                    continue;
+                }
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!(
+                            "`{}` reads `{}` here and `{}` for external tokens",
+                            scope.name, scope.token, first.token
+                        ),
+                    )
+                    .at(scope.span.clone(), "another scope-token")
+                    .also(first.span.clone(), "declared for external tokens here")
+                    .reason("A scope's name is how policy names it, `OAuthScope.<name>`, so it means one scope-token whichever token carries it.")
+                    .next(format!(
+                        "Give `{}:` the scope-token `{}`, or name it differently",
+                        scope.name, first.token
+                    )),
+                );
+                continue;
+            }
+            if let Some(first) = merged.iter().find(|other| other.token == scope.token) {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!(
+                            "`{}` and `{}` both read `{}`",
+                            scope.name, first.name, scope.token
+                        ),
+                    )
+                    .at(scope.span.clone(), "read again")
+                    .also(first.span.clone(), "first read here")
+                    .reason("Each scope-token is one scope, so a policy that asks for one of the two names can't be met by a token meant for the other.")
+                    .next(format!(
+                        "Rename `{}:` to `{}:`, so both ways in name it alike",
+                        scope.name, first.name
+                    )),
+                );
+                continue;
+            }
+            merged.push(scope.clone());
+            kept_issued.push(scope);
+        }
+        if self.out.issued_scopes.is_some() {
+            self.out.issued_scopes = Some(kept_issued);
+        }
+        self.out.scopes = Some(merged);
+    }
+
     /// External tokens use deployment-owned issuer and audience settings.
     fn external_token(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<Method> {
         let mut issuer = None;
@@ -1738,7 +1828,7 @@ impl Reader<'_> {
                     "issuer" => jadpo_std::Builtin::Url,
                     "audience" => jadpo_std::Builtin::Text,
                     "scopes" => {
-                        self.out.scopes = Some(self.scopes(path, &at, &setting));
+                        self.out.external_scopes = Some(self.scopes(path, &at, &setting));
                         continue;
                     }
                     _ => {
@@ -2065,6 +2155,11 @@ impl Reader<'_> {
                     );
                     ok &= signing_key.is_some();
                 }
+                // The scopes an API token may be issued with (chunk
+                // 10.13b), written as `external_token:` declares them.
+                "scopes" if method == AuthenticationMethod::ApiToken => {
+                    self.out.issued_scopes = Some(self.scopes(path, &key_span, &setting));
+                }
                 other => {
                     ok = false;
                     let near = nearest(other, ["signing_key"]);
@@ -2077,7 +2172,12 @@ impl Reader<'_> {
                     )
                     .at(key_span.clone(), "unknown setting")
                     .reason(format!(
-                        "{what} takes only `signing_key:`; the language sets its format, its lifetime and where it travels.{}",
+                        "{what} takes only `signing_key:`{}; the language sets its format, its lifetime and where it travels.{}",
+                        if method == AuthenticationMethod::ApiToken {
+                            ", and `scopes:`, the scopes a token may be issued with"
+                        } else {
+                            ""
+                        },
                         near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
                     ));
                     self.out.problems.push(match near {

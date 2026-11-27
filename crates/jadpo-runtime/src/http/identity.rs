@@ -92,6 +92,20 @@ pub(crate) const AUTHENTICATION_MISCONFIGURED: (u16, &str, &str) = (
 /// one `sessions.start` or `sessions.issue_token` started (chunk A10).
 pub(crate) const START: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"principal_id\", \"verifier\", \"csrf_verifier\", \"started_at\", \"ends_at\", \"sign_in_method\", \"strength\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)";
 
+/// An API token's scopes as `jadpo_sessions` keeps them (chunk 10.13b):
+/// its scope-tokens, separated by spaces, as a token's `scope` claim
+/// writes them (RFC 9068), none of which holds a space.
+pub(crate) fn scope_tokens(held: &str) -> Vec<String> {
+    held.split(' ')
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Keeps an API token issued narrowed to some scopes (chunk 10.13b): as
+/// [`START`] keeps one, with `$9` its scope-tokens.
+pub(crate) const ISSUE_SCOPED: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"principal_id\", \"verifier\", \"csrf_verifier\", \"started_at\", \"ends_at\", \"sign_in_method\", \"strength\", \"scopes\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)";
+
 /// How a session or token was started (area 8, "How a session started";
 /// chunk A10): the `SignInMethod` by name and whether it proved a second
 /// factor, as `jadpo_sessions` keeps them.
@@ -99,6 +113,9 @@ pub(crate) const START: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"princi
 pub struct SignedInBy {
     pub method: Option<String>,
     pub multi_factor: bool,
+    /// The scope-tokens an API token was issued narrowed to (chunk
+    /// 10.13b); `None` for one that may do whatever its person may.
+    pub scopes: Option<Vec<String>>,
 }
 
 impl SignedInBy {
@@ -108,6 +125,7 @@ impl SignedInBy {
         SignedInBy {
             method: Some(method.to_string()),
             multi_factor,
+            scopes: None,
         }
     }
 
@@ -131,8 +149,16 @@ impl SignedInBy {
     }
 
     /// As a session's row holds them.
-    fn of_row(method: Option<&SqlValue>, strength: Option<&SqlValue>) -> SignedInBy {
+    fn of_row(
+        method: Option<&SqlValue>,
+        strength: Option<&SqlValue>,
+        scopes: Option<&SqlValue>,
+    ) -> SignedInBy {
         SignedInBy {
+            scopes: match scopes {
+                Some(SqlValue::Text(held)) => Some(scope_tokens(held)),
+                _ => None,
+            },
             method: match method {
                 Some(SqlValue::Text(method)) => Some(method.clone()),
                 _ => None,
@@ -150,7 +176,7 @@ impl SignedInBy {
 pub(crate) const END: &str = "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1";
 
 /// A user's API tokens that haven't ended, oldest first.
-pub(crate) const TOKENS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
+pub(crate) const TOKENS: &str = "SELECT \"id\", \"started_at\", \"ends_at\", \"scopes\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
 
 /// Ends one API token, never a browser session.
 pub(crate) const REVOKE_TOKEN: &str =
@@ -158,7 +184,7 @@ pub(crate) const REVOKE_TOKEN: &str =
 
 /// A user's browser sessions that haven't ended, oldest first (chunk
 /// 10.13).
-pub(crate) const BROWSER_SESSIONS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NOT NULL AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
+pub(crate) const BROWSER_SESSIONS: &str = "SELECT \"id\", \"started_at\", \"ends_at\", \"scopes\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NOT NULL AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
 
 /// Ends one browser session, never an API token.
 pub(crate) const REVOKE_BROWSER_SESSION: &str =
@@ -721,13 +747,14 @@ async fn user_credential(
             SqlValue::Timestamp(ends),
             way,
             strength,
+            scopes,
         ],
         subject,
-    )) = row.as_deref().and_then(|row| split_row::<7>(row, user))
+    )) = row.as_deref().and_then(|row| split_row::<8>(row, user))
     else {
         return Err(invalid);
     };
-    let by = SignedInBy::of_row(Some(way), Some(strength));
+    let by = SignedInBy::of_row(Some(way), Some(strength), Some(scopes));
     let csrf = match (cookie, csrf) {
         (true, SqlValue::Text(csrf)) => Some(csrf.clone()),
         (false, SqlValue::Null(_)) => None,
@@ -892,7 +919,8 @@ fn caller_of(
         session,
         sign_in: by.method,
         multi_factor: by.multi_factor,
-        scopes: None,
+        // An API token issued narrowed to some scopes (chunk 10.13b).
+        scopes: by.scopes,
     })
 }
 
@@ -1177,11 +1205,13 @@ pub async fn end(ctx: &mut Ctx<'_>, plan: Option<&IdentityPlan>, site: u32) -> S
 
 /// `sessions.issue_token(user_id)` at site `site`: keeps a new API token
 /// for the user in the running action's transaction and gives it, the one
-/// time anyone sees it.
+/// time anyone sees it. With `scopes:` (chunk 10.13b), `scopes` is the
+/// list of scope-tokens it is narrowed to.
 pub async fn issue_token(
     ctx: &mut Ctx<'_>,
     plan: Option<&IdentityPlan>,
     user: &Value,
+    scopes: Option<&Value>,
     site: u32,
 ) -> Stored {
     let Some(plan) = plan else {
@@ -1197,9 +1227,35 @@ pub async fn issue_token(
             site,
         ));
     };
+    // The scope-tokens it is narrowed to, each once, as the check
+    // allowed them.
+    let scoped = match scopes {
+        None => None,
+        Some(Value::List(items)) => {
+            let mut tokens: Vec<String> = Vec::new();
+            for item in items.iter() {
+                let Value::Text(token) = item else {
+                    return Stored::Fault(defect(ctx, "a token's scope that isn't text", site));
+                };
+                if token.is_empty() || token.contains(' ') {
+                    return Stored::Fault(defect(ctx, "a token's scope that isn't a scope-token", site));
+                }
+                if !tokens.iter().any(|held| held.as_str() == token.as_ref()) {
+                    tokens.push(token.to_string());
+                }
+            }
+            if tokens.is_empty() {
+                return Stored::Fault(defect(ctx, "a token issued narrowed to no scope", site));
+            }
+            Some(tokens.join(" "))
+        }
+        Some(_) => {
+            return Stored::Fault(defect(ctx, "a token's scopes that aren't a list", site));
+        }
+    };
     let token = format!("{API_TOKEN_PREFIX}{token}");
     let now = ctx.now();
-    let params = [
+    let mut params = vec![
         SqlValue::Uuid(id),
         user,
         SqlValue::Text(verifier(&token)),
@@ -1209,8 +1265,15 @@ pub async fn issue_token(
         SqlValue::Null(SqlType::Text),
         SqlValue::Null(SqlType::Text),
     ];
+    let statement = match scoped {
+        Some(held) => {
+            params.push(SqlValue::Text(held));
+            ISSUE_SCOPED
+        }
+        None => START,
+    };
     let store = plan.store.clone();
-    if let Err(error) = execute(ctx, &store, START, &params).await {
+    if let Err(error) = execute(ctx, &store, statement, &params).await {
         return stopped(ctx, error, site);
     }
     ctx.issued();
@@ -1319,7 +1382,7 @@ pub async fn issued(
     let ty = if keys { ISSUED_KEY } else { ISSUED_TOKEN };
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
-        let mut fields = Vec::with_capacity(jadpo_std::http::ISSUED_FIELDS.len());
+        let mut fields = Vec::with_capacity(jadpo_std::http::ISSUED_TOKEN_FIELDS.len());
         for ((name, builtin), column) in jadpo_std::http::ISSUED_FIELDS.iter().zip(&row) {
             let read = if *builtin == jadpo_std::Builtin::Uuid {
                 jadpo_std::read::Column::Uuid
@@ -1330,6 +1393,19 @@ pub async fn issued(
                 Ok(value) => fields.push(((*name).into(), value)),
                 Err(error) => return Stored::Fault(defect(ctx, &error, site)),
             }
+        }
+        // A token's scopes, `none` when it isn't narrowed (chunk 10.13b).
+        if !keys {
+            let scopes = match row.get(jadpo_std::http::ISSUED_FIELDS.len()) {
+                Some(SqlValue::Text(held)) => Value::list(
+                    scope_tokens(held)
+                        .into_iter()
+                        .map(|token| Value::text(&token))
+                        .collect(),
+                ),
+                _ => Value::None,
+            };
+            fields.push((jadpo_std::http::ISSUED_SCOPES.into(), scopes));
         }
         items.push(Value::record(ty, fields));
     }

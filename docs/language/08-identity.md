@@ -5388,6 +5388,42 @@ test "a partner's keys are listed to the partner and its owner" {
 }
 ```
 
+## Deleting someone who signs in
+<!-- topic: deleting-someone-who-signs-in -->
+
+Deleting a user's or a service's record for good takes their sign-in
+state with it, in the same transaction: their browser sessions and API
+tokens, their service keys, their passkeys and passkey ceremonies under
+way, the links a first sign-in made to a provider's account or a token's
+subject, and the model calls kept for them
+([Keeping prompts and answers](21-ai.md#keeping-prompts-and-answers)). A
+delete that cascades to their record takes theirs too. Nobody signs in as
+them again, and Jadpo's own tables keep nothing of theirs. Erasure and
+retention do the same
+([Erasure](15-personal-data.md#erasure),
+[Retention](15-personal-data.md#retention)).
+
+```jadpo fragment
+action leave(member_id: Member.id) fails MemberNotFound -> Unit {
+    attempt Member.delete(member_id)
+    ...
+}
+```
+
+- A lifecycle's `delete` transition keeps the record, and with it their
+  sign-in state. Whether they still sign in is the principal's `active:`
+  condition's and the lifecycle's to decide ([The principal](#the-principal)).
+- Someone deleted who signs in again through the same provider is a
+  person the app hasn't seen: their link went with them, so
+  `on_first_sign_in:` decides again
+  ([A person the app has not seen](#a-person-the-app-has-not-seen)). It
+  can make them a new user, link one by a verified address, or refuse.
+  The old record never comes back, and no second record stands beside a
+  link to it.
+- Deleting isn't forgetting. To forget a person, with what their records
+  in other stores hold, call `<User>.erase(id)`
+  ([Erasing someone](15-personal-data.md#erasing-someone)).
+
 ## Sign-in failures
 <!-- topic: identity-failures -->
 

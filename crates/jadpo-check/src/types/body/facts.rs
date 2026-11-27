@@ -287,6 +287,10 @@ pub(crate) struct Facts {
     /// Each read of a constant (area 3): its library, if it is a
     /// library's, and its name as written.
     pub constants: BTreeMap<NodeKey, (Option<String>, String)>,
+    /// Each `OAuthScope.<name>` a token is issued with (area 8, "API
+    /// tokens"; chunk 10.13b): the scope-token it reads, which the call is
+    /// given as text.
+    pub scope_tokens: BTreeMap<NodeKey, String>,
     /// Each `request { ... }` in a route test (area 13).
     pub requests: BTreeMap<NodeKey, super::request::RequestFact>,
     /// Each `request { link: }` in a route test (area 13): a file's link

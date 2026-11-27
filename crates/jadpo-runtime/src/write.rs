@@ -142,6 +142,9 @@ pub(crate) async fn write(
             Some(_) => transaction.query(sql, &params).await,
             // An erasure's rows say who it erased (chunk P4c).
             None if !plan.erased.is_empty() => transaction.query(sql, &params).await,
+            // A delete taking someone's sign-in state gives a row for each
+            // record it deleted (chunk 10.13b).
+            None if plan.signs_out => transaction.query(sql, &params).await,
             None => transaction
                 .execute(sql, &params)
                 .await

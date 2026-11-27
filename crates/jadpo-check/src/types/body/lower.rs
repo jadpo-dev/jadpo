@@ -1342,6 +1342,11 @@ impl Lower<'_> {
         if let Some(constant) = self.constant(expr) {
             return constant;
         }
+        // A scope a token is issued with, as the scope-token it reads
+        // (chunk 10.13b).
+        if let Some(token) = self.facts.scope_tokens.get(&key) {
+            return typed::Expr::Literal(jadpo_graph::body::Literal::Text(token.clone()));
+        }
         if let Some(name) = self.facts.flags.get(&key) {
             return typed::Expr::Flag {
                 flag: self

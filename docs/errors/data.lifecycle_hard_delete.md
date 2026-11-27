@@ -266,9 +266,17 @@ refers to them, and their articles are never removed by it. An author can
 instead be given a lifecycle of their own with a `delete` transition, so
 deleting one hides them and keeps their articles.
 
+**If the record is a person's, and removing them means forgetting
+them**, call `<User>.erase(id)` on their entity, `person: true`. Erasure
+removes them for good whatever their lifecycle, with each of their
+records as its reference's `erase:` says, and their sign-in state, which
+a hidden record keeps
+([Erasing someone](../language/15-personal-data.md#erasing-someone)).
+
 ## Related
 
 - [Lifecycle](../language/05-data.md#lifecycle)
 - [References and `on_delete`](../language/05-data.md#references-and-on_delete)
 - [Transitions](../language/06-reads-and-writes.md#transitions)
 - [The purge schedule](../language/12-jobs-and-events.md#the-purge-schedule)
+- [Deleting someone who signs in](../language/08-identity.md#deleting-someone-who-signs-in)

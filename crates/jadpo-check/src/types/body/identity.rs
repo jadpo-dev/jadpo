@@ -549,6 +549,19 @@ impl Body<'_> {
                 return failed(self);
             }
         };
+        // A token issued narrowed to some of the scopes `api_token: {
+        // scopes: }` declares (chunk 10.13b): `scopes:`, after the user's
+        // `id`.
+        let mut args = args;
+        if op == SessionOp::IssueToken
+            && let Some(at) = args
+                .iter()
+                .position(|arg| Self::arg_name(arg).as_deref() == Some("scopes"))
+        {
+            let last = at + 1 == args.len();
+            let arg = args.remove(at);
+            self.issued_scopes(&arg, last, written);
+        }
         if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
             let at = call
                 .arg_list()
@@ -599,6 +612,141 @@ impl Body<'_> {
             CallKind::Effect(written.to_string()),
             Reach::Session(op),
         )
+    }
+
+    /// `scopes: [OAuthScope.notes_read]` on `sessions.issue_token` (area
+    /// 8, "API tokens"; chunk 10.13b): each a scope `api_token: { scopes:
+    /// }` declares, given once, in a list of at least one, written after
+    /// the user's `id`. Each scope is remembered as the scope-token it
+    /// reads, which the token is issued carrying.
+    fn issued_scopes(&mut self, arg: &ast::Arg, last: bool, written: &str) {
+        let identity = self.identity();
+        let value = arg.expr();
+        let at = value.as_ref().map_or_else(
+            || {
+                arg.name()
+                    .map_or_else(|| self.span(arg), |name| self.span(&name))
+            },
+            |value| self.span(value),
+        );
+        let problem = |body: &mut Self, at: jadpo_diag::Span, message: String, label: &str, reason: String, next: String| {
+            body.out.push(
+                Diagnostic::new(&rule::TYPE_TOKEN_SCOPES_INVALID, message)
+                    .at(at, label.to_string())
+                    .reason(reason)
+                    .next(next),
+            );
+        };
+        let shape = format!(
+            "`{written}(user_id, scopes: [OAuthScope.<name>])` narrows the token to the scopes listed, each one `api_token: {{ scopes: }}` declares, once; leave `scopes:` out for a token that may do whatever its person may."
+        );
+        if identity.issued_scopes.is_none() {
+            problem(
+                self,
+                at,
+                format!("`{written}` is given scopes, and `api_token:` declares none"),
+                "no scopes declared",
+                format!("{shape} `api_token:` in `authentication {{ }}` declares no `scopes:`, so there is nothing to narrow a token to."),
+                "Declare the scopes in `api_token: { scopes: { <name>: \"<scope-token>\" } }`, or remove `scopes:`".to_string(),
+            );
+            return;
+        }
+        if !last {
+            problem(
+                self,
+                at,
+                format!("`scopes:` comes after the user's `id` in `{written}`"),
+                "before the user",
+                shape,
+                format!("Write `{written}(user_id, scopes: [...])`"),
+            );
+            return;
+        }
+        let Some(ast::Expr::ListExpr(list)) = value else {
+            problem(
+                self,
+                at,
+                "`scopes:` takes a list of scopes, `[OAuthScope.<name>]`".to_string(),
+                "not a list of scopes",
+                shape,
+                "List the token's scopes as `[OAuthScope.<name>]`".to_string(),
+            );
+            return;
+        };
+        let mut named: Vec<String> = Vec::new();
+        let scope_ty = Ty::Named(jadpo_std::standard::security::OAUTH_SCOPE.to_string());
+        for item in list.exprs() {
+            let item_at = self.span(&item);
+            let name = crate::tree::dotted(&item).and_then(|(first, rest)| {
+                let [only] = rest.as_slice() else {
+                    return None;
+                };
+                (crate::tree::name_ref_text(&first)?.as_str()
+                    == jadpo_std::standard::security::OAUTH_SCOPE)
+                    .then(|| crate::tree::name_ref_text(only))?
+            });
+            let Some(name) = name else {
+                problem(
+                    self,
+                    item_at,
+                    "`scopes:` lists scopes, each `OAuthScope.<name>`".to_string(),
+                    "not a scope",
+                    shape.clone(),
+                    "List the token's scopes as `[OAuthScope.<name>]`".to_string(),
+                );
+                return;
+            };
+            let Some(scope) = identity.issued_scope(&name) else {
+                let declared: Vec<String> = identity
+                    .issued_scopes
+                    .iter()
+                    .flatten()
+                    .map(|scope| format!("`OAuthScope.{}`", scope.name))
+                    .collect();
+                problem(
+                    self,
+                    item_at,
+                    format!("`OAuthScope.{name}` isn't a scope `api_token:` declares"),
+                    "not declared for API tokens",
+                    format!(
+                        "{shape} `api_token:` declares {}.",
+                        crate::and_list(&declared)
+                    ),
+                    format!("Declare `{name}:` in `api_token: {{ scopes: }}`, or list a scope it declares"),
+                );
+                return;
+            };
+            if named.contains(&name) {
+                problem(
+                    self,
+                    item_at,
+                    format!("`OAuthScope.{name}` is listed twice"),
+                    "listed again",
+                    shape.clone(),
+                    format!("Remove the second `OAuthScope.{name}`"),
+                );
+                return;
+            }
+            named.push(name);
+            let key = node_key(item.syntax());
+            self.facts.scope_tokens.insert(key, scope.token.clone());
+            self.facts.types.insert(key, scope_ty.clone());
+        }
+        if named.is_empty() {
+            problem(
+                self,
+                at,
+                format!("`{written}` is given no scopes"),
+                "empty",
+                format!("{shape} A token narrowed to no scope could do nothing."),
+                "List the scopes the token may use, or remove `scopes: []` for a token that may do whatever its person may".to_string(),
+            );
+            return;
+        }
+        self.facts.types.insert(
+            node_key(list.syntax()),
+            Ty::List(Box::new(scope_ty)),
+        );
     }
 
     /// `privacy.request(address, locale)`, `.confirm(token, kind)` and

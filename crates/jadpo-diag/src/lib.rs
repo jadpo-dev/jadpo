@@ -420,6 +420,10 @@ rules! {
         "A lifecycle names a field the entity doesn't have";
     DATA_LIFECYCLE_VALUE: "data.lifecycle_value", area 5, Error, Agent,
         "A lifecycle's `set:` or `initial:` gives a field something other than a fixed value";
+    DATA_LOOKUP_NOT_EMAIL: "data.lookup_not_email", area 15, Error, Agent,
+        "Code looks a record up by a field that isn't built on `Email`, and only an exact email address finds one person";
+    DATA_LOOKUP_NOT_UNIQUE: "data.lookup_not_unique", area 15, Error, Agent,
+        "Code looks a record up by an email field that isn't `unique: true` across the whole table, so an address could find several";
     DATA_NAME_TOO_LONG: "data.name_too_long", area 5, Error, Agent,
         "An entity's or a field's name is too long to be the name of a table or a column";
     DATA_ON_DELETE_NOT_REFERENCE: "data.on_delete_not_reference", area 5, Error, Agent,
@@ -790,6 +794,8 @@ rules! {
         "An event or a batch names a tenant its action never reached under its caller's policy";
     POLICY_FIELD_WIDENS_ENTITY: "policy.field_widens_entity", area 9, Error, Agent,
         "A field's own `policy:` lets in someone its record's grants don't";
+    POLICY_LOOKUP_UNCHECKED: "policy.lookup_unchecked", area 9, Error, Human,
+        "An action looks a person up by email with no permission check of its own before it: it isn't listed under `actions:`, its line names `Access.public`, or its line can't be checked before the lookup";
     POLICY_MEMBERSHIP_DUPLICATE: "policy.membership_duplicate", area 9, Error, Agent,
         "An entity declares `membership:` twice, or gives its `member:`, `role:` or `requires:` twice";
     POLICY_MEMBERSHIP_MEMBER_REQUIRED: "policy.membership_member_required", area 9, Error, Agent,
@@ -1540,6 +1546,8 @@ rules! {
         "Your code writes out a locale, such as `Locale.fr_fr`, that isn't in the app's list of supported locales";
     TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
         "An `and` or an `or` is given a value that isn't a `Bool`, or a `Bool` that may be `none`";
+    TYPE_LOOKUP_CONTEXT: "type.lookup_context", area 15, Error, Agent,
+        "Code outside an action looks a person up by email with `<Entity>.lookup`";
     TYPE_MAP_KEY_BOUNDARY: "type.map_key_boundary", area 2, Error, Agent,
         "An `Input` or an `Output` holds a map keyed by a type built on something other than `Text` or `Uuid`, though JSON writes a map's keys as text";
     TYPE_MATCH_ARM_VALUE: "type.match_arm_value", area 3, Error, Agent,
@@ -1652,6 +1660,8 @@ rules! {
         "Your code formats an `Instant` for people to read without saying which time zone to show it in";
     TYPE_TEST_CLOCK_CONTEXT: "type.test_clock_context", area 13, Error, Agent,
         "Code outside a test calls `clock.advance`, which only a test may do";
+    TYPE_TOKEN_SCOPES_INVALID: "type.token_scopes_invalid", area 8, Error, Agent,
+        "`sessions.issue_token` is given `scopes:` that aren't a list of scopes `api_token: { scopes: }` declares";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
         "A type is given more or fewer type arguments than it takes, such as two for a `List`";
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,

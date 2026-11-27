@@ -214,6 +214,32 @@ fn expired(
     })
 }
 
+/// `delete`, a statement deleting records of `entity` and returning their
+/// `id`s, with the sign-in state of each record it deletes, or reaches
+/// through a cascade, of an entity someone signs in as, deleted in the
+/// same statement (area 8, "Deleting someone who signs in"; chunk
+/// 10.13b), as retention and erasure delete it. `None` when it deletes no
+/// one who signs in, so the statement stays as it is.
+pub(crate) fn signing_out(
+    model: &DataModel,
+    entity: &EntityModel,
+    delete: &str,
+    sign_in: &SignInState,
+) -> Option<String> {
+    let (reached, cascades) = cascades_from(model, entity)?;
+    let mut removed = Vec::new();
+    for (at, name) in reached.iter().enumerate() {
+        for (table, column) in sign_in.get(name).into_iter().flatten() {
+            removed.push((at, *table, *column));
+        }
+    }
+    if removed.is_empty() {
+        return None;
+    }
+    let leading = leading_to(&cascades, &removed);
+    Some(text::with_removed(delete, &leading, &removed))
+}
+
 /// The entities deleting a record of `entity` cascades to, its own first,
 /// each numbered by its place, and each cascading reference followed, as
 /// the walk of [`not_held_anywhere`] numbers them.

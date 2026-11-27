@@ -261,24 +261,10 @@ impl Types {
     /// use. None is in the graph, so the shape is written from the fields
     /// the standard library lists.
     pub(crate) fn issued_shape(&mut self, name: &str) -> ShapeId {
-        self.fixed_shape(
-            name,
-            jadpo_std::http::builtin_object_fields(name).unwrap_or_default(),
-        )
-    }
-
-    /// The shape of a type the language declares with fixed fields, each
-    /// built on a built-in type: an issued token or key (area 8), or a
-    /// standard object type from its data entry (area 19), numbering it
-    /// on first use.
-    pub(crate) fn fixed_shape(
-        &mut self,
-        name: &str,
-        fields: &[(&str, jadpo_std::Builtin)],
-    ) -> ShapeId {
-        let fields: Vec<(&str, TypeRef)> = fields
+        let fields: Vec<(&str, TypeRef)> = jadpo_std::http::builtin_object_fields(name)
+            .unwrap_or_default()
             .iter()
-            .map(|(field, builtin)| (*field, TypeRef::Builtin(*builtin)))
+            .map(|(field, builtin)| (*field, issued_type(name, field, *builtin)))
             .collect();
         self.typed_shape(name, &fields)
     }
@@ -1256,5 +1242,16 @@ pub(crate) fn batch_part(part: jadpo_std::batch::Part) -> TypeRef {
         Part::Enum(name) => TypeRef::Std(name.to_string(), Vec::new()),
         Part::List(name) => TypeRef::List(Box::new(TypeRef::Std(name.to_string(), Vec::new()))),
         Part::Kept(name) => TypeRef::Std(name.to_string(), Vec::new()),
+    }
+}
+
+/// The type of field `field` of the built-in object `object`, built on
+/// `builtin`: one of its values, or for an `IssuedToken`'s `scopes` an
+/// optional list of them (chunk 10.13b).
+pub(crate) fn issued_type(object: &str, field: &str, builtin: jadpo_std::Builtin) -> TypeRef {
+    if jadpo_std::http::listed_field(object, field) {
+        TypeRef::Nullable(Box::new(TypeRef::List(Box::new(TypeRef::Builtin(builtin)))))
+    } else {
+        TypeRef::Builtin(builtin)
     }
 }

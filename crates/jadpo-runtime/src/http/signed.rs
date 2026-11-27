@@ -280,6 +280,12 @@ impl Claims {
         if self.by.multi_factor {
             object.insert("f".into(), true.into());
         }
+        // The scopes an API token was issued narrowed to (chunk 10.13b),
+        // as `jadpo_sessions` keeps them: a part without `o` may do
+        // whatever its person may.
+        if let Some(scopes) = &self.by.scopes {
+            object.insert("o".into(), scopes.join(" ").into());
+        }
         Some(serde_json::Value::Object(object).to_string())
     }
 
@@ -329,6 +335,7 @@ impl Claims {
             by: super::identity::SignedInBy {
                 method: text("w").map(str::to_string),
                 multi_factor: object.get("f") == Some(&serde_json::Value::Bool(true)),
+                scopes: text("o").map(super::identity::scope_tokens),
             },
         })
     }

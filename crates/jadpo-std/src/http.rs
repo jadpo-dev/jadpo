@@ -1496,12 +1496,36 @@ pub const ISSUED_TOKEN: &str = "IssuedToken";
 /// What `Service.keys` lists, never the key itself: `IssuedKey`.
 pub const ISSUED_KEY: &str = "IssuedKey";
 
-/// The fields of an `IssuedToken` and an `IssuedKey`, in order.
+/// The fields of an `IssuedKey`, in order, and the first of an
+/// `IssuedToken`'s.
 pub const ISSUED_FIELDS: [(&str, crate::Builtin); 3] = [
     ("id", crate::Builtin::Uuid),
     ("started_at", crate::Builtin::Instant),
     ("ends_at", crate::Builtin::Instant),
 ];
+
+/// The fields of an `IssuedToken`, in order: an `IssuedKey`'s, then the
+/// scope-tokens it was issued narrowed to (chunk 10.13b), a
+/// `List<OAuthScope>?` ([`listed_field`]).
+pub const ISSUED_TOKEN_FIELDS: [(&str, crate::Builtin); 4] = [
+    ("id", crate::Builtin::Uuid),
+    ("started_at", crate::Builtin::Instant),
+    ("ends_at", crate::Builtin::Instant),
+    (ISSUED_SCOPES, crate::Builtin::Text),
+];
+
+/// An `IssuedToken`'s scopes (area 8, "API tokens"; chunk 10.13b): the
+/// scope-tokens `sessions.issue_token(user_id, scopes:)` narrowed it to,
+/// `none` for a token that may do whatever its person may, and for a
+/// browser session.
+pub const ISSUED_SCOPES: &str = "scopes";
+
+/// Whether field `field` of the built-in object `object` holds an
+/// optional list of its built-in type's values, `List<OAuthScope>?`,
+/// rather than one value: only an `IssuedToken`'s `scopes`.
+pub fn listed_field(object: &str, field: &str) -> bool {
+    object == ISSUED_TOKEN && field == ISSUED_SCOPES
+}
 
 /// The first problem `json.read`'s `mismatch` found (area 19, "Data
 /// formats"): the field's path, list positions as numbers
@@ -1543,7 +1567,8 @@ const UPLOAD_SLOT_RECORD_FIELDS: [(&str, crate::Builtin); 5] = [
 /// upload slot (area 16).
 pub fn builtin_object_fields(name: &str) -> Option<&'static [(&'static str, crate::Builtin)]> {
     match name {
-        ISSUED_TOKEN | ISSUED_KEY => Some(&ISSUED_FIELDS),
+        ISSUED_TOKEN => Some(&ISSUED_TOKEN_FIELDS),
+        ISSUED_KEY => Some(&ISSUED_FIELDS),
         DECODE_PROBLEM => Some(&DECODE_PROBLEM_FIELDS),
         crate::files::FILE_LINK => Some(&FILE_LINK_RECORD_FIELDS),
         crate::files::UPLOAD_SLOT => Some(&UPLOAD_SLOT_RECORD_FIELDS),

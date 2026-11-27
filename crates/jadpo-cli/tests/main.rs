@@ -180,6 +180,7 @@ mod settle;
 mod short_output;
 mod side_by_side;
 mod signed;
+mod signing_out_on_delete;
 mod sql;
 mod sql_forms;
 mod sql_literals;
