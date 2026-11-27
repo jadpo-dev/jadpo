@@ -491,6 +491,11 @@ pub(crate) async fn attempt_delivery(
 ) -> Option<(Outcome, &'static str)> {
     let from = ctx.steps_kept();
     let (id, subscriber) = (delivery.id, delivery.subscriber.clone());
+    let (event, trace) = (
+        delivery.event.clone(),
+        delivery.trace.map(|trace| trace.trace_id),
+    );
+    let started = ctx.host().monotonic_ms();
     // Each attempt counts its keyed calls from none under its own key,
     // with none of the models' answers whoever runs `ctx` was given, as
     // its retry in a context of its own does, a route waiting for it
@@ -504,19 +509,23 @@ pub(crate) async fn attempt_delivery(
     ctx.swap_call_key(call_key);
     ctx.swap_reused(reused);
     let steps = ctx.take_steps(from);
-    if let (Some((_, state)), false) = (&attempted, steps.is_empty())
+    if let Some((_, state)) = &attempted
         && let Some(log) = ctx.host().call_log()
     {
-        let name = executor
-            .plan()
-            .events()
+        let events = executor.plan().events();
+        let name = events
             .and_then(|events| events.plan.subscriber(&subscriber))
             .map_or(subscriber.as_str(), |plan| plan.name.as_str());
+        let event = event.split_once(' ').map_or(event.as_str(), |(_, name)| name);
+        let ms = started.zip(ctx.host().monotonic_ms());
         log.attempt_ended(&crate::call_log::DeliveryAttempt {
             delivery: id,
             subscriber: name,
             state,
             steps: &steps,
+            event,
+            trace,
+            ms: ms.map(|(start, end)| end.saturating_sub(start)),
         });
     }
     attempted

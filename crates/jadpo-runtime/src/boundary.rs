@@ -190,11 +190,11 @@ impl Boundary {
             let Some(database) = capabilities.database(store) else {
                 return Err(StoreError::Fault(format!("no store called `{store}`")));
             };
-            self.transaction = Some(if self.read_only {
+            self.transaction = Some(capabilities.watched(if self.read_only {
                 database.begin_read_only(self.isolation).await?
             } else {
                 database.begin_at(self.isolation).await?
-            });
+            }));
             self.store = Some(store.to_string());
             self.generation = self.generation.wrapping_add(1);
             self.wrote = false;
@@ -222,7 +222,8 @@ impl Boundary {
             let Some(database) = capabilities.database(store) else {
                 return Err(StoreError::Fault(format!("no store called `{store}`")));
             };
-            let snapshot = database.begin_read_only(Isolation::RepeatableRead).await?;
+            let snapshot =
+                capabilities.watched(database.begin_read_only(Isolation::RepeatableRead).await?);
             self.outside.insert(store.to_string(), snapshot);
         }
         match self.outside.get_mut(store) {
@@ -1003,7 +1004,9 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
                 let Some(database) = ctx.capabilities().database(&store) else {
                     return Err(StoreError::Fault(format!("no store called `{store}`")));
                 };
-                let mut own = database.begin_at(isolation).await?;
+                let mut own = ctx
+                    .capabilities()
+                    .watched(database.begin_at(isolation).await?);
                 if let Err(error) =
                     crate::outbox::write(own.as_mut(), &sealed, emitted_at, trace, depth).await
                 {

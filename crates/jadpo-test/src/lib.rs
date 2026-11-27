@@ -45,6 +45,7 @@ pub mod fuzz;
 pub mod generated;
 pub mod host;
 mod json;
+pub mod kept_trace;
 mod live;
 mod outcome;
 pub mod postgres;
@@ -645,6 +646,7 @@ pub(crate) fn choose_and_run(
         root: root.clone(),
         seed,
         project: loaded.root.clone(),
+        keep_trace: options.keep_failed,
     };
     // Only tests that call actions, queries or fixtures use a store.
     let users = ordered
@@ -750,6 +752,9 @@ pub(crate) struct Rerun {
     /// The project's folder, which a test's fixture files are read from
     /// (area 13, "Files").
     pub project: std::path::PathBuf,
+    /// Whether a failed test's trace is kept for `jadpo trace`
+    /// (`--keep-failed`; area 13; chunk E0).
+    pub keep_trace: bool,
 }
 
 impl Rerun {
@@ -913,6 +918,7 @@ mod a_person_tests {
                 })),
                 rerun: String::new(),
                 kept: Vec::new(),
+                trace: None,
             })),
             record: None,
         }

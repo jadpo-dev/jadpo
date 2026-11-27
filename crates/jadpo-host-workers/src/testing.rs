@@ -458,6 +458,7 @@ async fn ran(programs: &[MakeProgram], asked: &Asked) -> Result<Answered, String
     let exchanges = test_run::exchanges(executor, &asked.key, &asked.requests)?;
     let record = asked.record.map(|key| Rc::new(Record::new(key)));
     let once = Once {
+        timeline: false,
         key: &asked.key,
         callable,
         order: asked.order,

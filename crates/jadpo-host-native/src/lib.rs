@@ -306,6 +306,9 @@ pub struct NativeHost {
     /// `jadpo dev`'s call log, which keeps each provider call with its
     /// values (chunk 7.2d).
     call_log: Option<CallLog>,
+    /// Whether every invocation keeps its timeline, as `jadpo dev`'s do
+    /// (chunk E0).
+    timelines: bool,
     /// The rate-limit counters: the server's one table, which its workers
     /// share (chunk 8.1l).
     limits: Arc<RateLimits>,
@@ -456,6 +459,12 @@ impl NativeHost {
         self
     }
 
+    /// Keeps every invocation's timeline, for `jadpo trace` (chunk E0).
+    pub fn keeping_timelines(mut self) -> NativeHost {
+        self.timelines = true;
+        self
+    }
+
     /// Keeps each provider call with its values in `log` (chunk 7.2d).
     pub fn with_call_log(mut self, log: Rc<dyn jadpo_runtime::call_log::CallLog>) -> NativeHost {
         self.call_log = Some(CallLog(log));
@@ -526,6 +535,10 @@ impl Host for NativeHost {
 
     fn call_log(&self) -> Option<&dyn jadpo_runtime::call_log::CallLog> {
         self.call_log.as_ref().map(|log| log.0.as_ref())
+    }
+
+    fn keeps_timelines(&self) -> bool {
+        self.timelines
     }
 
     /// The runtime's ceremonies ([`PASSKEYS`]).

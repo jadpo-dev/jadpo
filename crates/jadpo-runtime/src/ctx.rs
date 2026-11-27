@@ -387,6 +387,10 @@ impl<'p> Ctx<'p> {
     /// frames from `places`. Its stack is empty until the executor enters
     /// the callable the invocation starts at.
     pub fn new(places: &'p Places, host: &'p dyn Host, env: Env) -> Ctx<'p> {
+        let mut capabilities = Capabilities::new(host, env.seed);
+        if host.keeps_timelines() {
+            capabilities.set_timeline(Some(crate::timeline::Watch::new(host)));
+        }
         Ctx {
             places,
             env,
@@ -415,7 +419,7 @@ impl<'p> Ctx<'p> {
             emitted: Vec::new(),
             started: None,
             background: Background::default(),
-            capabilities: Capabilities::new(host, env.seed),
+            capabilities,
             call_key: None,
             steps: 0,
             request_id: None,
@@ -697,7 +701,11 @@ impl<'p> Ctx<'p> {
         frame: Option<Frame>,
     ) -> crate::spans::Begun {
         let now = self.host().monotonic_ms();
-        self.spans.begin(kind, frame, now)
+        let begun = self.spans.begin(kind, frame, now);
+        if let Some(watch) = self.capabilities.timeline() {
+            watch.set_current(self.spans.innermost());
+        }
+        begun
     }
 
     /// Ends the span `begun` started, now, as `ended`, having given or
@@ -710,6 +718,40 @@ impl<'p> Ctx<'p> {
     ) {
         let now = self.host().monotonic_ms();
         self.spans.end(begun, now, rows, ended);
+        if let Some(watch) = self.capabilities.timeline() {
+            watch.set_current(self.spans.innermost());
+        }
+    }
+
+    /// Names what the span `begun` started is of, in the timeline when
+    /// one is kept: `Todo.get`, `Todo.update` (chunk E0).
+    pub(crate) fn name_span(&self, begun: crate::spans::Begun, name: impl FnOnce() -> String) {
+        if let (Some(watch), Some(at)) = (self.capabilities.timeline(), begun.index()) {
+            watch.name(at, name());
+        }
+    }
+
+    /// Keeps this invocation's timeline from now on (area 17; chunk E0):
+    /// what a test that keeps its trace for `--keep-failed` asks for. A
+    /// host that keeps timelines keeps one for every invocation.
+    pub fn keep_timeline(&mut self) {
+        if self.capabilities.timeline().is_none() {
+            let watch = crate::timeline::Watch::new(self.host());
+            self.capabilities.set_timeline(Some(watch));
+        }
+    }
+
+    /// The timeline kept so far, with who it ran as; `None` when none is
+    /// kept.
+    pub fn timeline(&self) -> Option<crate::timeline::Timeline> {
+        let watch = self.capabilities.timeline()?;
+        watch.set_caller(self.caller.as_ref().map(|caller| caller.key.clone()));
+        Some(watch.taken())
+    }
+
+    /// The timeline being kept, for what records into it from elsewhere.
+    pub(crate) fn timeline_watch(&self) -> Option<&crate::timeline::Watch> {
+        self.capabilities.timeline()
     }
 
     /// Where the operation at `site` of the frame on top is, for its span:

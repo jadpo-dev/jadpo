@@ -87,6 +87,7 @@ mod suggestions;
 mod table;
 pub mod telemetry;
 mod test;
+pub mod trace;
 mod toolchain;
 mod toolchains;
 mod translations;

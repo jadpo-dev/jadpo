@@ -536,5 +536,6 @@ email is sent.
 
 ## Not built yet
 
-- The inbox's link from a mail to its trace, and `jadpo trace`, aren't built
-  yet. A mail's `trace` line is an id you can look for in your logs.
+- The inbox page links to no trace page of its own yet. A mail's `trace`
+  line is the command that shows what the request that sent it did:
+  `jadpo trace <trace id>`.

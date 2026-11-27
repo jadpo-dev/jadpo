@@ -275,10 +275,12 @@ database. For production, it reads a log event you exported, as
 <!-- topic: the-request-timeline-in-jadpo-dev -->
 
 `jadpo dev` records every request it serves and prints one line for each,
-with its request id. Not built yet: `jadpo trace <request id>`, which shows
-that request's whole timeline: the route, the caller, the actions and queries with their SQL,
+with its request id. `jadpo trace <request id>` shows that request's whole
+timeline: the route, the caller, the actions and queries with their SQL,
 rows and timings, the writes, the events emitted, the subscribers run, the
-calls to outside services, and the outcome. It is like a development log
+calls to outside services, and the outcome. It takes any start of the
+request's id, or of its trace's id, which a caught mail names
+([The dev inbox](16-built-in-services.md#the-inbox-page)). It is like a development log
 that also gives each query's source line. It is built from the spans, the
 timed steps of a trace, that Jadpo already records
 ([Telemetry](16-built-in-services.md#telemetry)).
@@ -447,8 +449,8 @@ at a provider, for that owner
 ([OAuth grants](11-integrations.md#oauth-grants)). `jadpo dev` refuses it
 today, as it does any flag it doesn't have (`cli.unknown_flag`).
 
-> **Built**, except `jadpo dev grants add`, `jadpo trace`, `jadpo watch call` and the request
-> timelines. `jadpo dev` logs each provider call as it ends in
+> **Built**, except `jadpo dev grants add` and `jadpo watch call`. Each
+> call also appears in its request's `jadpo trace`. `jadpo dev` logs each provider call as it ends in
 > `build/dev/calls.jsonl`, and logs an answer from a recording as
 > `recording`. `jadpo calls` reads that file. Here is the plain list after
 > one booking answered with the generated default and one scripted to find
@@ -921,7 +923,8 @@ personal value in a report follows the rules for
 | Each step a request's action reached, as a trace line in `jadpo dev` | Built: each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own. |
 | `jadpo why <schedule>` | Built: it answers why a schedule didn't run ([Watching schedules](12-jobs-and-events.md#watching-schedules)). |
 | `jadpo approval` | Partly built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`, and the personal-data report's difference, a connection at a time. Not built yet: the rest of that difference, which comes with the rest of that report, and a package's service and a bot check, which come with those features. |
-| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet. |
+| The request timeline and `jadpo trace` | Built: `jadpo dev` keeps each request's timeline, the last 500 in `build/dev/timelines.jsonl`, and each attempt at a delivery it set off in `build/dev/deliveries.jsonl`; a request that ran more than one query, or a query no index serves, is flagged on its line (`▲ 2 queries · no index`); `jadpo trace <id>` shows the route, the caller, each action, query and write with its time, rows, SQL and parameters, each provider call with what was sent and answered and where the answer came from, each step's state, the failure and where it was raised, the outcome and the events emitted, and each subscriber run with its state, from any start of a request's or trace's id; `--full` and `--json`; `jadpo test --keep-failed` keeps a failed test's trace in `build/test/traces/`, named in its report; a caught mail names the `jadpo trace` command for the request that sent it. Not built yet: an enum's variant among a statement's parameters is hashed as text is, since a statement's parameters carry no type; a step shows the states its record keeps (answered, replayed, failed, in doubt, diverged, outcome unknown), not `recorded` or `sent` while it is under way; a write refused for a changed revision shows its code, not the revisions; a subscriber's run shows its state and time, not its own queries. |
+| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, `test new --from` and `call` | Not built yet. |
 | `jadpo dev grants add` | Not built yet. |
 | The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet. |
 | `jadpo traces`, `metrics` and `logs` | Partly built: what `jadpo dev` keeps of each request's telemetry, filtered and followed ([Traces, metrics and logs in development](#traces-metrics-and-logs-in-development)). Not built yet: `--path`, which comes with path IDs on requests. |

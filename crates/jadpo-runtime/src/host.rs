@@ -459,6 +459,12 @@ pub trait Host {
         None
     }
 
+    /// Whether every invocation keeps its timeline (area 17, "The request
+    /// timeline in `jadpo dev`"; chunk E0): only `jadpo dev`'s host does.
+    fn keeps_timelines(&self) -> bool {
+        false
+    }
+
     /// The outcome-and-effect record each outside call is kept in (chunk
     /// 8.1c): only a test's host keeps one ([`crate::capability::Faked`]),
     /// so everywhere else a call pays only this asking. Only with the
@@ -706,6 +712,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn call_log(&self) -> Option<&dyn crate::call_log::CallLog> {
         (**self).call_log()
+    }
+
+    fn keeps_timelines(&self) -> bool {
+        (**self).keeps_timelines()
     }
 
     #[cfg(feature = "testing")]

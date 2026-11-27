@@ -159,6 +159,13 @@ pub struct Spans {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Begun(Option<usize>);
 
+impl Begun {
+    /// Its place in the list, when it was kept.
+    pub(crate) fn index(self) -> Option<u32> {
+        self.0.map(|at| at as u32)
+    }
+}
+
 impl Spans {
     /// Starts a span of `kind` at `frame`, at `now` on the host's
     /// monotonic clock.
@@ -196,6 +203,11 @@ impl Spans {
         span.end_ms = now;
         span.rows = rows;
         span.ended = ended;
+    }
+
+    /// The innermost span still open, by its place in the list.
+    pub(crate) fn innermost(&self) -> Option<u32> {
+        self.open.last().copied()
     }
 
     /// Every span kept, in the order each started.

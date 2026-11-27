@@ -4712,9 +4712,11 @@ It lists the mail newest first. The mail you choose is shown with its
 HTML in a sandboxed frame on white, its links opening a new tab, then
 its text, its links numbered with the `jadpo email open` command for
 each, its attachments and its health. It looks for new mail every two
-seconds. It shows the id of the trace that sent each mail; the link to
-the trace comes with `jadpo trace`
+seconds. It shows the trace that sent each mail as the command that
+shows it, `jadpo trace <trace id>`, with a button that copies it, and
+`jadpo email show` gives the same
 ([The request timeline in `jadpo dev`](17-debugging-and-review.md#the-request-timeline-in-jadpo-dev)).
+The page links to no trace of its own until the developer console has one.
 
 ### `jadpo email`
 
@@ -5918,7 +5920,7 @@ The errors this page describes are built with the feature they belong to.
 | Jadpo's own magic-link email | Built: at all five levels, worded by Jadpo or reworded by the app, wrapped in the app's layout, the app's own email filled with the link and the code, or the app's own sending given them ([Jadpo's own magic-link email](#jadpos-own-magic-link-email), [Your own magic-link email](#your-own-magic-link-email)). |
 | The privacy emails | Built: the address check, export ready, erasure confirmed and erasure completed, each at the five levels ([Every built-in email](#every-built-in-email)), interpreted and compiled. |
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
-| The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
+| The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, with a trace page of its own to link each mail to; until then each mail names its `jadpo trace` command. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store: a Redis connection, natively and on Workers ([The Redis driver](#the-redis-driver)), or on Workers Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | Caches | Built: a query's `cache:` and an entity's record cache in a Redis connection, natively and on Workers, or in `Driver.memory` natively, with `connection.memory_cache` ([Cache drivers and what a cache may hold](#cache-drivers-and-what-a-cache-may-hold), [How a cache is kept](#how-a-cache-is-kept)). |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |

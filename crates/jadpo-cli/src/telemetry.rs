@@ -948,7 +948,7 @@ fn series_of(payloads: &[Value]) -> Vec<Series> {
     out.into_values().collect()
 }
 
-fn to_json(value: &Value) -> Json {
+pub(crate) fn to_json(value: &Value) -> Json {
     match value {
         Value::Null => Json::Null,
         Value::Bool(bool) => Json::from(*bool),

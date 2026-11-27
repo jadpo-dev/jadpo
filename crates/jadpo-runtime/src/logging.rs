@@ -275,6 +275,9 @@ fn failure_fields(failure: &Failure, hasher: &Hasher, ctx: &Ctx<'_>) -> Map<Stri
 /// Writes the `failure.rejected` event of `failure`, which ended what
 /// `ctx` ran.
 pub(crate) fn rejected(ctx: &Ctx<'_>, failure: &Failure, route: Option<&str>) {
+    if let Some(watch) = ctx.timeline_watch() {
+        watch.raised(failure);
+    }
     let host = ctx.host();
     let hasher = Hasher::of(host);
     let mut fields = failure_fields(failure, &hasher, ctx);

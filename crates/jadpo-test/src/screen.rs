@@ -282,6 +282,12 @@ fn report(test: &Test, failure: &TestFailure, root: Option<&str>, repeat: bool) 
             ))],
         )));
     }
+    if let Some(trace) = &failure.trace {
+        last.push(Item::Field(Field::new(
+            "trace",
+            vec![Text::Command(format!("jadpo trace {trace}"))],
+        )));
+    }
     last.extend([
         Item::Field(Field::value("rule", failure.rule.id)),
         Item::Field(Field::new(

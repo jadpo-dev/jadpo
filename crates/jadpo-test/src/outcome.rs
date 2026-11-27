@@ -38,6 +38,9 @@ pub struct TestFailure {
     pub rerun: String,
     /// The databases kept for inspection (`--keep-failed`).
     pub kept: Vec<String>,
+    /// The id of its trace, kept for `jadpo trace` (`--keep-failed`;
+    /// chunk E0).
+    pub trace: Option<String>,
 }
 
 impl TestFailure {
@@ -149,6 +152,7 @@ pub(crate) fn generated(
         location: Located::new(sources, &test.file, None, test.line, "the route it tests"),
         rerun: rerun.named(&test.file, test.line, &test.name),
         kept: Vec::new(),
+        trace: None,
         detail: Detail::Generated(Box::new(GeneratedInfo {
             route,
             request: broken.request,
@@ -262,6 +266,7 @@ pub(crate) fn prompt_recording(
         location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         kept: Vec::new(),
+        trace: None,
         detail: Detail::Recording(Box::new(RecordingInfo {
             operation: prompt.clone(),
             package: String::new(),
@@ -363,6 +368,7 @@ pub(crate) fn recording(
         location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         kept: Vec::new(),
+        trace: None,
         detail: Detail::Recording(Box::new(info)),
     }
 }
@@ -405,6 +411,7 @@ pub(crate) fn effects_differ(
         crash: Some(point),
         rerun: rerun.command(&location.path, location.line),
         kept: Vec::new(),
+        trace: None,
         location,
         detail: Detail::Fault(Box::new(FaultInfo {
             kind: "internal_fault".to_string(),
@@ -503,7 +510,8 @@ pub(crate) fn fakes_used(
         delivery: None,
         crash: None,
         rerun: rerun.command(&location.path, location.line),
-        kept: failed.map(|failed| failed.kept).unwrap_or_default(),
+        kept: failed.as_ref().map(|failed| failed.kept.clone()).unwrap_or_default(),
+        trace: failed.and_then(|failed| failed.trace),
         location,
         detail: Detail::Fake(Box::new(FakeInfo {
             operation: usage.operation.clone(),
@@ -844,6 +852,7 @@ fn ended(
                 crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
+        trace: None,
                 location,
                 detail: Detail::Assertion(Box::new(assertion_failure(places, sources, assertion))),
             }
@@ -856,6 +865,7 @@ fn ended(
                 crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
+        trace: None,
                 location,
                 detail: Detail::Failure(Box::new(failure_info(places, sources, failure))),
             }
@@ -868,6 +878,7 @@ fn ended(
                 crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
+        trace: None,
                 location,
                 detail: Detail::Fault(Box::new(fault_info(places, sources, fault))),
             }
@@ -897,6 +908,7 @@ pub(crate) fn not_runnable(
         location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         kept: Vec::new(),
+        trace: None,
         detail: Detail::Fault(Box::new(FaultInfo {
             kind: "internal_fault".to_string(),
             subject: format!("internal_fault in test \"{}\"", test.name),

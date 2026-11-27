@@ -52,9 +52,10 @@ impl std::fmt::Debug for Seen<'_> {
     }
 }
 
-/// A delivery whose subscriber's action kept a record of several changing
-/// calls, as an attempt at it ended (chunk 7.5f): what became of each step
-/// it reached, never a request, an answer or a key.
+/// An attempt at a delivery, as it ended (chunk 7.5f; every attempt since
+/// chunk E0): its subscriber, its state and, when the subscriber's action
+/// kept a record of several changing calls, what became of each step it
+/// reached, never a request, an answer or a key.
 #[derive(Clone, Copy, Debug)]
 pub struct DeliveryAttempt<'a> {
     pub delivery: [u8; 16],
@@ -63,7 +64,16 @@ pub struct DeliveryAttempt<'a> {
     /// The state the attempt left it in: `succeeded`, `pending` (to be
     /// tried again), `failed`, `outcome_unknown` or `diverged`.
     pub state: &'a str,
+    /// The steps its action reached under a record; empty for one that
+    /// keeps none.
     pub steps: &'a [crate::steps::RunSteps],
+    /// The event it delivers, by name (chunk E0).
+    pub event: &'a str,
+    /// The trace of the action that emitted the event: the request whose
+    /// timeline lists the attempt (area 17; chunk E0).
+    pub trace: Option<[u8; 16]>,
+    /// How long the attempt took on the host's monotonic clock.
+    pub ms: Option<u64>,
 }
 
 /// Where a host keeps its development call log.
@@ -71,8 +81,9 @@ pub trait CallLog {
     /// Keeps `seen`.
     fn seen(&self, seen: &Seen<'_>);
 
-    /// Hears a delivery whose action reached steps under a record, as an
-    /// attempt at it ends: `jadpo dev` prints its line (chunk 7.5f).
+    /// Hears each attempt at a delivery as it ends: `jadpo dev` keeps it
+    /// for its request's timeline (chunk E0), and prints a line for one
+    /// whose action reached steps under a record (chunk 7.5f).
     fn attempt_ended(&self, attempt: &DeliveryAttempt<'_>) {
         let _ = attempt;
     }

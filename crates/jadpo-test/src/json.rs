@@ -318,6 +318,10 @@ fn test(order: usize, result: &TestResult, repeat: Option<(usize, &FaultInfo)>) 
                 ),
                 ("rerun", Json::from(&failure.rerun)),
                 ("kept", Json::array(failure.kept.iter().map(String::as_str))),
+                (
+                    "trace",
+                    failure.trace.as_deref().map_or(Json::Null, Json::from),
+                ),
             ]),
         ));
     }
@@ -628,6 +632,10 @@ pub fn schema() -> Json {
                 (
                     "kept",
                     "The databases kept for inspection with --keep-failed; empty otherwise",
+                ),
+                (
+                    "trace",
+                    "The id of the test's trace kept with --keep-failed, which jadpo trace <id> shows; null otherwise",
                 ),
             ]),
         ),
