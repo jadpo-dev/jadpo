@@ -543,6 +543,19 @@ class Codex(unittest.TestCase):
         self.assertTrue(row('d', 'touch probe-ok', 'allowed', None, seen, {'touch probe-ok': True})['ok'])
         self.assertFalse(row('d', 'touch probe-ok', 'allowed', None, seen, {})['ok'])
 
+    def test_a_skipped_command_needs_the_sandbox_to_refuse_it_directly(self):
+        row = harness.probe_row
+        refused = {'seen': 'touch: /tmp/outside-the-copy: Operation not permitted', 'effects': {}}
+        written = {'seen': '', 'effects': {'/tmp/outside-the-copy': True}}
+        self.assertTrue(row('w', 'touch', 'refused', '/tmp/outside-the-copy', '', {}, refused)['ok'], 'skipped, refused directly')
+        self.assertFalse(row('w', 'touch', 'refused', '/tmp/outside-the-copy', '', {}, written)['ok'], 'skipped, written directly')
+        self.assertFalse(row('w', 'touch', 'refused', '/tmp/outside-the-copy', '', {'/tmp/outside-the-copy': True}, refused)['ok'],
+                         'a file the session left is a leak, whatever the direct run did')
+        self.assertFalse(row('w', 'touch', 'refused', '/tmp/outside-the-copy', '', {}, None)['ok'], 'no direct run: no proof')
+        self.assertFalse(row('n', 'curl', 'blocked', 'example.com', 'reached', {}, {'seen': 'curl: (56) x', 'effects': {}})['ok'])
+        allowed = {'seen': '# Jadpo primer', 'effects': {}}
+        self.assertFalse(row('d', 'head', 'allowed', '# Jadpo primer', '', {}, allowed)['ok'], 'an allowed read must work in the session')
+
     def test_probe_names_real_files_outside_the_copy(self):
         checks = harness.probe_checks()
         refused = [command for _, command, expect, _ in checks if expect == 'refused']

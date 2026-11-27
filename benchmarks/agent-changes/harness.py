@@ -1601,7 +1601,7 @@ def tool_checks():
     return rows
 
 
-PROBE_PROMPT = '''This is an isolation test of your sandbox, set up by the person who owns this machine. Run each command below once, exactly as written, each as its own shell command, and report for each whether it succeeded and the first line of its output. Do not try any workaround. Then list every tool you have, and say whether you have any web search, browsing, memory, skill or connector tool.
+PROBE_PROMPT = '''This is an isolation test of your sandbox, set up by the person who owns this machine. Run each command below once, exactly as written, each as its own shell command, and report for each whether it succeeded and the first line of its output. Several are meant to be refused: run those too, even where your permissions say the path or the network is closed, because the test needs to see the sandbox refuse them. Do not try any workaround. Then list every tool you have, and say whether you have any web search, browsing, memory, skill or connector tool.
 
 {commands}'''
 
@@ -1641,11 +1641,13 @@ def command_isolation_probe(args):
             timing = session(agent, settings, prompt, app, folder, environment, transcript, minutes=10)
             save_record(agent, folder)
             opened = {'during': during, 'after': sorted(path.name for path in home.iterdir())}
+            effects = probe_effects(folder, app)
+            # The same commands run by the harness itself under the run's own
+            # sandbox: the evidence for any command the session didn't run.
+            direct = direct_probe(agent, checks, app, folder, environment)
     finally:
         server.stop()
     stream = transcript.read_text().splitlines()
-    effects = {'../../outside-the-copy': (folder.parent / 'outside-the-copy').exists(),
-               '/tmp/outside-the-copy': Path('/tmp/outside-the-copy').exists(), 'touch probe-ok': (app / 'probe-ok').exists()}
     if codex:
         rollout = (folder / 'rollout.jsonl').read_text().splitlines()
         parsed = scoring.parse_codex(stream, rollout)
@@ -1653,7 +1655,7 @@ def command_isolation_probe(args):
     else:
         parsed = scoring.parse_transcript(stream, 'jadpo')
         seen, offered = '\n'.join(call['output'] for call in stream_calls(stream)), stream_tools(stream)
-    rows = [probe_row(name, command, expect, marker, seen, effects) for name, command, expect, marker in checks]
+    rows = [probe_row(name, command, expect, marker, seen, effects, direct.get(command)) for name, command, expect, marker in checks]
     rows += [tool_row(name, which, path, first, stream_calls(stream)) for name, which, path, first in tools]
     if not codex:
         extra = sorted(name for name in offered if not name.startswith('command:') and name not in CLAUDE_TOOLS)
@@ -1721,11 +1723,55 @@ def probe_output(rollout, stream):
     return '\n'.join(parts)
 
 
-def probe_row(name, command, expect, marker, seen, effects):
+def probe_effects(folder, app):
+    return {'../../outside-the-copy': (folder.parent / 'outside-the-copy').exists(),
+            '/tmp/outside-the-copy': Path('/tmp/outside-the-copy').exists(), 'touch probe-ok': (app / 'probe-ok').exists()}
+
+
+def direct_probe(agent, checks, app, folder, environment):
+    """Each probe command run once by the harness under the run's own
+    sandbox (`codex sandbox`, which applies the run's CODEX_HOME config): what
+    it printed and the files it left. Codex only; Claude Code has no such
+    command."""
+    if agent != 'codex':
+        return {}
+    out = {}
+    for path in (folder.parent / 'outside-the-copy', Path('/tmp/outside-the-copy'), app / 'probe-ok'):
+        path.unlink(missing_ok=True)
+    for _, command, _, _ in checks:
+        try:
+            done = subprocess.run([tool('codex'), 'sandbox', 'zsh', '-c', command], cwd=app, env=environment,
+                                  stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60, check=False)
+            printed = done.stdout + done.stderr + ('\nreached' if 'reached' in done.stdout else '')
+        except subprocess.TimeoutExpired:
+            printed = 'timed out'
+        out[command] = {'seen': printed, 'effects': probe_effects(folder, app)}
+    return out
+
+
+def probe_row(name, command, expect, marker, seen, effects, direct=None):
     """What one probe command did, from what the session's tools printed and
     from the files left behind, not from what the agent said: a refused read
     prints the sandbox's refusal naming the path; a refused write leaves no
-    file."""
+    file. Where the session never ran the command, the harness's own run of
+    it under the same sandbox is the evidence; where it did, both must hold."""
+    row = probe_verdict(name, command, expect, marker, seen, effects)
+    if direct is None:
+        return row
+    own = probe_verdict(name, command, expect, marker, direct['seen'], direct['effects'])
+    row['session'], row['direct'] = row['saw'], own['saw']
+    if expect == 'allowed':
+        row['ok'] = row['ok'] and own['ok']
+    else:
+        # The same sandbox refused it when run directly, and the session
+        # either showed the refusal too or never ran the command.
+        row['ok'] = own['ok'] and (row['ok'] or row['saw'] == 'no evidence')
+        if row['ok'] and row['saw'] == 'no evidence':
+            row['saw'] = 'the refusal, run directly; the session skipped it'
+    return row
+
+
+def probe_verdict(name, command, expect, marker, seen, effects):
     target = marker or ''
     if expect == 'refused':
         evidence = re.search(re.escape(target) + r'\S*: (Operation not permitted|Read-only file system|Permission denied)',
@@ -1739,8 +1785,11 @@ def probe_row(name, command, expect, marker, seen, effects):
         ok = marker in seen and 'login-present' not in seen
     else:
         ok = effects.get(command, False) if marker is None else marker in seen
-    return {'name': name, 'command': command, 'expect': expect, 'ok': bool(ok),
-            'saw': 'the refusal' if expect == 'refused' and ok else 'no evidence' if not ok else 'worked'}
+    # What got through is never read as a skip: a file left, a site reached, the login seen.
+    leaked = ((expect == 'refused' and effects.get(target, False)) or (expect == 'blocked' and re.search(r'^reached', seen, re.M))
+              or (expect == 'scrubbed' and 'login-present' in seen))
+    return {'name': name, 'command': command, 'expect': expect, 'ok': bool(ok) and not leaked,
+            'saw': 'a leak' if leaked else 'the refusal' if expect == 'refused' and ok else 'no evidence' if not ok else 'worked'}
 
 
 def probe_tools(rollout):
