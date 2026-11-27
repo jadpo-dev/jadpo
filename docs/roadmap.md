@@ -154,19 +154,16 @@ D1 first: the site starts once D1 has merged.
   frozen where 10.14b merged. The report gives correctness, unsafe changes,
   tokens and cost per correct change for each model, with debriefs of the
   misses.
-- [ ] **10.16 A large app, grown in both languages** `opus · high` after
-  10.15 (Richard, 2026-11-27): does TypeScript lose more than Jadpo as an
-  app grows past what an agent can read at once? A new rule-heavy domain
-  (pet insurance: waiting periods, pre-existing conditions, excess and
-  co-pay, per-condition limits, renewals, who may see a claim's medical
-  notes), written as a spec from domain knowledge, never from existing
-  code. Agents grow it in both languages through scored changes, the
-  parity check proving both answer every route the same at every step.
-  Blind modification sets at about 100 and 200 routes, sessions long
-  enough to fill and compact the context, and changes whose main work is
-  updating what depends on them, scored for fixing those parts and for
-  breaking them. Stop at the size that answers it. Codex usage isn't
-  capped for this round.
+- [ ] **10.16 The helpdesk, grown large in both languages** `opus · high`
+  after 10.15 (Richard, 2026-11-27): does TypeScript lose more than Jadpo as
+  an app grows past what an agent can read at once? The helpdesk
+  (`benchmarks/helpdesk/`) and its TypeScript twin grow from 44 routes
+  through scored changes, `desk_parity.py` proving both answer every route
+  the same at every step. Blind modification sets at about 100 and 200
+  routes, sessions long enough to fill and compact the context, and changes
+  whose main work is updating what depends on them, scored for fixing those
+  parts and for breaking them. Stop at the size that answers it. Codex usage
+  isn't capped for this round.
 
 ## What the 0.2.0 run found
 
