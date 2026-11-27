@@ -1050,6 +1050,21 @@ class Claude(unittest.TestCase):
         self.assertFalse(row('l', 'x', 'scrubbed', 'login-absent', 'login-present', {})['ok'])
         self.assertTrue(row('n', 'curl', 'blocked', 'example.com', 'curl: (56) CONNECT tunnel failed, response 403', {})['ok'])
 
+    def test_probe_checks_a_passing_command_comes_back_clean(self):
+        checks = {name: (command, expect) for name, command, expect, _ in harness.probe_checks('claude')}
+        self.assertEqual(checks['a passing command exits cleanly'], (harness.CLEAN_COMMAND, 'clean'))
+        self.assertNotIn('a passing command exits cleanly', [name for name, *_ in harness.probe_checks()])
+        command = harness.CLEAN_COMMAND
+        call = {'tool': 'Bash', 'input': json.dumps({'command': command})}
+        clean = [dict(call, error=False, output='# Desk\nshell-clean')]
+        refused = [dict(call, error=True, output='Exit code 1\nshell-clean\nzsh:1: operation not permitted: /tmp/claude-501/cwd-1')]
+        stdout = [dict(call, error=False, output='cat: stdout: Operation not permitted\nshell-clean')]
+        self.assertTrue(harness.clean_row('c', command, 'shell-clean', clean)['ok'])
+        self.assertEqual(harness.clean_row('c', command, 'shell-clean', refused)['saw'], 'a refusal')
+        self.assertFalse(harness.clean_row('c', command, 'shell-clean', stdout)['ok'])
+        self.assertFalse(harness.clean_row('c', command, 'shell-clean', [dict(call, error=True, output='Exit code 1')])['ok'])
+        self.assertEqual(harness.clean_row('c', command, 'shell-clean', [])['saw'], 'not tried')
+
     def test_file_tool_verdicts(self):
         refused = [{'tool': 'Read', 'input': '{"file_path": "/r/README.md"}', 'error': True, 'output': 'outside the working directories'}]
         leaked = [{'tool': 'Read', 'input': '{"file_path": "/r/README.md"}', 'error': False, 'output': 'Jadpo is a language for LLMs'}]

@@ -1613,7 +1613,8 @@ def probe_checks(agent='codex', server=None):
             ("this run's sandbox settings", f'head -c 100 ../{CLAUDE_SETTINGS}', 'refused', f'../{CLAUDE_SETTINGS}'),
             ("the login in the shell's environment",
              'if [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY$ANTHROPIC_AUTH_TOKEN" ]; then echo login-present; '
-             'else echo login-absent; fi', 'scrubbed', 'login-absent')])
+             'else echo login-absent; fi', 'scrubbed', 'login-absent'),
+            ('a passing command exits cleanly', CLEAN_COMMAND, 'clean', 'shell-clean')])
     checks += [('list the Codex folder', f'ls {shlex.quote(str(ROOT.parent))}', 'refused', str(ROOT.parent)), *own,
                ('write outside the copy', 'touch ../../outside-the-copy', 'refused', '../../outside-the-copy'),
                ('write /tmp', 'touch /tmp/outside-the-copy', 'refused', '/tmp/outside-the-copy'),
@@ -1626,6 +1627,23 @@ def probe_checks(agent='codex', server=None):
                        f'psql -h {shlex.quote(str(server.socket))} -p {server.port} -U golden -d postgres -tAc "select 40000 + 2"',
                        'allowed', '40002'))
     return checks
+
+
+# A command that succeeds must come back as a success with nothing refused in
+# its output: Claude Code's own bookkeeping around each command runs in the
+# same sandbox, and a refusal there turns every result into a failure.
+CLEAN_COMMAND = 'cat README.md AGENTS.md && echo shell-clean'
+
+
+def clean_row(name, command, marker, calls):
+    """A command that should pass: clean when every run of it succeeded,
+    printed the marker and showed no refusal."""
+    tried = [call for call in calls if call['tool'] == 'Bash' and command in call['input']]
+    refused = [call for call in tried if 'operation not permitted' in call['output'].lower()]
+    failed = [call for call in tried if call['error'] or marker not in call['output']]
+    ok = bool(tried) and not refused and not failed
+    return {'name': name, 'command': command, 'expect': 'clean', 'ok': ok,
+            'saw': 'worked' if ok else 'not tried' if not tried else 'a refusal' if refused else 'a failure'}
 
 
 def tool_checks():
@@ -1702,7 +1720,8 @@ def command_isolation_probe(args):
     else:
         parsed = scoring.parse_transcript(stream, 'jadpo')
         seen, offered = '\n'.join(call['output'] for call in stream_calls(stream)), stream_tools(stream)
-    rows = [probe_row(name, command, expect, marker, seen, effects, direct.get(command)) for name, command, expect, marker in checks]
+    rows = [clean_row(name, command, marker, stream_calls(stream)) if expect == 'clean' else
+            probe_row(name, command, expect, marker, seen, effects, direct.get(command)) for name, command, expect, marker in checks]
     rows += [tool_row(name, which, path, first, stream_calls(stream)) for name, which, path, first in tools]
     if not codex:
         extra = sorted(name for name in offered if not name.startswith('command:') and name not in CLAUDE_TOOLS)
