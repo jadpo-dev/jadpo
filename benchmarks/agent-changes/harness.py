@@ -1662,7 +1662,7 @@ def probe_checks(agent='codex', server=None):
 # A command that succeeds must come back as a success with nothing refused in
 # its output: Claude Code's own bookkeeping around each command runs in the
 # same sandbox, and a refusal there turns every result into a failure.
-CLEAN_COMMAND = 'cat README.md AGENTS.md && echo shell-clean'
+CLEAN_COMMAND = 'ls && cat AGENTS.md && echo shell-clean'
 
 
 def clean_row(name, command, marker, calls):
