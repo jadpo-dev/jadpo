@@ -127,6 +127,9 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
 /// before side's commit, found as for every diff. A project new since that
 /// commit has none there, so every test reaches the change. Without a base
 /// commit, the before side saying why.
+// The before side it refuses with is read once per run, so its size
+// costs nothing worth boxing it for.
+#[allow(clippy::result_large_err)]
 pub fn since(root: &Path) -> Result<jadpo_test::Since, Before> {
     let found = match find(root, None, true) {
         Ok(Ok(found)) => found,

@@ -364,27 +364,6 @@ pub(crate) struct Sorted {
     pub(crate) codes: Option<Vec<String>>,
 }
 
-/// The codes an enum's column holds, in its declared order: what it
-/// sorts by in a query's `order:` and in a group (area 6).
-pub(crate) fn enum_codes(kind: &Column) -> Option<Vec<String>> {
-    let Column::Enum {
-        ty,
-        variants,
-        stored,
-    } = kind
-    else {
-        return None;
-    };
-    Some(if stored.is_empty() {
-        variants
-            .iter()
-            .map(|variant| jadpo_std::standard::stored_variant(ty, variant).to_string())
-            .collect()
-    } else {
-        stored.clone()
-    })
-}
-
 /// How a later column of a compound standard type (`Money`, area 19) is
 /// named among a statement's columns, after its field's name and before
 /// its place among the type's columns: `total#part1`.
@@ -1315,7 +1294,10 @@ impl Planner<'_> {
                     field: field.name.clone(),
                     part: 0,
                     nullable: field.nullable,
-                    codes: self.column(entity, field).as_ref().and_then(enum_codes),
+                    codes: self
+                        .column(entity, field)
+                        .as_ref()
+                        .and_then(aggregates::enum_codes),
                 }),
             }
         }
