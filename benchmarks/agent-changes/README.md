@@ -11,6 +11,8 @@ results are in roadmap chunk 10.2's pull request.
 |---|---|
 | [`changes.py`](changes.py) | The changes: each request as the product owner writes it, the owner's one reply, the tempting unsafe shortcut, how its escape is caught, and the hidden tests |
 | [`harness.py`](harness.py) | Sets up a run, starts the agent, runs the hidden tests, scores the run; `calibrate`, `knowledge-probe`, `isolation-probe`, `stumbles`, `summary` and `estimate` |
+| [`measure.py`](measure.py) | A final measurement from start to report: the measured sessions run after run on several models, and the analyses (`analyse`, `tools`, `ask`, `debrief`), the writer's `pilot` and `brief` |
+| [`writer-brief.md`](writer-brief.md) | The brief a blind writer gets for the next held-out set, filled in by `measure.py brief` |
 | [`scoring.py`](scoring.py) | Reads a transcript (Claude Code's or Codex's), a diff and the hidden results: attempts, tokens, where mistakes were caught, review metrics, the docs read, the stumbles report, the summary table |
 | [`replay.py`](replay.py), [`replays/`](replays/) | A stand-in agent that plays a scripted session at no cost, for checking the plumbing |
 | [`fixtures/`](fixtures/) | A Codex session's events and record, written by hand in the shape a real run takes |
@@ -110,10 +112,23 @@ without the hidden results; the language can't be hidden.
   `jadpo check` has a before side and judges acceptances. (Until 10.5 the
   copy was a single commit with the agent working on top of it, so no
   acceptance was ever judged.) It has a clean environment holding none of the host
-  session's variables. Claude Code runs in its safe and restricted modes
-  (no CLAUDE.md, skills, plugins, hooks or MCP servers; file tools
-  confined to the copy and the docs), with `Bash`, `Read`, `Edit`,
-  `Write`, `Glob` and `Grep` and no web tools. Codex runs with its own
+  session's variables. Claude Code runs on the owner's Claude subscription
+  from a `CLAUDE_CONFIG_DIR` of its own that starts empty, in its safe and
+  restricted modes (no CLAUDE.md, memory, skills, plugins, hooks or MCP
+  servers; file tools confined to the copy and the docs), with `Bash`,
+  `Read`, `Edit`, `Write`, `Glob` and `Grep` and no web tools. Its login
+  is a token from `claude setup-token` the owner saves, mode 0600, at
+  `~/.config/jadpo-agent-changes/claude-oauth-token`
+  (`JADPO_CLAUDE_TOKEN_FILE` moves it): read for each session and handed
+  to Claude Code alone, never printed or copied into the run, and stripped
+  from every command the agent runs (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`).
+  Its shell runs in Claude Code's sandbox, set from the run's own
+  settings file as Codex's is: it writes only the copy and its own
+  temporary folders, reads nothing of the home folder, `/Users`, `/tmp`
+  or other volumes but the copy, the docs, the compiler and the tools on
+  `PATH`, and has no network but the run's PostgreSQL socket. That sandbox
+  covers commands only; `--restricted` keeps the file tools to the copy
+  and the docs. Codex runs with its own
   `CODEX_HOME` for the run, holding only a mode-0600 copy of the login
   (`~/.codex/auth.json`, never printed or kept; a refreshed login is put
   back) and a pinned config, deleted afterwards: none of the owner's
@@ -123,10 +138,13 @@ without the hidden results; the language can't be hidden.
   the tools on `PATH` and nothing else of the home folder, the
   repository's folders or `/tmp` (reads are refused, not just writes), and
   has no network but the run's PostgreSQL socket. `isolation-probe` proves
-  it each time the setup changes: a Codex session in a prepared copy tries
-  the owner's Codex and Claude files, the repository, another worktree,
-  `/tmp`, a write outside the copy and the network, and the verdict comes
-  from what the tools printed and the files left behind. What it can't
+  it for each agent each time the setup changes: a session in a prepared
+  copy tries the owner's Codex and Claude files, the repository, another
+  worktree, `/tmp`, a write outside the copy and the network, and for
+  Claude Code also the run's own config, its login in the shell's
+  environment and the file tools on files outside the copy; the verdict
+  comes from what the tools printed and the files left behind, and the
+  session's own list of its tools must hold the six alone. What it can't
   switch off: the session still lists Codex's local sub-agent tools
   (`spawn_agent` and its kin, no config key removes them; a spawn is
   counted in the result's `subagents`) and `request_user_input`, and
@@ -135,7 +153,10 @@ without the hidden results; the language can't be hidden.
   folder holds none). Both get an
   empty PostgreSQL database for their own tests, through the run's socket:
   Jadpo's URL names the socket folder as its host, TypeScript's gives it
-  in `?host=`, the form postgres.js reads. The TypeScript copy's
+  in `?host=`, the form postgres.js reads. The socket is in a short folder
+  named for the run under `~/.cache/jadpo-sock/` (`JADPO_SOCKET_ROOT`
+  moves it), so no label or work folder takes its path past the 103 bytes
+  macOS allows. The TypeScript copy's
   `node_modules` comes from `npm ci`, one run at a time, and the pristine
   app's own typecheck must pass before the agent starts. npm's update
   check is off (`NPM_CONFIG_UPDATE_NOTIFIER=false`), since a fresh home
@@ -232,6 +253,36 @@ taking an unassigned ticket, emptying the bin now (decline), copying a
 macro, closing a workspace (decide), assigning many tickets at once,
 reviewers reading notes (decline), and merging two tickets.
 
+**A final measurement.** `measure.py` runs one from start to report.
+`brief` fills in [`writer-brief.md`](writer-brief.md) for the next set's
+blind writer, whose patch stays out of the repository until the set is
+measured, and `pilot` reads the writer's TypeScript pilot. `sessions`
+runs every session of a set in both languages against a frozen Jadpo, a
+run at a time and each model in turn within it (`--model` in order, a
+`claude-` model under Claude Code, any other under Codex), at most four
+sessions together, under `caffeinate`. Before each model's run it waits
+for mains power and 40 GB free, and for Codex pauses until the week's
+usage leaves room for the run under 60% (`--codex-cap`), read from the
+latest Codex session record. A Claude session that stops on its usage
+limit is set aside whole under its label's `interrupted/`, out of the
+scores and reported, and run again once the limit resets; any other
+session that never reaches the model stops the measurement. `analyse`
+prints the report's tables (by change, totals, per session, session
+medians, cost per correct change), `tools` the use of `jadpo fix`,
+`jadpo explain` and `jadpo help topic`, `ask` what each step did before
+its first edit, and `debrief` one more turn of a finished session about
+its decisions, information and effort, outside the scores.
+
+**Cost per correct change.** `summary` and `analyse` end with what one
+correct change costs, for each model and language: every change's fresh
+input plus output tokens, and its dollars at the provider's published
+standard prices, with fresh input, cache writes, cache reads and output
+each priced apart, over the changes scored correct. The prices, their
+source pages and the date they were read are in `scoring.py`
+(`PRICES`, `PRICE_SOURCES`). Both agents run on subscriptions, so the
+dollars are what the same tokens would cost on the API, not what was
+paid.
+
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
 IDs, errors seen more than twice, the docs read before each recovery, the
@@ -321,21 +372,26 @@ python3 benchmarks/agent-changes/harness.py run --change F07 --run 1 \
   --agent "python3 benchmarks/agent-changes/replay.py benchmarks/agent-changes/replays/F07-{language}.json"
 python3 benchmarks/agent-changes/harness.py knowledge-probe --agent codex --spend --label <label>
 python3 benchmarks/agent-changes/harness.py isolation-probe --spend --label <label>   # what a Codex run can reach
+python3 benchmarks/agent-changes/harness.py knowledge-probe --agent claude --spend --label <label>
+python3 benchmarks/agent-changes/harness.py isolation-probe --agent claude --spend --label <label>   # what a Claude Code run can reach
 python3 benchmarks/agent-changes/harness.py run --agent codex --spend --set tuning --change F01 --language jadpo --run 1 --label <label>
 python3 benchmarks/agent-changes/harness.py stumbles --label <label>   # where each run got stuck
 python3 benchmarks/agent-changes/harness.py run --agent codex --spend --set held-out --frozen <revision> --runs 1 --label <label>
 python3 benchmarks/agent-changes/harness.py summary --label <label>
-python3 benchmarks/agent-changes/harness.py run --dry --spend --change F01 --run 1 --label dry   # Claude Code on Haiku, $0.50 a run
+python3 benchmarks/agent-changes/harness.py run --dry --spend --change F01 --run 1 --label dry   # Claude Code on Haiku, low effort
 python3 benchmarks/agent-changes/harness.py estimate --label dry      # the Claude Code matrix at the pinned model
+python3 benchmarks/agent-changes/measure.py sessions --set <set> --frozen <revision> --prefix <prefix> \
+  --model gpt-6.1-sol --model gpt-6-luna --model claude-opus-5-5 --runs 3
+python3 benchmarks/agent-changes/measure.py analyse --set <set> --label <prefix>-6.1-sol --label <prefix>-6-luna --label <prefix>-opus-5-5
 ```
 
 It needs what the contract needs (Rust, PostgreSQL 16, Node), the
 compiler built (`cargo build -p jadpo-cli`), and a signed-in agent recent
-enough to know its pinned model: `claude` on `PATH` (`claude auth status`
-in a plain terminal), or `codex` on `PATH` or in the ChatGPT app, signed in
-with ChatGPT (`~/.codex/auth.json`). A Codex run needs a PostgreSQL of its
+enough to know its pinned model: `claude` on `PATH` with the owner's
+token saved as above, or `codex` on `PATH` or in the ChatGPT app, signed in
+with ChatGPT (`~/.codex/auth.json`). A sandboxed run needs a PostgreSQL of its
 own, so `JADPO_TEST_DATABASE_URL` must be unset; its sandbox reaches the
-database through a Unix socket in the run's folder. The TypeScript copy's `AGENTS.md`
+database through the run's Unix socket. The TypeScript copy's `AGENTS.md`
 gains an "In this environment" section saying that database is provided,
 since the app's own docs say its test runner starts one. A run whose session
 never reached the model is kept but left out of the summary. Runs can go
