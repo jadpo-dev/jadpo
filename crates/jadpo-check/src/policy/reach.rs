@@ -628,7 +628,7 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 route.run.name.clone()
             } else {
                 match crate::graph::declaration_key(&lookup, &route.run.name) {
-                    Some(key) => key.name().to_string(),
+                    Some(key) => crate::graph::registry(db, project).now_name(&key),
                     None => continue,
                 }
             };

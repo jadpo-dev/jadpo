@@ -429,6 +429,51 @@ fn a_rename_whose_result_has_a_new_error_changes_nothing() {
 }
 
 #[test]
+fn a_type_used_only_inside_an_action_is_still_used_after_its_rename() {
+    let root = scaffold("body-only");
+    // The action's body is the type's only user: its typed body refers to
+    // the type by key, which holds the name it was born with.
+    write(
+        &root,
+        "domains/hello/types/loudness.jadpo",
+        "/// How loud a greeting is.\ntype Loudness = Int {\n    min: 0\n    max: 10\n}\n",
+    );
+    write(
+        &root,
+        "domains/hello/actions/greet.jadpo",
+        "use hello/types { Greeting, Loudness, Visitor }\n\n/// Greets a visitor by name.\naction greet(input: Visitor) -> Greeting {\n    var loud: Loudness = 3\n    if (loud > 2) {\n        return Greeting {\n            message: \"Hello!\"\n            name: input.name\n        }\n    }\n    return Greeting {\n        message: \"Hello\"\n        name: input.name\n    }\n}\n",
+    );
+    ok(&jadpo(&root, &["check"]));
+    let output = jadpo(&root, &["rename", "Loudness", "Din"]);
+    ok(&output);
+    assert!(
+        output.stdout.contains("Renamed Loudness to Din\n"),
+        "{}",
+        output.stdout
+    );
+    ok(&jadpo(&root, &["check"]));
+}
+
+#[test]
+fn a_type_beside_an_action_of_its_name_leaves_the_actions_file_where_it_is() {
+    let root = scaffold("beside");
+    // `Greet` supports `greet`, the declaration `greet.jadpo` is named
+    // after, so renaming `Greet` moves no file.
+    write(
+        &root,
+        "domains/hello/actions/greet.jadpo",
+        "use hello/types { Greeting, Visitor }\n\n/// How warmly to greet.\ntype Greet = Int {\n    min: 0\n    max: 10\n}\n\n/// Greets a visitor by name.\naction greet(input: Visitor) -> Greeting {\n    var warmth: Greet = 3\n    if (warmth > 2) {\n        return Greeting {\n            message: \"Hello!\"\n            name: input.name\n        }\n    }\n    return Greeting {\n        message: \"Hello\"\n        name: input.name\n    }\n}\n",
+    );
+    ok(&jadpo(&root, &["check"]));
+    ok(&jadpo(&root, &["rename", "Greet", "Warmth"]));
+    assert!(!root.join("domains/hello/actions/warmth.jadpo").exists());
+    let action = read(&root, "domains/hello/actions/greet.jadpo");
+    assert!(action.contains("type Warmth = Int {\n"), "{action}");
+    assert!(action.contains("    var warmth: Warmth = 3\n"), "{action}");
+    ok(&jadpo(&root, &["check"]));
+}
+
+#[test]
 fn a_field_renamed_by_hand_is_pointed_at_the_command_that_keeps_its_column() {
     let root = planning("by-hand");
     for (path, text) in PLANNING {

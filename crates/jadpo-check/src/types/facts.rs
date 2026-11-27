@@ -367,10 +367,11 @@ pub fn named<'db>(db: &'db dyn Db, project: Project, name: &str) -> Vec<Callable
     out
 }
 
-/// The callable a call to `key` runs: of those declared with its name,
-/// the last whose key it is.
+/// The callable a call to `key` runs: of those declared with its name
+/// now (a key holds the name it was born with), the last whose key it is.
 pub fn resolve<'db>(db: &'db dyn Db, project: Project, key: &Key) -> Option<Callable<'db>> {
-    named(db, project, key.name())
+    let now = crate::graph::registry(db, project).now_name(key);
+    named(db, project, &now)
         .into_iter()
         .rfind(|callable| body_facts(db, project, *callable).key.as_ref() == Some(key))
 }
