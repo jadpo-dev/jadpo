@@ -474,6 +474,23 @@ fn a_type_beside_an_action_of_its_name_leaves_the_actions_file_where_it_is() {
 }
 
 #[test]
+fn a_seed_that_calls_the_action_is_renamed_with_it() {
+    let root = scaffold("seed");
+    // A seed in `database/seeds/` is code; only a migration's folder is
+    // history.
+    write(
+        &root,
+        "database/seeds/first_visit.jadpo",
+        "use hello/types { Visitor }\nuse hello\n\n/// A first greeting, for development.\nseed {\n    hello.greet(Visitor {\n        name: \"Ann\"\n    })\n}\n",
+    );
+    ok(&jadpo(&root, &["check"]));
+    ok(&jadpo(&root, &["rename", "greet", "welcome"]));
+    let seed = read(&root, "database/seeds/first_visit.jadpo");
+    assert!(seed.contains("    hello.welcome(Visitor {\n"), "{seed}");
+    ok(&jadpo(&root, &["check"]));
+}
+
+#[test]
 fn a_field_renamed_by_hand_is_pointed_at_the_command_that_keeps_its_column() {
     let root = planning("by-hand");
     for (path, text) in PLANNING {

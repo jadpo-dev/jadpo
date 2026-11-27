@@ -788,16 +788,14 @@ fn references(db: &dyn Db, project: Project, keys: &[Key]) -> BTreeMap<String, V
     let mut out: BTreeMap<String, Vec<Edit>> = BTreeMap::new();
     for key in keys {
         for reference in node_references(db, project, key) {
-            if reference.path.starts_with("database/") {
-                continue;
-            }
             let Some(file) = file_at(db, project, &reference.path) else {
                 continue;
             };
-            if jadpo_db::location(db, project, file)
-                .ownership
-                .package()
-                .is_some()
+            // A migration's folder is history; a seed in `database/seeds/`
+            // is code like any other.
+            let location = jadpo_db::location(db, project, file);
+            if location.place == jadpo_db::Place::Migration
+                || location.ownership.package().is_some()
             {
                 continue;
             }
