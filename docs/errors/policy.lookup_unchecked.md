@@ -78,7 +78,7 @@ error: `is_member` looks a `Member` up by email with no permission check before 
 37 |     match Member.lookup(email: email) {
    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no permission check of its own
   reason: `Member.lookup` finds a person by their exact address whoever may read `Member`, so it runs only behind its action's own line under root `policy { actions: }`, which says who may look people up. `is_member` isn't listed.
-  next: List `is_member` under `policy { actions: }` with who may look people up, such as `[<Role>.owner]` (human) (human)
+  next: List `is_member` under `policy { actions: }` with who may look people up, such as `[<Role>.owner]` (human)
   rule: policy.lookup_unchecked
   help: https://jadpo.dev/docs/errors/policy.lookup_unchecked
 

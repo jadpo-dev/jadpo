@@ -422,7 +422,7 @@ rules! {
         "A lifecycle's `set:` or `initial:` gives a field something other than a fixed value";
     DATA_LOOKUP_NOT_EMAIL: "data.lookup_not_email", area 15, Error, Agent,
         "Code looks a record up by a field that doesn't hold an email address, and only an exact email address finds one person";
-    DATA_LOOKUP_NOT_UNIQUE: "data.lookup_not_unique", area 15, Error, Agent,
+    DATA_LOOKUP_NOT_UNIQUE: "data.lookup_not_unique", area 15, Error, Human,
         "Code looks a record up by an email field that isn't `unique: true` across the whole table, so an address could find several";
     DATA_NAME_TOO_LONG: "data.name_too_long", area 5, Error, Agent,
         "An entity's or a field's name is too long to be the name of a table or a column";

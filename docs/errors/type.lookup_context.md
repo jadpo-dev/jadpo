@@ -91,9 +91,6 @@ action is_member(email: Member.email) -> Membership {
 }
 ```
 
-The lookup now runs behind `is_member`'s line, and a test or a route
-calls `is_member` to learn whether an address has an account.
-
 ```jadpo check project=e-lookup-context-fix hidden
 principal {
     user: {
@@ -147,6 +144,9 @@ action is_member(email: Member.email) -> Membership {
     }
 }
 ```
+
+The lookup now runs behind `is_member`'s line, and a test or a route
+calls `is_member` to learn whether an address has an account.
 
 ## Related
 

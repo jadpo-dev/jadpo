@@ -12,7 +12,9 @@ never removes such a record. `Article.delete` runs the lifecycle's
 
 Jadpo won't add the transition for you, because it decides what deleting
 an article means: which field records it, and whether the article is
-ever removed for good.
+ever removed for good. A person's record is the exception: to forget
+someone, whatever their lifecycle, call `<User>.erase(id)`
+([Erasing someone](../language/15-personal-data.md#erasing-someone)).
 
 ## What it looks like
 
@@ -265,20 +267,6 @@ Deleting an author fails with `AuthorHasArticles` while any article
 refers to them, and their articles are never removed by it. An author can
 instead be given a lifecycle of their own with a `delete` transition, so
 deleting one hides them and keeps their articles.
-
-**If the record is a person's, and removing them means forgetting
-them**, call `<User>.erase(id)` on their entity, `person: true`:
-
-```jadpo fragment
-action forget(user_id: User.id) fails UserNotFound -> Unit {
-    attempt User.erase(user_id)
-}
-```
-
-Erasure removes them for good whatever their lifecycle, with each of
-their records as its reference's `erase:` says, and their sign-in state,
-which a hidden record keeps
-([Erasing someone](../language/15-personal-data.md#erasing-someone)).
 
 ## Related
 

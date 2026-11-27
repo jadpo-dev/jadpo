@@ -4358,9 +4358,6 @@ sends as `Authorization: Bearer`. With magic links, the generated
   route can run `sessions.tokens` itself (below). Each needs `api_token:`
   in `authentication { }`.
 
-A token can also be issued narrowed to some scopes
-([Narrowing an API token to scopes](#narrowing-an-api-token-to-scopes)).
-
 #### Listing from a `GET` route
 
 An application's "signed-in devices" screen is one route. A `GET` runs
@@ -4388,9 +4385,9 @@ routes Devices {
   those.
 - `IssuedToken` and `IssuedKey` are built-in values an `Output` can hold
   (`tokens: List<IssuedToken>`) and a route can send. On the wire each is
-  an object of its `id`, `started_at` and `ends_at`, and a token's
-  `scopes`, a list of scope-tokens or `null`, never the credential; the
-  API record and OpenAPI give it a section of its own.
+  an object of its `id`, `started_at`, `ends_at` and a token's `scopes`,
+  never the credential; the API record and OpenAPI give it a section of
+  its own.
 - The list goes through [Policy](09-policy.md) like any query's. It holds
   the tokens or keys of a holder whose record the caller may `read`, and is
   empty for any other.

@@ -73,7 +73,7 @@ error: `Member.lookup` finds by `email`, which isn't `unique: true`
 41 |     match Member.lookup(email: email) {
    |                         ^^^^^ not unique
   reason: A lookup gives one record or none. Without `unique: true` several `Member` records could hold one address, and which came back would show more than one person's.
-  next: Make `Member.email` `unique: true`, if one address is one person's (human) (agent)
+  next: Make `Member.email` `unique: true`, if one address is one person's (human)
   rule: data.lookup_not_unique
   help: https://jadpo.dev/docs/errors/data.lookup_not_unique
 
