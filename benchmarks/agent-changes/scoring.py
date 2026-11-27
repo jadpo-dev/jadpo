@@ -63,7 +63,9 @@ def events(lines):
 
 
 def blocks(message):
-    content = (message.get('message') or {}).get('content')
+    # Some events carry a plain-text message, such as Claude Code's permission_denied.
+    inner = message.get('message')
+    content = inner.get('content') if isinstance(inner, dict) else None
     return content if isinstance(content, list) else []
 
 
@@ -81,14 +83,23 @@ def failed(block, text):
     return bool(match and match.group(1) != '0')
 
 
+TOKEN_KEYS = ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
+# The part of the cache writes kept for an hour, which Anthropic prices higher
+# than five-minute writes. It is inside cache_creation_input_tokens, not added.
+HOUR_WRITES = 'cache_creation_1h_input_tokens'
+
+
 def usage_tokens(usage):
     usage = usage or {}
-    return {key: int(usage.get(key) or 0) for key in
-            ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')}
+    tokens = {key: int(usage.get(key) or 0) for key in TOKEN_KEYS}
+    hour = int(usage.get(HOUR_WRITES) or (usage.get('cache_creation') or {}).get('ephemeral_1h_input_tokens') or 0)
+    if hour:
+        tokens[HOUR_WRITES] = hour
+    return tokens
 
 
 def total(tokens):
-    return sum(tokens.values())
+    return sum(tokens.get(key, 0) for key in TOKEN_KEYS)
 
 
 OUTPUT_KEPT = 1500
@@ -576,9 +587,12 @@ PRICE_SOURCES = {
     'openai': ('https://developers.openai.com/api/docs/pricing', '2026-11-27'),
 }
 PRICES = {
-    'claude-opus-5-5': {'provider': 'anthropic', 'input': 4.00, 'cache_write': 5.00, 'cache_read': 0.20, 'output': 20.00},
-    'claude-sonnet-5-5': {'provider': 'anthropic', 'input': 2.00, 'cache_write': 2.50, 'cache_read': 0.10, 'output': 10.00},
-    'claude-haiku-5-5': {'provider': 'anthropic', 'input': 0.10, 'cache_write': 0.125, 'cache_read': 0.01, 'output': 0.50},
+    'claude-opus-5-5': {'provider': 'anthropic', 'input': 4.00, 'cache_write': 5.00, 'cache_write_1h': 8.00, 'cache_read': 0.20,
+                        'output': 20.00},
+    'claude-sonnet-5-5': {'provider': 'anthropic', 'input': 2.00, 'cache_write': 2.50, 'cache_write_1h': 4.00, 'cache_read': 0.10,
+                          'output': 10.00},
+    'claude-haiku-5-5': {'provider': 'anthropic', 'input': 0.10, 'cache_write': 0.125, 'cache_write_1h': 0.20, 'cache_read': 0.01,
+                         'output': 0.50},
     'gpt-6.1-sol': {'provider': 'openai', 'input': 2.00, 'cache_write': 2.50, 'cache_read': 0.10, 'output': 10.00},
     'gpt-6-luna': {'provider': 'openai', 'input': 0.10, 'cache_write': 0.125, 'cache_read': 0.01, 'output': 0.50},
 }
@@ -589,8 +603,10 @@ def price(tokens, model):
     rates = PRICES.get(model)
     if rates is None:
         return None
+    hour = tokens.get(HOUR_WRITES, 0)
     return (tokens.get('input_tokens', 0) * rates['input'] + tokens.get('output_tokens', 0) * rates['output']
-            + tokens.get('cache_creation_input_tokens', 0) * rates['cache_write']
+            + (tokens.get('cache_creation_input_tokens', 0) - hour) * rates['cache_write']
+            + hour * rates.get('cache_write_1h', rates['cache_write'])
             + tokens.get('cache_read_input_tokens', 0) * rates['cache_read']) / 1_000_000
 
 

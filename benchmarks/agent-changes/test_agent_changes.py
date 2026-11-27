@@ -193,7 +193,8 @@ class Isolation(unittest.TestCase):
         text = ' '.join(command)
         for flag in ['--model claude-opus-5-5', '--effort high', '--safe-mode', '--restricted', '--strict-mcp-config',
                      '--disable-slash-commands', f'--settings {HERE / harness.CLAUDE_SETTINGS}',
-                     '--tools Bash,Read,Edit,Write,Glob,Grep', '--permission-prompts none', '--output-format stream-json']:
+                     '--tools Bash,Read,Edit,Write,Glob,Grep', '--allowedTools Bash,Read,Edit,Write,Glob,Grep',
+                     '--permission-prompts none', '--output-format stream-json']:
             self.assertIn(flag, text)
         self.assertNotIn('WebFetch', text)
         # On the subscription a run is capped by time, as Codex is; a dollar cap only when asked for.
@@ -892,6 +893,17 @@ class Results(unittest.TestCase):
 
 
 class CostPerCorrect(unittest.TestCase):
+    def test_hour_long_cache_writes_are_priced_at_their_own_rate(self):
+        usage = {'input_tokens': 0, 'output_tokens': 0, 'cache_creation_input_tokens': 3_000_000, 'cache_read_input_tokens': 0,
+                 'cache_creation': {'ephemeral_5m_input_tokens': 1_000_000, 'ephemeral_1h_input_tokens': 2_000_000}}
+        tokens = scoring.usage_tokens(usage)
+        self.assertEqual(tokens[scoring.HOUR_WRITES], 2_000_000)
+        self.assertEqual(scoring.total(tokens), 3_000_000, 'the hour-long writes are part of the writes, not added')
+        self.assertEqual(scoring.usage_tokens(tokens), tokens, 'summed records keep the split')
+        self.assertAlmostEqual(scoring.price(tokens, 'claude-opus-5-5'), 1 * 5 + 2 * 8)
+        self.assertAlmostEqual(scoring.price(tokens, 'gpt-6.1-sol'), 3 * 2.5, msg='OpenAI has one write price')
+        self.assertNotIn(scoring.HOUR_WRITES, scoring.usage_tokens({'cache_creation_input_tokens': 5}))
+
     def test_cache_reads_are_priced_apart(self):
         tokens = {'input_tokens': 1_000_000, 'output_tokens': 1_000_000, 'cache_creation_input_tokens': 1_000_000,
                   'cache_read_input_tokens': 1_000_000}
@@ -954,6 +966,10 @@ class Claude(unittest.TestCase):
         self.assertEqual(sandbox['network']['allowedDomains'], [])
         self.assertEqual(sandbox['network']['allowUnixSockets'], ['/s/x', '/s/x/.s.PGSQL.5'])
         self.assertFalse(sandbox['network']['allowLocalBinding'])
+        self.assertEqual(self.settings()['permissions']['allow'], ['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep'])
+        self.assertEqual(self.settings()['enabledPlugins'],
+                         {'cc-plugin-agents-md@builtin': False, 'cc-plugin-privacy@builtin': False,
+                          'cc-plugin-plugin-authoring@builtin': False})
 
     def test_environment_starts_empty_and_scrubs_the_login(self):
         environment = harness.claude_environment(self.folder)
@@ -1050,6 +1066,11 @@ class Claude(unittest.TestCase):
                             harness.claude_code()
                         self.assertIn(refusal, str(refused.exception))
             harness.claude_code.cache_clear()
+
+    def test_a_plain_text_message_is_read_as_no_blocks(self):
+        denied = {'type': 'system', 'subtype': 'permission_denied', 'tool_name': 'Read', 'message': '/x is outside /app'}
+        self.assertEqual(scoring.blocks(denied), [])
+        self.assertEqual(harness.stream_calls([json.dumps(denied)]), [])
 
     def test_built_in_agents_count_only_with_the_agent_tool(self):
         def init(tools, agents):

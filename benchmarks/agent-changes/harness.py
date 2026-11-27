@@ -561,7 +561,7 @@ def agent_command(agent, settings, prompt, app, folder, resume=None, tools=TOOLS
     command = [claude_code(), '-p', prompt, '--model', settings['model'], '--effort', settings['effort'],
                '--output-format', 'stream-json', '--verbose', '--safe-mode', '--restricted', '--strict-mcp-config',
                '--disable-slash-commands', '--settings', str(folder / CLAUDE_SETTINGS),
-               '--tools', tools, '--allowedTools', 'Bash', '--permission-mode', 'acceptEdits', '--permission-prompts', 'none',
+               '--tools', tools, *(['--allowedTools', tools] if tools else []), '--permission-mode', 'acceptEdits', '--permission-prompts', 'none',
                *(['--max-budget-usd', f'{settings["budget_usd"]:.2f}'] if settings.get('budget_usd') is not None else []),
                *(['--append-system-prompt', system_prompt(app)] if (app / 'AGENTS.md').is_file() else [])]
     if (folder / 'docs').is_dir():
@@ -719,6 +719,11 @@ def claude_environment(folder):
             'TMPPREFIX': str(folder / 'tmp/zsh'), **CLAUDE_ENVIRONMENT}
 
 
+# Plugins the pinned Claude Code ships and loads even in safe mode; the run's
+# settings turn each off, and the probes fail on any plugin a session lists.
+CLAUDE_BUILT_IN_PLUGINS = ('cc-plugin-agents-md', 'cc-plugin-privacy', 'cc-plugin-plugin-authoring')
+
+
 def claude_settings(folder, environment, sockets=()):
     own = [str(folder / name) for name in ('app', 'tmp', 'home')]
     readable = [str(path) for path in codex_readable(folder, environment) if 'codex-home' not in path.parts]
@@ -729,7 +734,8 @@ def claude_settings(folder, environment, sockets=()):
                                        'allowWrite': own},
                         'network': {'allowedDomains': [], 'allowUnixSockets': [str(path) for path in sockets],
                                     'allowLocalBinding': False}},
-            'permissions': {'defaultMode': 'acceptEdits', 'allow': ['Bash'], 'deny': ['WebFetch', 'WebSearch']}}
+            'permissions': {'defaultMode': 'acceptEdits', 'allow': TOOLS.split(','), 'deny': ['WebFetch', 'WebSearch']},
+            'enabledPlugins': {plugin + '@builtin': False for plugin in CLAUDE_BUILT_IN_PLUGINS}}
 
 
 # Claude Code is pinned for the measurement: one exact release, installed for
