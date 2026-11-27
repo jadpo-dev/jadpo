@@ -893,6 +893,13 @@ class Results(unittest.TestCase):
 
 
 class CostPerCorrect(unittest.TestCase):
+    def test_claude_codes_stream_cutoffs_are_counted(self):
+        cut = json.dumps({'type': 'user', 'isSynthetic': True, 'message': {'role': 'user', 'content': [
+            {'type': 'text', 'text': 'Your response above was cut off mid-stream. Resume directly from where it stops.'}]}})
+        typed = json.dumps({'type': 'user', 'message': {'role': 'user', 'content': [
+            {'type': 'text', 'text': 'Your response above was cut off mid-stream.'}]}})
+        self.assertEqual(scoring.parse_transcript([cut, cut, typed], 'jadpo')['stream_cutoffs'], 2)
+
     def test_a_resumed_claude_session_counts_only_the_cost_it_added(self):
         def result(session, so_far):
             return json.dumps({'type': 'result', 'session_id': session, 'total_cost_usd': so_far, 'usage': {}})

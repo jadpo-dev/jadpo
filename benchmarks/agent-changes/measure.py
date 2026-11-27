@@ -379,7 +379,8 @@ def command_analyse(args):
                   f'to green median {k(median((d.get("green") or {}).get("tokens") for d in runs))}; '
                   f'check errors {sum(d["mistakes"]["check"] for d in runs)}, test errors {sum(d["mistakes"]["test"] for d in runs)}, '
                   f'contaminated {sum(bool(d.get("contamination")) for d in runs)}, '
-                  f'harness failures {sum(bool(d.get("harness_failure")) for d in runs)}')
+                  f'harness failures {sum(bool(d.get("harness_failure")) for d in runs)}, '
+                  f'stream cut-offs {sum(d.get("stream_cutoffs", 0) for d in runs)}')
 
     print('\n## Per session: correct at its step, kept, fresh in+out, wall minutes')
     for label in labels:

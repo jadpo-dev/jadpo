@@ -128,6 +128,9 @@ def call_input(name, data):
     return json.dumps(data)[:1000]
 
 
+CUT_OFF = 'Your response above was cut off mid-stream'
+
+
 def parse_transcript(lines, language, run_root=None, forbidden=()):
     """Verifications in order (check or test, failed or not, tokens spent
     before it), edits, the final result's usage and cost, and any tool input
@@ -138,6 +141,10 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
     # Claude Code's total_cost_usd is the conversation's so far, resumes
     # included; each result counts only what it added.
     reported = {}
+    # Claude Code's own recovery when the API stream stops mid-answer: a
+    # synthetic message asking the model to resume. What streamed before the
+    # cut is not in any reported usage.
+    cutoffs = 0
     for event in events(lines):
         kind = event.get('type')
         if kind == 'assistant':
@@ -166,6 +173,8 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
                     if categories:
                         calls[block.get('id')] = (command, categories, sum(spent.values()), edits)
         elif kind == 'user':
+            if event.get('isSynthetic') and any(str(block.get('text', '')).startswith(CUT_OFF) for block in blocks(event)):
+                cutoffs += 1
             for block in blocks(event):
                 entry = None
                 if block.get('type') == 'tool_result' and block.get('tool_use_id') in pending:
@@ -202,7 +211,7 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
         tokens = spent
     return {'verifications': verifications, 'edits': edits, 'sessions': sessions,
             'tokens': dict(usage_tokens(tokens)), 'cost_usd': round(sum(s['cost_usd'] for s in sessions), 6),
-            'cost_so_far': reported,
+            'cost_so_far': reported, 'stream_cutoffs': cutoffs,
             'turns': sum(s['turns'] for s in sessions), 'contamination': contamination, 'calls': record,
             'reasoning': [], 'thinking_tokens_estimate': thinking // 4}
 
