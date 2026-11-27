@@ -737,3 +737,32 @@ entity Member {{
         "{found:?}"
     );
 }
+
+#[test]
+fn browser_sessions_are_listed_and_ended_beside_a_browser_session() {
+    // Chunk 10.13: an app signs someone out everywhere, as it ends their
+    // tokens.
+    let everywhere = r#"action sign_out_everywhere(member: Member) -> Unit {
+    for session in sessions.browser_sessions(member.id) {
+        var started: Instant = session.started_at
+        assert started < session.ends_at
+        sessions.revoke_browser_session(session.id)
+    }
+}
+"#;
+    assert_eq!(
+        with(
+            "authentication {\n    browser_session: {\n        cookie: \"notes_session\"\n    }\n}",
+            everywhere
+        ),
+        Vec::<String>::new()
+    );
+    // Without browser sessions there is none to list.
+    let found = with(BOTH, everywhere);
+    assert!(
+        found.iter().any(|p| p.contains(
+            "type.auth_sessions_context: `sessions.browser_sessions` needs browser sessions"
+        )),
+        "{found:?}"
+    );
+}

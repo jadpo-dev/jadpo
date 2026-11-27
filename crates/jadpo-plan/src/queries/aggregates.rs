@@ -410,3 +410,24 @@ impl Planner<'_> {
         })
     }
 }
+
+/// The codes an enum's column holds, in its declared order: what it
+/// sorts by in a query's `order:` and in a group (area 6).
+pub(crate) fn enum_codes(kind: &Column) -> Option<Vec<String>> {
+    let Column::Enum {
+        ty,
+        variants,
+        stored,
+    } = kind
+    else {
+        return None;
+    };
+    Some(if stored.is_empty() {
+        variants
+            .iter()
+            .map(|variant| jadpo_std::standard::stored_variant(ty, variant).to_string())
+            .collect()
+    } else {
+        stored.clone()
+    })
+}

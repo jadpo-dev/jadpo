@@ -34,8 +34,8 @@ fn an_isbn_10_is_read_and_never_written() {
         rules(
             "function old(book: Isbn) -> Wire {\n    return Wire(text.from(book, form: CodeForm.isbn10))\n}\n"
         ),
-        ["type.mismatch"],
-        "an ISBN is text already, written as it is"
+        ["type.temporal_option_unused"],
+        "an ISBN is written as its canonical text alone"
     );
     assert_eq!(
         rules(

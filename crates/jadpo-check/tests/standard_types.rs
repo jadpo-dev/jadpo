@@ -330,11 +330,9 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
                 "{name}: `zone:` is needed"
             );
         }
-        // `text.from`: the canonical text, except for a type built on
-        // `Text`, which is text already.
-        let has_text = entry.text.is_some()
-            && !matches!(entry.holds, Holds::Text { .. })
-            && !matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Builtin::Text);
+        // `text.from`: the canonical text, a type built on `Text` its
+        // text as it is (chunk 10.13).
+        let has_text = entry.text.is_some();
         let from = check(&format!(
             "{declared}function f(value: {value}) -> Wire {{\n    return Wire(text.from(value))\n}}\n"
         ));

@@ -635,7 +635,7 @@ impl Reader<'_> {
     }
 
     /// Whether `ty` is an enum whose variants carry nothing.
-    fn plain_enum(&self, ty: &Ty) -> bool {
+    pub(super) fn plain_enum(&self, ty: &Ty) -> bool {
         match self.lookup.structure(ty) {
             Ty::Named(name) => matches!(
                 self.lookup.def(&name),

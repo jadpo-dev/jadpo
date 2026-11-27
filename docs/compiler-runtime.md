@@ -3119,7 +3119,8 @@ limit (`Host::rate_limit` with `CALLER_LIMIT`), and keys its idempotency as `use
 **API tokens and service keys** (area 8). The identity
 reads `api_token:` and `service_key:`, and `jadpo_std::http::SessionOp`
 names every generated credential operation: `sessions.start`, `.end`,
-`.issue_token`, `.tokens` and `.revoke_token`, and the service entity's
+`.issue_token`, `.tokens`, `.revoke_token`, `.browser_sessions` and
+`.revoke_browser_session`, and the service entity's
 `issue_key`, `keys` and `revoke_key`, each a `Callee::Session` that only
 an action calls and that reads or writes the store its table lives in
 (`jadpo_sessions` beside the users, `jadpo_service_keys` beside the

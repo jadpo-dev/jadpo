@@ -359,6 +359,9 @@ pub(crate) struct Sorted {
     pub(crate) part: u32,
     /// Whether the field may be `none`, which sorts last either way.
     pub(crate) nullable: bool,
+    /// An enum's codes in its declared order, which it sorts by (chunk
+    /// 10.13).
+    pub(crate) codes: Option<Vec<String>>,
 }
 
 /// How a later column of a compound standard type (`Money`, area 19) is
@@ -1252,6 +1255,7 @@ impl Planner<'_> {
                 collate: column.collate,
                 descending: column.descending,
                 nullable: column.nullable,
+                codes: column.codes.as_deref(),
             });
         }
         text::after(&parts)
@@ -1278,6 +1282,7 @@ impl Planner<'_> {
                             field: field.name.clone(),
                             part: at,
                             nullable: field.nullable,
+                            codes: None,
                         });
                     }
                 }
@@ -1289,6 +1294,10 @@ impl Planner<'_> {
                     field: field.name.clone(),
                     part: 0,
                     nullable: field.nullable,
+                    codes: self
+                        .column(entity, field)
+                        .as_ref()
+                        .and_then(aggregates::enum_codes),
                 }),
             }
         }
@@ -1304,6 +1313,7 @@ impl Planner<'_> {
                 collate: column.collate,
                 descending: column.descending,
                 nullable: column.nullable,
+                codes: column.codes.as_deref(),
             })
             .collect()
     }

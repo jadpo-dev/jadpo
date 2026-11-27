@@ -114,19 +114,6 @@ impl Body<'_> {
                 None,
                 format!("`{ty}` has no single text form, so it has no canonical text"),
             ),
-            // A value built on `Text` already is text (area 19, "Text").
-            (Op::TextFrom, Contract::Standard(entry))
-                if matches!(entry.holds, Holds::Text { .. })
-                    || matches!(entry.holds, Holds::Builtin(builtin) if builtin.representation() == Prim::Text) =>
-            {
-                (
-                    false,
-                    None,
-                    format!(
-                        "`{ty}` is built on `Text` already, and a parameter written `Text` takes it as it is"
-                    ),
-                )
-            }
             // A feature is GeoJSON for a map, with no form for people
             // (area 20, chunk 5.5u6).
             (_, Contract::Standard(entry))
@@ -141,11 +128,6 @@ impl Body<'_> {
                 )
             }
             (_, Contract::Standard(entry)) => (true, Some(entry), String::new()),
-            (Op::TextFrom, Contract::Representation(Prim::Text)) => (
-                false,
-                None,
-                format!("`{ty}` is built on `Text`, so it is text already"),
-            ),
             (Op::TextFrom, Contract::Representation(_)) => (true, None, String::new()),
             // A number for people, in the locale's digits and separators.
             (Op::TextFormat, Contract::Representation(Prim::Int | Prim::Decimal)) => {
