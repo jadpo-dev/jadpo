@@ -663,8 +663,22 @@ def debrief_claude(folder, session_record, settings, prompt, identifier, cwd):
                            timeout=600, check=False)
     finally:
         shutil.rmtree(home, ignore_errors=True)
-    parsed = scoring.parse_transcript(transcript.read_text().splitlines(), 'jadpo')
-    return [s['text'] for s in parsed['sessions'] if s['text']], parsed['tokens']
+    lines = transcript.read_text().splitlines()
+    return claude_answers(lines), scoring.parse_transcript(lines, 'jadpo')['tokens']
+
+
+def claude_answers(lines):
+    """Each result's whole text. The scoring parser keeps only the first
+    2,000 characters, which cuts a debrief's later answers."""
+    answers = []
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get('type') == 'result' and event.get('result'):
+            answers.append(event['result'])
+    return answers
 
 
 CLAUDE_EMPTY = 'debrief-settings.json'

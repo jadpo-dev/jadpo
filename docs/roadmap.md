@@ -148,12 +148,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.13 What building Selling found**: [Tenant proof across actions](language/09-policy.md#tenant-proof-across-actions), signing out everywhere under [Starting and ending a session](language/08-identity.md#starting-and-ending-a-session) and its naming in [the notes](language/notes/08-identity.md), `text.from` under [Values as text](language/19-standard-library.md#values-as-text-from-parse-and-format), [What can be sorted](language/06-reads-and-writes.md#what-can-be-sorted) and [`query.order_field`](errors/query.order_field.md), and the baseline under [`jadpo check`](language/14-tooling.md#jadpo-check) and [`acceptance.unmatched`](errors/acceptance.unmatched.md).
 - [x] **10.13b Exact-email lookup and scopes on issued tokens**: [Looking up one person by email](language/15-personal-data.md#looking-up-one-person-by-email) and [`policy.lookup_unchecked`](errors/policy.lookup_unchecked.md), [Narrowing an API token to scopes](language/08-identity.md#narrowing-an-api-token-to-scopes), [Deleting someone who signs in](language/08-identity.md#deleting-someone-who-signs-in), and their decisions in the notes of areas [8](language/notes/08-identity.md), [9](language/notes/09-policy.md) and [15](language/notes/15-personal-data.md).
 - [x] **10.14 A final measurement anyone can rerun**: in [agent-changes](../benchmarks/agent-changes/README.md), `measure.py` runs a held-out set on several models and writes the report's tables, cost per correct change included, `writer-brief.md` briefs the next set's blind writer, Claude Code runs Opus 5.5 on the subscription in its own sandbox, and a run's PostgreSQL socket no longer depends on its label.
-- [ ] **10.15 Three models on a fresh held-out set** `opus · high`: Sol,
-  Luna and Opus 5.5, three runs each in both languages, on H51–H60 (written
-  blind, kept out of the repository until measured), against the Jadpo
-  frozen where 10.14b merged. The report gives correctness, unsafe changes,
-  tokens and cost per correct change for each model, with debriefs of the
-  misses.
+- [x] **10.15 Three models on a fresh held-out set**: the held-out changes H51–H60 are in [agent-changes](../benchmarks/agent-changes/README.md); the report is in the results pull request.
 - [ ] **10.16 A real product, grown large in both languages** `opus · high`
   after 10.15 (Richard, 2026-11-27): does TypeScript lose more than Jadpo as
   an app grows past what an agent can read at once? The app is a private
