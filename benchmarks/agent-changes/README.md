@@ -112,7 +112,12 @@ without the hidden results; the language can't be hidden.
   `jadpo check` has a before side and judges acceptances. (Until 10.5 the
   copy was a single commit with the agent working on top of it, so no
   acceptance was ever judged.) It has a clean environment holding none of the host
-  session's variables. Claude Code runs on the owner's Claude subscription
+  session's variables. Claude Code is pinned to one exact release,
+  2.1.326 (`CLAUDE_CODE_VERSION`), installed for the benchmark alone with
+  `npm install --prefix <dir> --save-exact @anthropic-ai/claude-code@2.1.326`
+  and named by absolute path in `JADPO_CLAUDE_CODE`, never the owner's own
+  CLI; the harness refuses any other version, and every result records
+  it. It runs on the owner's Claude subscription
   from a `CLAUDE_CONFIG_DIR` of its own that starts empty, in its safe and
   restricted modes (no CLAUDE.md, memory, skills, plugins, hooks or MCP
   servers; file tools confined to the copy and the docs), with `Bash`,

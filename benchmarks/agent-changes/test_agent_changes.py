@@ -188,7 +188,7 @@ class Isolation(unittest.TestCase):
             app = Path(scratch)
             (app / 'AGENTS.md').write_text('x')
             # CI has no `claude`; the command's shape doesn't depend on where it is.
-            with mock.patch.object(harness, 'tool', lambda name: name):
+            with mock.patch.object(harness, 'claude_code', lambda: 'claude'):
                 command = harness.agent_command('claude', harness.PINNED, 'do it', app, HERE)
         text = ' '.join(command)
         for flag in ['--model claude-opus-5-5', '--effort high', '--safe-mode', '--restricted', '--strict-mcp-config',
@@ -198,7 +198,7 @@ class Isolation(unittest.TestCase):
         self.assertNotIn('WebFetch', text)
         # On the subscription a run is capped by time, as Codex is; a dollar cap only when asked for.
         self.assertNotIn('--max-budget-usd', text)
-        with mock.patch.object(harness, 'tool', lambda name: name):
+        with mock.patch.object(harness, 'claude_code', lambda: 'claude'):
             capped = harness.agent_command('claude', harness.PINNED | {'budget_usd': 6.0}, 'do it', app, HERE)
         self.assertIn('--max-budget-usd 6.00', ' '.join(capped))
         self.assertEqual(harness.agent_command('python3 replay.py s.json', {}, 'p', app, HERE), ['python3', 'replay.py', 's.json', 'p'])
@@ -1000,7 +1000,7 @@ class Claude(unittest.TestCase):
             token.write_text('sk-ant-oat-secret')
             token.chmod(0o600)
             folder = Path(scratch)
-            with mock.patch.object(harness, 'CLAUDE_TOKEN', token), mock.patch.object(harness, 'tool', lambda n: n), \
+            with mock.patch.object(harness, 'CLAUDE_TOKEN', token), mock.patch.object(harness, 'claude_code', lambda: 'claude'), \
                     mock.patch.object(harness.subprocess, 'run', fake_run):
                 environment = {'PATH': '/usr/bin'}
                 harness.session('claude', harness.PINNED, 'p', folder, folder, environment, folder / 't.jsonl')
@@ -1030,6 +1030,26 @@ class Claude(unittest.TestCase):
         init = json.dumps({'type': 'system', 'subtype': 'init', 'tools': ['Bash', 'Read'],
                            'mcp_servers': [{'name': 'x', 'status': 'connected'}], 'plugins': [], 'skills': ['s']})
         self.assertEqual(harness.stream_tools([init]), ['Bash', 'Read', 'mcp:x', 'skill:s'])
+
+    def test_claude_code_is_the_pinned_release_by_absolute_path(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            def fake(version):
+                path = Path(scratch) / f'claude-{version}'
+                path.write_text(f'#!/bin/sh\necho "{version} (Claude Code)"\n')
+                path.chmod(0o700)
+                return str(path)
+            cases = [(fake(harness.CLAUDE_CODE_VERSION), None), (fake('2.1.267'), 'not the pinned'),
+                     ('claude', 'absolute path'), ('', 'absolute path'), (scratch + '/missing', 'absolute path')]
+            for path, refusal in cases:
+                harness.claude_code.cache_clear()
+                with mock.patch.dict(os.environ, {harness.CLAUDE_CODE_PATH: path}):
+                    if refusal is None:
+                        self.assertEqual(harness.claude_code(), path)
+                    else:
+                        with self.assertRaises(SystemExit) as refused:
+                            harness.claude_code()
+                        self.assertIn(refusal, str(refused.exception))
+            harness.claude_code.cache_clear()
 
     def test_built_in_agents_count_only_with_the_agent_tool(self):
         def init(tools, agents):

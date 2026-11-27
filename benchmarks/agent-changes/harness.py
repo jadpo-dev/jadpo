@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import dataclasses
 import hashlib
 import importlib.util
@@ -557,7 +558,7 @@ def agent_command(agent, settings, prompt, app, folder, resume=None, tools=TOOLS
         return codex_command(settings, prompt, resume)
     if agent != 'claude':
         return [*shlex.split(agent), prompt]
-    command = [tool('claude'), '-p', prompt, '--model', settings['model'], '--effort', settings['effort'],
+    command = [claude_code(), '-p', prompt, '--model', settings['model'], '--effort', settings['effort'],
                '--output-format', 'stream-json', '--verbose', '--safe-mode', '--restricted', '--strict-mcp-config',
                '--disable-slash-commands', '--settings', str(folder / CLAUDE_SETTINGS),
                '--tools', tools, '--allowedTools', 'Bash', '--permission-mode', 'acceptEdits', '--permission-prompts', 'none',
@@ -731,6 +732,28 @@ def claude_settings(folder, environment, sockets=()):
             'permissions': {'defaultMode': 'acceptEdits', 'allow': ['Bash'], 'deny': ['WebFetch', 'WebSearch']}}
 
 
+# Claude Code is pinned for the measurement: one exact release, installed for
+# the benchmark alone, never the owner's own CLI. The probes and every run use
+# the same binary, and each result records its version.
+CLAUDE_CODE_VERSION = '2.1.326'
+CLAUDE_CODE_PATH = 'JADPO_CLAUDE_CODE'
+
+
+@functools.cache
+def claude_code():
+    """The pinned Claude Code binary, by the absolute path in JADPO_CLAUDE_CODE."""
+    install = (f'install it for the benchmark alone with `npm install --prefix <dir> --save-exact '
+               f'@anthropic-ai/claude-code@{CLAUDE_CODE_VERSION}` and set {CLAUDE_CODE_PATH} to <dir>/node_modules/.bin/claude')
+    path = os.environ.get(CLAUDE_CODE_PATH, '')
+    if not path or not Path(path).is_absolute() or not Path(path).is_file():
+        raise SystemExit(f'{CLAUDE_CODE_PATH} must be the absolute path of Claude Code {CLAUDE_CODE_VERSION}: {install}')
+    done = subprocess.run([path, '--version'], capture_output=True, text=True, check=False)
+    if done.stdout.split()[:1] != [CLAUDE_CODE_VERSION]:
+        raise SystemExit(f'{path} is Claude Code {done.stdout.strip() or "of no known version"}, '
+                         f'not the pinned {CLAUDE_CODE_VERSION}: {install}')
+    return path
+
+
 def claude_token():
     """The owner's subscription token, read fresh for each session."""
     if not CLAUDE_TOKEN.is_file():
@@ -824,7 +847,8 @@ def session(agent, settings, prompt, app, folder, environment, transcript, resum
 def agent_version(agent):
     if agent not in AGENTS:
         return agent
-    done = subprocess.run([tool(agent), '--version'], capture_output=True, text=True, check=False)
+    done = subprocess.run([claude_code() if agent == 'claude' else tool(agent), '--version'], capture_output=True,
+                          text=True, check=False)
     return done.stdout.strip() if agent == 'codex' else 'claude ' + done.stdout.strip()
 
 

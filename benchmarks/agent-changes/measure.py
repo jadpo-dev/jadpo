@@ -646,7 +646,7 @@ def debrief_claude(folder, session_record, settings, prompt, identifier, cwd):
     transcript = folder / 'debrief.jsonl'
     try:
         with transcript.open('w') as output, (folder / 'stderr').open('w') as errors:
-            subprocess.run([harness.tool('claude'), '-p', prompt, '--resume', identifier, '--model', settings['model'],
+            subprocess.run([harness.claude_code(), '-p', prompt, '--resume', identifier, '--model', settings['model'],
                             '--effort', settings['effort'], '--output-format', 'stream-json', '--verbose', '--safe-mode',
                             '--restricted', '--strict-mcp-config', '--disable-slash-commands', '--tools', '',
                             '--settings', str(folder / CLAUDE_EMPTY), '--permission-prompts', 'none'],
