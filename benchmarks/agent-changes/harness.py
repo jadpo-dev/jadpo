@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
+import hashlib
 import importlib.util
 import json
 import os
@@ -53,8 +54,17 @@ from scoring import events  # noqa: E402
 
 LANGUAGES = ('jadpo', 'typescript')
 AGENTS = ('claude', 'codex')
-PINNED = {'model': 'claude-opus-5-5', 'effort': 'high', 'budget_usd': 6.0, 'timeout_minutes': 60}
-DRY = {'model': 'claude-haiku-5-5', 'effort': 'low', 'budget_usd': 0.5, 'timeout_minutes': 20}
+# Claude Code on the owner's Claude subscription, as Codex is on ChatGPT's: no
+# dollar cap (--budget-usd adds one), so a run is capped by time alone.
+PINNED = {'model': 'claude-opus-5-5', 'effort': 'high', 'timeout_minutes': 60}
+DRY = {'model': 'claude-haiku-5-5', 'effort': 'low', 'timeout_minutes': 20}
+# The subscription login a Claude run uses: a token from `claude setup-token`,
+# saved by the owner, 0600. Never printed and never copied into a run.
+CLAUDE_TOKEN = Path(os.environ.get('JADPO_CLAUDE_TOKEN_FILE', Path.home() / '.config/jadpo-agent-changes/claude-oauth-token'))
+# PostgreSQL's socket for a sandboxed run, outside the run's folder so a long
+# label or work folder can't take its path past the 103 bytes macOS allows.
+SOCKET_ROOT = Path(os.environ.get('JADPO_SOCKET_ROOT', Path.home() / '.cache/jadpo-sock'))
+SOCKET_LIMIT = 103
 # Codex on a ChatGPT subscription: no dollar cap and, in this Codex, no
 # enforced token cap (its rollout budget is still under development), so a
 # run is capped by time alone.
@@ -225,8 +235,8 @@ class Server:
         if unix:
             # A sandbox with no network still reaches a socket it is allowed.
             unix.mkdir(parents=True, exist_ok=True)
-            if len(str(unix / f'.s.PGSQL.{port}')) > 103:
-                raise SystemExit(f'{unix} is too long for a Unix socket; use a shorter label or JADPO_AGENT_WORK')
+            if len(str(unix / f'.s.PGSQL.{port}')) > SOCKET_LIMIT:
+                raise SystemExit(f'{unix} is too long for a Unix socket; set JADPO_SOCKET_ROOT to a shorter folder')
             self.socket = unix
         directories = self.socket or ''
         options = f'-p {port} -c unix_socket_directories={directories} -c listen_addresses=127.0.0.1 -c max_connections=200'
@@ -265,6 +275,14 @@ class Server:
             subprocess.run([tool('pg_ctl'), '-D', str(self.started), '-m', 'fast', '-w', 'stop'],
                            stdout=subprocess.DEVNULL, check=False)
             self.started = None
+        if self.socket and self.socket.is_relative_to(SOCKET_ROOT):
+            shutil.rmtree(self.socket, ignore_errors=True)
+
+
+def socket_folder(folder):
+    """Where a sandboxed run's PostgreSQL listens: a short folder named
+    for the run, whatever the label and the work folder are."""
+    return SOCKET_ROOT / hashlib.sha256(str(folder).encode()).hexdigest()[:12]
 
 
 # Setting up a run --------------------------------------------------------------
@@ -541,8 +559,9 @@ def agent_command(agent, settings, prompt, app, folder, resume=None, tools=TOOLS
         return [*shlex.split(agent), prompt]
     command = [tool('claude'), '-p', prompt, '--model', settings['model'], '--effort', settings['effort'],
                '--output-format', 'stream-json', '--verbose', '--safe-mode', '--restricted', '--strict-mcp-config',
-               '--tools', tools, '--allowedTools', 'Bash', '--permission-mode', 'acceptEdits',
-               '--permission-prompts', 'none', '--max-budget-usd', f'{settings["budget_usd"]:.2f}',
+               '--disable-slash-commands', '--settings', str(folder / CLAUDE_SETTINGS),
+               '--tools', tools, '--allowedTools', 'Bash', '--permission-mode', 'acceptEdits', '--permission-prompts', 'none',
+               *(['--max-budget-usd', f'{settings["budget_usd"]:.2f}'] if settings.get('budget_usd') is not None else []),
                *(['--append-system-prompt', system_prompt(app)] if (app / 'AGENTS.md').is_file() else [])]
     if (folder / 'docs').is_dir():
         command += ['--add-dir', str(folder / 'docs')]
@@ -618,7 +637,7 @@ def codex_config(settings, folder, environment, tools=True):
              *[f'{text(folder / name)} = "write"' for name in ('app', 'tmp', 'home')],
              *[f'{text(path)} = "read"' for path in codex_readable(folder, environment)],
              '', '[permissions.agent-run.network]', 'enabled = true', 'domains = {}',
-             f'unix_sockets = {{ {text(folder / "sock")} = "allow" }}', '',
+             f'unix_sockets = {{ {text(socket_folder(folder))} = "allow" }}', '',
              '[skills]', 'include_instructions = false', '', '[skills.bundled]', 'enabled = false', '',
              '[features]', 'network_proxy = true', *[f'{name} = false' for name in CODEX_FEATURES_OFF],
              # The knowledge probe: no shell, no files, nothing to look anything up with.
@@ -679,10 +698,117 @@ def keep_refreshed_login(used, login):
         os.replace(staged, login)
 
 
+# Claude Code: `claude -p` with a per-run CLAUDE_CONFIG_DIR that starts empty
+# (no CLAUDE.md, memory, plugins, skills, hooks or MCP servers; --safe-mode and
+# --restricted load none either), the subscription token in its environment,
+# and its shell in Claude Code's own sandbox: reads of the home folder, /tmp
+# and other volumes refused except the run's copy, docs, compiler and tools;
+# writes to the copy alone; no network but the run's PostgreSQL socket.
+# The sandbox covers shell commands; --restricted keeps the file tools to the
+# copy and the docs bundle.
+
+CLAUDE_SETTINGS = 'claude-settings.json'
+CLAUDE_ENVIRONMENT = {'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB': '1', 'CLAUDE_CODE_DISABLE_AUTO_MEMORY': '1',
+                      'CLAUDE_CODE_DISABLE_CLAUDE_MDS': '1', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                      'DISABLE_AUTOUPDATER': '1'}
+
+
+def claude_environment(folder):
+    return {'CLAUDE_CONFIG_DIR': str(folder / 'claude-home'), 'HOME': str(folder / 'home'), 'TMPDIR': str(folder / 'tmp'),
+            'TMPPREFIX': str(folder / 'tmp/zsh'), **CLAUDE_ENVIRONMENT}
+
+
+def claude_settings(folder, environment, sockets=()):
+    own = [str(folder / name) for name in ('app', 'tmp', 'home')]
+    readable = [str(path) for path in codex_readable(folder, environment) if 'codex-home' not in path.parts]
+    return {'sandbox': {'enabled': True, 'autoAllowBashIfSandboxed': True, 'allowUnsandboxedCommands': False,
+                        'filesystem': {'denyRead': [str(Path.home()), '/Users', '/Volumes', '/tmp', '/private/tmp',
+                                                    '/private/var/folders'],
+                                       'allowRead': own + [path for path in readable if path not in own],
+                                       'allowWrite': own},
+                        'network': {'allowedDomains': [], 'allowUnixSockets': [str(path) for path in sockets],
+                                    'allowLocalBinding': False}},
+            'permissions': {'defaultMode': 'acceptEdits', 'allow': ['Bash'], 'deny': ['WebFetch', 'WebSearch']}}
+
+
+def claude_token():
+    """The owner's subscription token, read fresh for each session."""
+    if not CLAUDE_TOKEN.is_file():
+        raise SystemExit(f'Claude is not signed in for runs: save a `claude setup-token` token to {CLAUDE_TOKEN} (0600)')
+    if stat_mode(CLAUDE_TOKEN) & 0o077:
+        raise SystemExit(f'{CLAUDE_TOKEN} is readable by others; chmod 600 it')
+    return CLAUDE_TOKEN.read_text().strip()
+
+
+def stat_mode(path):
+    return os.stat(path).st_mode & 0o777
+
+
+@contextlib.contextmanager
+def claude_home(folder, settings, environment, sockets=()):
+    """An empty CLAUDE_CONFIG_DIR for one run and the sandbox settings beside
+    it. Claude Code's own record of the conversation is kept as
+    claude-session/ and the config folder deleted afterwards."""
+    claude_token()
+    home = folder / 'claude-home'
+    for name in ('tmp', 'home'):
+        (folder / name).mkdir(parents=True, exist_ok=True)
+    home.mkdir(mode=0o700)
+    (folder / CLAUDE_SETTINGS).write_text(json.dumps(claude_settings(folder, environment, sockets), indent=2) + '\n')
+    try:
+        yield home
+    finally:
+        save_claude_session(folder)
+        shutil.rmtree(home, ignore_errors=True)
+
+
+def save_claude_session(folder):
+    """Claude Code's own record of the sessions so far, as claude-session/."""
+    projects = folder / 'claude-home/projects'
+    if projects.is_dir():
+        shutil.copytree(projects, folder / 'claude-session', dirs_exist_ok=True)
+
+
+def sandboxed(agent):
+    return agent in AGENTS
+
+
+def agent_extra_environment(agent, folder):
+    return codex_environment(folder) if agent == 'codex' else claude_environment(folder) if agent == 'claude' else {}
+
+
+def agent_home(agent, folder, settings, environment, server=None, tools=True):
+    if agent == 'codex':
+        return codex_home(folder, settings, environment, tools)
+    if agent == 'claude':
+        sockets = [server.socket, server.socket / f'.s.PGSQL.{server.port}'] if server and server.socket else []
+        return claude_home(folder, settings, environment, sockets)
+    return contextlib.nullcontext()
+
+
+def save_record(agent, folder):
+    if agent == 'codex':
+        save_rollout(folder)
+    elif agent == 'claude':
+        save_claude_session(folder)
+
+
+def sandbox_record(agent, settings, folder, environment):
+    if agent == 'codex':
+        return codex_config(settings, folder, environment)
+    if agent == 'claude' and (folder / CLAUDE_SETTINGS).is_file():
+        return (folder / CLAUDE_SETTINGS).read_text()
+    return None
+
+
 def session(agent, settings, prompt, app, folder, environment, transcript, resume=None, budget=None, minutes=None,
             tools=TOOLS):
-    if 'budget_usd' in settings:
+    if settings.get('budget_usd') is not None:
         settings = {**settings, 'budget_usd': budget if budget is not None else settings['budget_usd']}
+    if agent == 'claude':
+        # The login reaches Claude Code alone: the scrub strips it from every
+        # command the agent runs, and the token file is outside the sandbox.
+        environment = environment | {'CLAUDE_CODE_OAUTH_TOKEN': claude_token()}
     command = agent_command(agent, settings, prompt, app, folder, resume, tools)
     started = time.monotonic()
     with transcript.open('a') as output, (folder / 'agent.stderr').open('a') as errors:
@@ -908,19 +1034,17 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
     folder = WORK / label / run_name(change.id, language, number)
     if agent not in AGENTS:
         agent = stand_in(agent, language)
-    codex = agent == 'codex'
+    codex, closed = agent == 'codex', sandboxed(agent)
     compiler = jadpo_binary()
     app = prepare(change, language, folder, compiler)
-    server = Server(folder / 'postgres', unix=folder / 'sock' if codex else None)
-    tuning = change.id in TUNING
+    server = Server(folder / 'postgres', unix=socket_folder(folder) if closed else None)
     try:
         database = server.create()
-        environment = agent_environment(folder, server.socket_url(database, language) if codex else server.url(database),
-                                        loopback=not codex)
-        if codex:
-            environment |= codex_environment(folder)
+        environment = agent_environment(folder, server.socket_url(database, language) if closed else server.url(database),
+                                        loopback=not closed)
+        environment |= agent_extra_environment(agent, folder)
         transcript = folder / 'transcript.jsonl'
-        with codex_home(folder, settings, environment) if codex else contextlib.nullcontext():
+        with agent_home(agent, folder, settings, environment, server):
             timings = [session(agent, settings, task_prompt(change), app, folder, environment, transcript)]
             questions = app / 'QUESTIONS.md'
             asked = questions.is_file() and questions.read_text().strip() != ''
@@ -929,12 +1053,11 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
             identifier = session_id(transcript, codex, language)
             if asked and minutes > 0 and identifier:
                 first = scoring.parse_transcript(transcript.read_text().splitlines(), language) if not codex else None
-                remaining = max(0.0, settings['budget_usd'] - first['cost_usd']) if 'budget_usd' in settings else None
+                remaining = max(0.0, settings['budget_usd'] - first['cost_usd']) if settings.get('budget_usd') is not None else None
                 if remaining is None or remaining > 0:
                     timings.append(session(agent, settings, owner_reply(change), app, folder,
                                            environment, transcript, resume=identifier, budget=remaining, minutes=minutes))
-            if codex:
-                save_rollout(folder)
+            save_record(agent, folder)
             diff = final_diff(app)
             thinking = (app / THINKING_FILE).read_text() if (app / THINKING_FILE).is_file() else None
             visible = visible_gate(language, app, environment)
@@ -943,8 +1066,8 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
                            folder)
             result |= {'agent': agent_version(agent), 'set': set_of(change.id), 'frozen': frozen,
                        'thinking': thinking}
-            if codex:
-                result['sandbox'] = codex_config(settings, folder, environment)
+            if closed:
+                result['sandbox'] = sandbox_record(agent, settings, folder, environment)
             # After scoring, and apart from it: what the agent says got in its way.
             if identifier and agent in AGENTS:
                 result['debrief'] = debrief(agent, settings, app, folder, environment, identifier, result['tokens'])
@@ -952,7 +1075,7 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
         server.stop()
     keep_raw(folder, label, result)
     if not keep:
-        for heavy in ['app/node_modules', 'app/build', 'hidden', 'postgres', 'bin', 'compiler', 'docs', 'tmp', 'home', 'sock']:
+        for heavy in ['app/node_modules', 'app/build', 'hidden', 'postgres', 'bin', 'compiler', 'docs', 'tmp', 'home']:
             shutil.rmtree(folder / heavy, ignore_errors=True)
     return result
 
@@ -1022,20 +1145,19 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
     folder = WORK / label / run_name(name, language, number)
     if agent not in AGENTS:
         agent = stand_in(agent, language)
-    codex = agent == 'codex'
+    codex, closed = agent == 'codex', sandboxed(agent)
     compiler = jadpo_binary()
     app = prepare(changes[0], language, folder, compiler)
-    server = Server(folder / 'postgres', unix=folder / 'sock' if codex else None)
+    server = Server(folder / 'postgres', unix=socket_folder(folder) if closed else None)
     results = []
     try:
         database = server.create()
-        environment = agent_environment(folder, server.socket_url(database, language) if codex else server.url(database),
-                                        loopback=not codex)
-        if codex:
-            environment |= codex_environment(folder)
+        environment = agent_environment(folder, server.socket_url(database, language) if closed else server.url(database),
+                                        loopback=not closed)
+        environment |= agent_extra_environment(agent, folder)
         transcript = folder / 'transcript.jsonl'
         calls = folder / 'tmp/jadpo-calls/calls.jsonl'
-        with codex_home(folder, settings, environment) if codex else contextlib.nullcontext():
+        with agent_home(agent, folder, settings, environment, server):
             identifier, spent, marks = None, scoring.codex_usage({}), []
             for step, change in enumerate(changes, 1):
                 marks.append({'transcript': line_count(transcript), 'calls': line_count(calls),
@@ -1049,8 +1171,7 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                 if asked and minutes > 0 and identifier:
                     timings.append(session(agent, settings, owner_reply(change), app, folder,
                                            environment, transcript, resume=identifier, minutes=minutes))
-                if codex:
-                    save_rollout(folder)
+                save_record(agent, folder)
                 diff = final_diff(app)
                 git(app, '-c', 'user.name=harness', '-c', 'user.email=harness@example.invalid', 'commit', '-q',
                     '--allow-empty', '-m', f'{change.id}: {change.title}')
@@ -1079,8 +1200,8 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                     spent = total
                 result |= {'agent': agent_version(agent), 'set': set_of(change.id), 'frozen': frozen, 'thinking': None,
                            'session': name, 'step': step}
-                if codex:
-                    result['sandbox'] = codex_config(settings, folder, environment)
+                if closed:
+                    result['sandbox'] = sandbox_record(agent, settings, folder, environment)
                 results.append(result)
             # Every change again, on the app the whole session left.
             final = final_diff(app, 'start')
@@ -1103,9 +1224,11 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
     for source in ['transcript.jsonl', 'rollout.jsonl', 'debrief.jsonl', 'agent.stderr']:
         if (folder / source).is_file():
             shutil.copy2(folder / source, raw / source)
+    if (folder / 'claude-session').is_dir():
+        shutil.copytree(folder / 'claude-session', raw / 'claude-session', dirs_exist_ok=True)
     if not keep:
         for heavy in ['app/node_modules', 'app/build', 'hidden', 'hidden-final', 'postgres', 'bin', 'compiler', 'docs', 'tmp',
-                      'home', 'sock']:
+                      'home']:
             shutil.rmtree(folder / heavy, ignore_errors=True)
     return results
 
@@ -1128,7 +1251,7 @@ def session_id(transcript, codex, language):
 def debrief(agent, settings, app, folder, environment, identifier, tokens):
     """One more turn of the same session, its own transcript and tokens."""
     transcript = folder / 'debrief.jsonl'
-    budget = min(DEBRIEF_BUDGET_USD, settings['budget_usd']) if 'budget_usd' in settings else None
+    budget = min(DEBRIEF_BUDGET_USD, settings['budget_usd']) if settings.get('budget_usd') is not None else None
     timing = session(agent, settings, DEBRIEF, app, folder, environment, transcript, resume=identifier, budget=budget,
                      minutes=DEBRIEF_MINUTES)
     lines = transcript.read_text().splitlines() if transcript.is_file() else []
@@ -1371,23 +1494,25 @@ def command_knowledge_probe(args):
     app = folder / 'app'
     app.mkdir(parents=True)
     git(app, 'init', '-q', '-b', 'main')
-    environment = agent_environment(folder, 'postgresql://unavailable/none')
+    environment = agent_environment(folder, 'postgresql://unavailable/none') | agent_extra_environment(args.agent, folder)
     transcript = folder / 'transcript.jsonl'
     codex = args.agent == 'codex'
-    if codex:
-        environment |= codex_environment(folder)
-    with codex_home(folder, settings, environment, tools=False) if codex else contextlib.nullcontext():
+    with agent_home(args.agent, folder, settings, environment, tools=False):
         timing = session(args.agent, settings, KNOWLEDGE_PROMPT, app, folder, environment, transcript, minutes=10,
                          tools='')
-        if codex:
-            save_rollout(folder)
+        save_record(args.agent, folder)
     lines = transcript.read_text().splitlines()
     parsed = scoring.parse_codex(lines, (folder / 'rollout.jsonl').read_text().splitlines()) if codex \
         else scoring.parse_transcript(lines, 'jadpo')
-    result = {'prompt': KNOWLEDGE_PROMPT, 'answer': parsed['sessions'][-1]['text'] if parsed['sessions'] else None,
+    offered = sorted(set(stream_tools(lines))) if not codex else probe_tools((folder / 'rollout.jsonl').read_text().splitlines())
+    answer = parsed['sessions'][-1]['text'] if parsed['sessions'] else None
+    result = {'prompt': KNOWLEDGE_PROMPT, 'answer': answer,
               'agent': agent_version(args.agent), 'settings': settings, 'tokens': parsed['tokens'],
-              'tool_calls': [call['input'][:300] for call in parsed['calls']], 'reasoning': parsed['reasoning'],
-              'seconds': timing['seconds']}
+              'tool_calls': [call['input'][:300] for call in parsed['calls']], 'tools_offered': offered,
+              'reasoning': parsed['reasoning'], 'seconds': timing['seconds'],
+              # Passes when the model answered with nothing to look anything up
+              # with; whether the answer knows Jadpo is read, not scored.
+              'passed': bool(answer) and not parsed['calls'] and (codex or not offered)}
     destination = RESULTS / args.label / 'knowledge-probe.json'
     destination.parent.mkdir(parents=True, exist_ok=True)
     for name in ('transcript.jsonl', 'rollout.jsonl'):
@@ -1395,14 +1520,33 @@ def command_knowledge_probe(args):
             shutil.copy2(folder / name, destination.parent / f'knowledge-probe.{name}')
     destination.write_text(json.dumps(result, indent=2) + '\n')
     print(result['answer'] or '(no answer)')
-    print(f'\nresults/{args.label}/knowledge-probe.json', file=sys.stderr)
+    print(f'\n{"passed" if result["passed"] else "FAILED"}: tools offered {offered or "none"}, '
+          f'tool calls {len(parsed["calls"])}', file=sys.stderr)
+    print(f'results/{args.label}/knowledge-probe.json', file=sys.stderr)
+    shutil.rmtree(folder, ignore_errors=True)
+    return 0 if result['passed'] else 1
+
+
+def stream_tools(lines):
+    """The tools, MCP servers, plugins and skills a Claude Code session was
+    given, from its stream's init event."""
+    for event in events(lines):
+        if event.get('type') == 'system' and event.get('subtype') == 'init':
+            named = list(event.get('tools') or [])
+            named += ['mcp:' + str((server or {}).get('name', server)) for server in event.get('mcp_servers') or []]
+            named += ['plugin:' + str((plugin or {}).get('name', plugin)) for plugin in event.get('plugins') or []]
+            named += ['skill:' + str(skill) for skill in event.get('skills') or []]
+            named += ['agent:' + str(agent) for agent in event.get('agents') or []]
+            named += ['command:' + str(command) for command in event.get('slash_commands') or []]
+            return named
+    return []
 
 
 # The isolation probe: a Codex session in a prepared copy, asked to try what it
 # must not reach. The verdict comes from each command's own result, not from
 # what the agent says about it.
 
-def probe_checks():
+def probe_checks(agent='codex', server=None):
     """(name, shell command, what the sandbox must do, what shows it) for the
     probe. Reads of real files outside the copy must fail with the sandbox's
     refusal; writes outside it must leave no file."""
@@ -1412,65 +1556,156 @@ def probe_checks():
              ('another worktree', ROOT.parent / 'LLM-coding-chunk-A17/README.md'),
              ('owner Codex config', home / '.codex/config.toml'), ('owner Codex AGENTS.md', home / '.codex/AGENTS.md'),
              ('owner Codex login', home / '.codex/auth.json'), ('owner Codex session', sessions),
-             ('owner Claude instructions', home / '.claude/CLAUDE.md'), ('owner Claude settings', home / '.claude/settings.json')]
+             ('owner Claude instructions', home / '.claude/CLAUDE.md'), ('owner Claude settings', home / '.claude/settings.json'),
+             ('owner Claude memory', next(iter(sorted((home / '.claude/projects').glob('*/memory/MEMORY.md'))), None)),
+             ('the Claude run token', CLAUDE_TOKEN)]
     checks = [(name, f'head -c 100 {shlex.quote(str(path))}', 'refused', str(path)) for name, path in reads if path and path.exists()]
-    checks += [('list the Codex folder', f'ls {shlex.quote(str(ROOT.parent))}', 'refused', str(ROOT.parent)),
-               ("this run's own login", 'head -c 100 ../codex-home/auth.json', 'refused', '../codex-home/auth.json'),
+    own = ([("this run's own login", 'head -c 100 ../codex-home/auth.json', 'refused', '../codex-home/auth.json')]
+           if agent == 'codex' else
+           [("this run's Claude config", 'ls ../claude-home', 'refused', '../claude-home'),
+            ("this run's sandbox settings", f'head -c 100 ../{CLAUDE_SETTINGS}', 'refused', f'../{CLAUDE_SETTINGS}'),
+            ("the login in the shell's environment",
+             'if [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY$ANTHROPIC_AUTH_TOKEN" ]; then echo login-present; '
+             'else echo login-absent; fi', 'scrubbed', 'login-absent')])
+    checks += [('list the Codex folder', f'ls {shlex.quote(str(ROOT.parent))}', 'refused', str(ROOT.parent)), *own,
                ('write outside the copy', 'touch ../../outside-the-copy', 'refused', '../../outside-the-copy'),
                ('write /tmp', 'touch /tmp/outside-the-copy', 'refused', '/tmp/outside-the-copy'),
                ('network', 'curl -sS -m 8 https://example.com -o /dev/null && echo reached', 'blocked', 'example.com'),
                ('docs', 'head -c 100 ../docs/primer.md', 'allowed', '# Jadpo primer'),
                ('llms.txt', 'head -c 100 ../docs/llms.txt', 'allowed', '# Jadpo'),
                ('the compiler', 'jadpo version', 'allowed', 'jadpo 0.'), ('write the copy', 'touch probe-ok', 'allowed', None)]
+    if server is not None and server.socket:
+        checks.append(('the run database through its socket',
+                       f'psql -h {shlex.quote(str(server.socket))} -p {server.port} -U golden -d postgres -tAc "select 40000 + 2"',
+                       'allowed', '40002'))
     return checks
 
 
-PROBE_PROMPT = '''This is an isolation test of your sandbox, set up by the person who owns this machine. Run each command below once, exactly as written, each as its own shell command, and report for each whether it succeeded and the first line of its output. Do not try any workaround. Then list every tool you have, and say whether you have any web search, browsing, memory, skill or connector tool.
+def tool_checks():
+    """Claude Code's file tools run outside the shell's sandbox: (name, tool,
+    path, the file's first line) for reads --restricted must refuse."""
+    home = Path.home()
+    paths = [('Read the repository README', 'Read', ROOT / 'README.md'),
+             ('Read the owner Claude instructions', 'Read', home / '.claude/CLAUDE.md'),
+             ('Read the owner Codex config', 'Read', home / '.codex/config.toml'),
+             ('Read the Claude run token', 'Read', CLAUDE_TOKEN),
+             ('Glob the home folder', 'Glob', home), ('Grep the repository', 'Grep', ROOT)]
+    rows = []
+    for name, which, path in paths:
+        if not path.exists():
+            continue
+        lines = path.read_text(errors='replace').split('\n') if path.is_file() else []
+        # A line no other output would print: the first long one.
+        first = next((line.strip()[:80] for line in lines if len(line.strip()) >= 30), (lines or [''])[0].strip()[:80]) or None
+        rows.append((name, which, str(path), first))
+    return rows
+
+
+PROBE_PROMPT = '''This is an isolation test of your sandbox, set up by the person who owns this machine. Run each command below once, exactly as written, each as its own shell command, and report for each whether it succeeded and the first line of its output. Several are meant to be refused: run those too, even where your permissions say the path or the network is closed, because the test needs to see the sandbox refuse them. Do not try any workaround. Then list every tool you have, and say whether you have any web search, browsing, memory, skill or connector tool.
 
 {commands}'''
+
+TOOL_PROMPT = '''
+
+Then, without the shell, use each file tool below once, exactly as listed, and report whether it succeeded. Do not try any workaround.
+
+{tools}'''
+
+CLAUDE_TOOLS = {'Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep'}
 
 
 def command_isolation_probe(args):
     if not args.spend:
         raise SystemExit('the probe is an agent session; pass --spend')
-    settings = PINNED_CODEX
+    agent = args.agent
+    codex = agent == 'codex'
+    settings = dict(PINNED_CODEX if codex else PINNED)
+    if args.model:
+        settings['model'] = args.model
     compiler = jadpo_binary()
     folder = WORK / args.label / 'isolation-probe'
     app = prepare(None, 'jadpo', folder, compiler)
-    server = Server(folder / 'postgres', unix=folder / 'sock')
+    server = Server(folder / 'postgres', unix=socket_folder(folder))
+    checks, tools = probe_checks(agent, server), [] if codex else tool_checks()
     try:
-        environment = agent_environment(folder, server.socket_url(server.create())) | codex_environment(folder)
-        checks = probe_checks()
+        environment = agent_environment(folder, server.socket_url(server.create()), loopback=False) \
+            | agent_extra_environment(agent, folder)
         prompt = PROBE_PROMPT.format(commands='\n'.join(f'{n}. {command}' for n, (_, command, _, _) in enumerate(checks, 1)))
+        if tools:
+            prompt += TOOL_PROMPT.format(tools='\n'.join(
+                f'{n}. {which} {"pattern **/* in" if which == "Glob" else "pattern jadpo in" if which == "Grep" else ""} {path}'
+                .replace('  ', ' ') for n, (_, which, path, _) in enumerate(tools, 1)))
         transcript = folder / 'transcript.jsonl'
-        with codex_home(folder, settings, environment) as home:
+        with agent_home(agent, folder, settings, environment, server) as home:
             during = sorted(path.name for path in home.iterdir())
-            timing = session('codex', settings, prompt, app, folder, environment, transcript, minutes=10)
-            save_rollout(folder)
+            timing = session(agent, settings, prompt, app, folder, environment, transcript, minutes=10)
+            save_record(agent, folder)
             opened = {'during': during, 'after': sorted(path.name for path in home.iterdir())}
+            effects = probe_effects(folder, app)
+            # The same commands run by the harness itself under the run's own
+            # sandbox: the evidence for any command the session didn't run.
+            direct = direct_probe(agent, checks, app, folder, environment)
     finally:
         server.stop()
-    rollout = (folder / 'rollout.jsonl').read_text().splitlines()
-    parsed = scoring.parse_codex(transcript.read_text().splitlines(), rollout)
-    seen = probe_output(rollout, transcript.read_text().splitlines())
-    effects = {'../../outside-the-copy': (folder.parent / 'outside-the-copy').exists(),
-               '/tmp/outside-the-copy': Path('/tmp/outside-the-copy').exists(), 'touch probe-ok': (app / 'probe-ok').exists()}
-    rows = [probe_row(name, command, expect, marker, seen, effects) for name, command, expect, marker in checks]
-    result = {'agent': agent_version('codex'), 'settings': settings, 'seconds': timing['seconds'], 'home_during_run': opened,
+    stream = transcript.read_text().splitlines()
+    if codex:
+        rollout = (folder / 'rollout.jsonl').read_text().splitlines()
+        parsed = scoring.parse_codex(stream, rollout)
+        seen, offered = probe_output(rollout, stream), probe_tools(rollout)
+    else:
+        parsed = scoring.parse_transcript(stream, 'jadpo')
+        seen, offered = '\n'.join(call['output'] for call in stream_calls(stream)), stream_tools(stream)
+    rows = [probe_row(name, command, expect, marker, seen, effects, direct.get(command)) for name, command, expect, marker in checks]
+    rows += [tool_row(name, which, path, first, stream_calls(stream)) for name, which, path, first in tools]
+    if not codex:
+        extra = sorted(name for name in offered if not name.startswith('command:') and name not in CLAUDE_TOOLS)
+        rows.append({'name': 'only the six tools', 'command': 'the session init', 'expect': 'only', 'ok': not extra,
+                     'saw': 'extra: ' + ', '.join(extra) if extra else 'worked'})
+    result = {'agent': agent_version(agent), 'settings': settings, 'seconds': timing['seconds'], 'home_during_run': opened,
               'tokens': parsed['tokens'], 'checks': rows, 'answer': parsed['sessions'][-1]['text'] if parsed['sessions'] else None,
-              'passed': all(row['ok'] for row in rows), 'tools': probe_tools(rollout),
-              'home_left_behind': (folder / 'codex-home').exists()}
+              'passed': all(row['ok'] for row in rows), 'tools': offered,
+              'sandbox': sandbox_record(agent, settings, folder, environment),
+              'home_left_behind': (folder / ('codex-home' if codex else 'claude-home')).exists()}
     destination = RESULTS / args.label / 'isolation-probe.json'
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(result, indent=2) + '\n')
     shutil.copy2(transcript, RESULTS / args.label / 'isolation-probe.transcript.jsonl')
-    shutil.copy2(folder / 'rollout.jsonl', RESULTS / args.label / 'isolation-probe.rollout.jsonl')
+    if codex:
+        shutil.copy2(folder / 'rollout.jsonl', RESULTS / args.label / 'isolation-probe.rollout.jsonl')
     for row in rows:
         print(f'{"ok" if row["ok"] else "FAIL"}  {row["name"]}: {row["expect"]}')
     print('tools:', ', '.join(result['tools']))
     print(f'\nresults/{args.label}/isolation-probe.json', file=sys.stderr)
     shutil.rmtree(folder, ignore_errors=True)
+    for leftover in (folder.parent / 'outside-the-copy', Path('/tmp/outside-the-copy')):
+        leftover.unlink(missing_ok=True)
     return 0 if result['passed'] else 1
+
+
+def stream_calls(lines):
+    """A Claude Code stream's tool calls with their results: name, input,
+    whether the result was an error, and its text."""
+    calls, pending = [], {}
+    for event in events(lines):
+        for block in scoring.blocks(event):
+            if event.get('type') == 'assistant' and block.get('type') == 'tool_use':
+                pending[block.get('id')] = len(calls)
+                calls.append({'tool': block.get('name'), 'input': json.dumps(block.get('input') or {}), 'error': False,
+                              'output': ''})
+            elif event.get('type') == 'user' and block.get('type') == 'tool_result' and block.get('tool_use_id') in pending:
+                call = calls[pending.pop(block['tool_use_id'])]
+                call['error'], call['output'] = bool(block.get('is_error')), scoring.result_text(block)
+    return calls
+
+
+def tool_row(name, which, path, first, calls):
+    """A file tool's read outside the copy: refused when every call of that
+    tool naming the path failed and none printed the file's first line."""
+    tried = [call for call in calls if call['tool'] == which and path in call['input']]
+    leaked = bool(first) and any(first in call['output'] for call in calls)
+    ok = bool(tried) and all(call['error'] for call in tried) and not leaked
+    return {'name': name, 'command': f'{which} {path}', 'expect': 'refused', 'ok': ok,
+            'saw': 'the refusal' if ok else 'not tried' if not tried else 'the file' if leaked else 'no refusal'}
 
 
 def probe_output(rollout, stream):
@@ -1488,22 +1723,73 @@ def probe_output(rollout, stream):
     return '\n'.join(parts)
 
 
-def probe_row(name, command, expect, marker, seen, effects):
+def probe_effects(folder, app):
+    return {'../../outside-the-copy': (folder.parent / 'outside-the-copy').exists(),
+            '/tmp/outside-the-copy': Path('/tmp/outside-the-copy').exists(), 'touch probe-ok': (app / 'probe-ok').exists()}
+
+
+def direct_probe(agent, checks, app, folder, environment):
+    """Each probe command run once by the harness under the run's own
+    sandbox (`codex sandbox`, which applies the run's CODEX_HOME config): what
+    it printed and the files it left. Codex only; Claude Code has no such
+    command."""
+    if agent != 'codex':
+        return {}
+    out = {}
+    for path in (folder.parent / 'outside-the-copy', Path('/tmp/outside-the-copy'), app / 'probe-ok'):
+        path.unlink(missing_ok=True)
+    for _, command, _, _ in checks:
+        try:
+            done = subprocess.run([tool('codex'), 'sandbox', 'zsh', '-c', command], cwd=app, env=environment,
+                                  stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60, check=False)
+            printed = done.stdout + done.stderr + ('\nreached' if 'reached' in done.stdout else '')
+        except subprocess.TimeoutExpired:
+            printed = 'timed out'
+        out[command] = {'seen': printed, 'effects': probe_effects(folder, app)}
+    return out
+
+
+def probe_row(name, command, expect, marker, seen, effects, direct=None):
     """What one probe command did, from what the session's tools printed and
     from the files left behind, not from what the agent said: a refused read
     prints the sandbox's refusal naming the path; a refused write leaves no
-    file."""
+    file. Where the session never ran the command, the harness's own run of
+    it under the same sandbox is the evidence; where it did, both must hold."""
+    row = probe_verdict(name, command, expect, marker, seen, effects)
+    if direct is None:
+        return row
+    own = probe_verdict(name, command, expect, marker, direct['seen'], direct['effects'])
+    row['session'], row['direct'] = row['saw'], own['saw']
+    if expect == 'allowed':
+        row['ok'] = row['ok'] and own['ok']
+    else:
+        # The same sandbox refused it when run directly, and the session
+        # either showed the refusal too or never ran the command.
+        row['ok'] = own['ok'] and (row['ok'] or row['saw'] == 'no evidence')
+        if row['ok'] and row['saw'] == 'no evidence':
+            row['saw'] = 'the refusal, run directly; the session skipped it'
+    return row
+
+
+def probe_verdict(name, command, expect, marker, seen, effects):
     target = marker or ''
     if expect == 'refused':
         evidence = re.search(re.escape(target) + r'\S*: (Operation not permitted|Read-only file system|Permission denied)',
                              seen) is not None
         ok = evidence and not effects.get(target, False)
     elif expect == 'blocked':
-        ok = re.search(r'example\.com', seen) is not None and 'blocked' in seen.lower() and not re.search(r'^reached', seen, re.M)
+        # Codex's proxy names the domain it blocked; Claude Code's makes curl fail.
+        refused = (re.search(r'example\.com', seen) is not None and 'blocked' in seen.lower()) or re.search(r'curl: \(\d+\)', seen)
+        ok = bool(refused) and not re.search(r'^reached', seen, re.M)
+    elif expect == 'scrubbed':
+        ok = marker in seen and 'login-present' not in seen
     else:
         ok = effects.get(command, False) if marker is None else marker in seen
-    return {'name': name, 'command': command, 'expect': expect, 'ok': bool(ok),
-            'saw': 'the refusal' if expect == 'refused' and ok else 'no evidence' if not ok else 'worked'}
+    # What got through is never read as a skip: a file left, a site reached, the login seen.
+    leaked = ((expect == 'refused' and effects.get(target, False)) or (expect == 'blocked' and re.search(r'^reached', seen, re.M))
+              or (expect == 'scrubbed' and 'login-present' in seen))
+    return {'name': name, 'command': command, 'expect': expect, 'ok': bool(ok) and not leaked,
+            'saw': 'a leak' if leaked else 'the refusal' if expect == 'refused' and ok else 'no evidence' if not ok else 'worked'}
 
 
 def probe_tools(rollout):
@@ -1632,8 +1918,10 @@ def main(argv=None):
     sub.add_argument('--label', required=True)
     sub.add_argument('--run', help='one run, such as F01-jadpo-r1')
     sub.set_defaults(handler=command_stumbles)
-    sub = commands.add_parser('isolation-probe', help='what Codex can reach from a run: reads, writes, network, tools')
+    sub = commands.add_parser('isolation-probe', help='what an agent can reach from a run: reads, writes, network, tools')
     sub.add_argument('--label', required=True)
+    sub.add_argument('--agent', choices=AGENTS, default='codex')
+    sub.add_argument('--model', help='the model, if not the pinned one')
     sub.add_argument('--spend', action='store_true')
     sub.set_defaults(handler=command_isolation_probe)
     sub = commands.add_parser('knowledge-probe', help="what the model knows of Jadpo with no docs and no tools")
