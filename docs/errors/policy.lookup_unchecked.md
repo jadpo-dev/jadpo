@@ -72,14 +72,26 @@ action is_member(email: Member.email) -> Membership {
 ```
 
 ```text output
+error: `is_member` looks a `Member` up by email with no permission check before it
+ --> main.jadpo:37:11
+   |
+37 |     match Member.lookup(email: email) {
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no permission check of its own
+  reason: `Member.lookup` finds a person by their exact address whoever may read `Member`, so it runs only behind its action's own line under root `policy { actions: }`, which says who may look people up. `is_member` isn't listed.
+  next: List `is_member` under `policy { actions: }` with who may look people up, such as `[<Role>.owner]` (human) (human)
+  rule: policy.lookup_unchecked
+  help: https://jadpo.dev/docs/errors/policy.lookup_unchecked
+
+check failed: 1 error, 1 file
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because the choice is yours: who may look people up.
+and ask you which fix you want, because the choice is yours to make: it
+decides who may learn whether an address has an account.
 
 ## How to fix it
 
-List the action with who may look people up:
+**If anyone signed in may look people up**, list the action for them:
 
 ```jadpo fragment
 policy {
@@ -143,10 +155,7 @@ action is_member(email: Member.email) -> Membership {
 }
 ```
 
-An owner who adds people to their workspace by email lists the action
-for `[WorkspaceRole.owner]` and gives it the workspace's `id`, so only an
-owner of that workspace looks anyone up
-([Looking up one person by email](../language/15-personal-data.md#looking-up-one-person-by-email)).
+Only someone signed in now reaches the lookup.
 
 ## Related
 

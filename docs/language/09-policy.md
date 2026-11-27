@@ -4227,7 +4227,7 @@ carries scopes: what the person let that application do.
 [`external_token:`](08-identity.md#external_token) declares the scopes its
 tokens carry, and every such token is narrowed to them. Your own app can
 issue its API tokens narrowed the same way, from the scopes
-[`api_token:`](08-identity.md#api-tokens) declares. A narrowed token may
+[`api_token:`](08-identity.md#narrowing-an-api-token-to-scopes) declares. A narrowed token may
 do what both the person's grants and its scopes allow, and never more
 than the person could do themselves.
 

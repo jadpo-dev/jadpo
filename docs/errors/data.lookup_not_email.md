@@ -1,6 +1,6 @@
 # `data.lookup_not_email`
 
-Code looks a record up by a field that isn't built on `Email`, and only an exact email address finds one person.
+Code looks a record up by a field that doesn't hold an email address, and only an exact email address finds one person.
 
 ## Why Jadpo refuses it
 
@@ -82,12 +82,12 @@ check failed: 1 error, 1 file
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
-the fix itself.
+the fix itself: it names the email field.
 
 ## How to fix it
 
-Find the person by their address, a field built on `Email` and `unique:
-true`:
+**If you are finding someone by their address**, look them up by the
+field that holds it, an `Email` that is `unique: true`:
 
 ```jadpo fragment
     match Member.lookup(email: email) {
@@ -147,8 +147,50 @@ action is_member(email: Member.email) -> Membership {
 }
 ```
 
-To read a record you know the `id` of, use `Member.get`, which its
-entity's `read:` decides.
+The lookup now finds the one member with that address, or none.
+
+**If you know the record's `id`**, read it with `Member.get(member_id)`,
+which its entity's `read:` decides:
+
+```jadpo fragment
+    var member: Member = attempt Member.get(member_id)
+```
+
+```jadpo check project=e-lookup-not-email-get hidden
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.authenticated]
+    }
+}
+
+/// A member's handle, by their `id`.
+action handle_of(member_id: Member.id) fails MemberNotFound -> Member.handle {
+    var member: Member = attempt Member.get(member_id)
+    return member.handle
+}
+```
+
+A caller then reads only what the entity's `read:` lets them.
 
 ## Related
 

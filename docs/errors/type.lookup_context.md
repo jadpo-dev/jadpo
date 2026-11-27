@@ -56,15 +56,27 @@ test "someone has an account" {
 ```
 
 ```text output
+error: A test can't call `Member.lookup`
+ --> main.jadpo:36:26
+   |
+36 |     var found: Member? = Member.lookup(email: "ann@desk.example")
+   |                          ^^^^^^^^^^^^^ outside an action
+  reason: `Member.lookup` finds one person by their exact email address behind the permission check of the action that calls it, so only an action calls it, never a function, a query, a test or a schedule's code.
+  next: Call `Member.lookup` in an action listed under `policy { actions: }`, and call that action from here (agent)
+  rule: type.lookup_context
+  help: https://jadpo.dev/docs/errors/type.lookup_context
+
+check failed: 1 error, 1 file
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
-the fix itself.
+the fix itself: the lookup moves into an action.
 
 ## How to fix it
 
-Look the person up in an action listed under `policy { actions: }`, and
-call that action:
+**If code outside an action needs to know who has an account**, look the
+person up in an action listed under `policy { actions: }`, and call that
+action:
 
 ```jadpo fragment
 action is_member(email: Member.email) -> Membership {
@@ -79,8 +91,8 @@ action is_member(email: Member.email) -> Membership {
 }
 ```
 
-A test then calls `is_member`, as a route does, and proves what it
-gives.
+The lookup now runs behind `is_member`'s line, and a test or a route
+calls `is_member` to learn whether an address has an account.
 
 ```jadpo check project=e-lookup-context-fix hidden
 principal {

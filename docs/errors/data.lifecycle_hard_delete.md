@@ -267,10 +267,17 @@ instead be given a lifecycle of their own with a `delete` transition, so
 deleting one hides them and keeps their articles.
 
 **If the record is a person's, and removing them means forgetting
-them**, call `<User>.erase(id)` on their entity, `person: true`. Erasure
-removes them for good whatever their lifecycle, with each of their
-records as its reference's `erase:` says, and their sign-in state, which
-a hidden record keeps
+them**, call `<User>.erase(id)` on their entity, `person: true`:
+
+```jadpo fragment
+action forget(user_id: User.id) fails UserNotFound -> Unit {
+    attempt User.erase(user_id)
+}
+```
+
+Erasure removes them for good whatever their lifecycle, with each of
+their records as its reference's `erase:` says, and their sign-in state,
+which a hidden record keeps
 ([Erasing someone](../language/15-personal-data.md#erasing-someone)).
 
 ## Related

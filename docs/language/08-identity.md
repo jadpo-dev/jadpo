@@ -601,7 +601,8 @@ An API token signs in a user, so the app's principal must declare
 `user:`. A service key signs in a service, so the principal must declare
 `service:`. Inside `authentication { }`, each block takes
 `signing_key:`, and `api_token:` also takes `scopes:`, the scopes a token
-may be issued narrowed to ([API tokens](#api-tokens)). Without a
+may be issued narrowed to
+([Narrowing an API token to scopes](#narrowing-an-api-token-to-scopes)). Without a
 revocation delay or scopes there is nothing to set, so you write
 `api_token: {}` and `service_key: {}`.
 
@@ -4357,44 +4358,8 @@ sends as `Authorization: Bearer`. With magic links, the generated
   route can run `sessions.tokens` itself (below). Each needs `api_token:`
   in `authentication { }`.
 
-A token for an app that should do less than its person may, such as a
-read-only widget, is issued narrowed to some scopes. `api_token:`
-declares them as `external_token:` does, each a name and its
-scope-token, and `sessions.issue_token` names them:
-
-```jadpo fragment
-authentication {
-    api_token: {
-        scopes: {
-            notes_read: "notes:read"
-            notes_write: "notes:write"
-        }
-    }
-}
-
-action widget_sign_in(token: InvitationToken) fails InvitationExpired -> AppSignedIn {
-    var invitation: Invitation = attempt Invitation.redeem(token)
-    return AppSignedIn {
-        token: sessions.issue_token(invitation.member_id, scopes: [OAuthScope.notes_read])
-    }
-}
-```
-
-- Policy holds a narrowed token exactly as it holds a provider's
-  ([Scopes](09-policy.md#scopes)): it does what both its person's grants
-  and its scopes allow.
-- `scopes:` comes after the user's `id` and lists each scope once, at
-  least one; each is one `api_token:` declares
-  ([`type.token_scopes_invalid`](../errors/type.token_scopes_invalid.md)).
-  A token issued without `scopes:` may do whatever its person may, as
-  every token issued before scopes did.
-- A scope both `api_token:` and `external_token:` declare is one scope:
-  its name reads the same scope-token in both, or it is
-  `semantic.auth_setting_invalid`.
-- `jadpo_sessions` keeps the scope-tokens beside the token's verifier,
-  and with a revocation delay the token's signed part carries them, so a
-  delay never widens a token. `IssuedToken`'s `scopes` lists them, and is
-  `none` for a token that isn't narrowed and for a browser session.
+A token can also be issued narrowed to some scopes
+([Narrowing an API token to scopes](#narrowing-an-api-token-to-scopes)).
 
 #### Listing from a `GET` route
 
@@ -5431,6 +5396,48 @@ test "a partner's keys are listed to the partner and its owner" {
     assert by_member.output == []
 }
 ```
+
+## Narrowing an API token to scopes
+<!-- topic: narrowing-an-api-token-to-scopes -->
+
+A token for an app that should do less than its person may, such as a
+read-only widget, is issued narrowed to some scopes. `api_token:`
+declares them as `external_token:` does, each a name and its
+scope-token, and `sessions.issue_token` names them:
+
+```jadpo fragment
+authentication {
+    api_token: {
+        scopes: {
+            notes_read: "notes:read"
+            notes_write: "notes:write"
+        }
+    }
+}
+
+action widget_sign_in(token: InvitationToken) fails InvitationExpired -> AppSignedIn {
+    var invitation: Invitation = attempt Invitation.redeem(token)
+    return AppSignedIn {
+        token: sessions.issue_token(invitation.member_id, scopes: [OAuthScope.notes_read])
+    }
+}
+```
+
+- Policy holds a narrowed token exactly as it holds a provider's
+  ([Scopes](09-policy.md#scopes)): it does what both its person's grants
+  and its scopes allow.
+- `scopes:` comes after the user's `id` and lists each scope once, at
+  least one; each is one `api_token:` declares
+  ([`type.token_scopes_invalid`](../errors/type.token_scopes_invalid.md)).
+  A token issued without `scopes:` may do whatever its person may, as
+  every token issued before scopes did.
+- A scope both `api_token:` and `external_token:` declare is one scope:
+  its name reads the same scope-token in both, or it is
+  `semantic.auth_setting_invalid`.
+- `jadpo_sessions` keeps the scope-tokens beside the token's verifier,
+  and with a revocation delay the token's signed part carries them, so a
+  delay never widens a token. `IssuedToken`'s `scopes` lists them, and is
+  `none` for a token that isn't narrowed and for a browser session.
 
 ## Deleting someone who signs in
 <!-- topic: deleting-someone-who-signs-in -->

@@ -81,8 +81,8 @@ check failed: 1 error, 1 file
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because the choice is yours: whether one address is one
-person's.
+and ask you which fix you want, because the choice is yours to make: it
+decides whether two of your records may share an address.
 
 ## How to fix it
 
@@ -148,8 +148,8 @@ action is_member(email: Member.email) -> Membership {
 }
 ```
 
-**If several records may share an address**, find them some other way,
-such as by a record that refers to them.
+Two members can no longer share an address, and the lookup finds the one
+who has it, or none.
 
 ## Related
 

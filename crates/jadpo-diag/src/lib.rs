@@ -421,7 +421,7 @@ rules! {
     DATA_LIFECYCLE_VALUE: "data.lifecycle_value", area 5, Error, Agent,
         "A lifecycle's `set:` or `initial:` gives a field something other than a fixed value";
     DATA_LOOKUP_NOT_EMAIL: "data.lookup_not_email", area 15, Error, Agent,
-        "Code looks a record up by a field that isn't built on `Email`, and only an exact email address finds one person";
+        "Code looks a record up by a field that doesn't hold an email address, and only an exact email address finds one person";
     DATA_LOOKUP_NOT_UNIQUE: "data.lookup_not_unique", area 15, Error, Agent,
         "Code looks a record up by an email field that isn't `unique: true` across the whole table, so an address could find several";
     DATA_NAME_TOO_LONG: "data.name_too_long", area 5, Error, Agent,
@@ -1661,7 +1661,7 @@ rules! {
     TYPE_TEST_CLOCK_CONTEXT: "type.test_clock_context", area 13, Error, Agent,
         "Code outside a test calls `clock.advance`, which only a test may do";
     TYPE_TOKEN_SCOPES_INVALID: "type.token_scopes_invalid", area 8, Error, Agent,
-        "`sessions.issue_token` is given `scopes:` that aren't a list of scopes `api_token: { scopes: }` declares";
+        "Code gives `sessions.issue_token` `scopes:` that aren't a list of scopes `api_token: { scopes: }` declares";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
         "A type is given more or fewer type arguments than it takes, such as two for a `List`";
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,
