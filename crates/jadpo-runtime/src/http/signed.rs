@@ -557,6 +557,33 @@ mod tests {
         assert_eq!(Claims::from_json(&json), Some(claims));
     }
 
+    /// An API token issued narrowed to some scopes keeps them in its signed
+    /// part, so a revocation delay never widens it (chunk 10.13b); one
+    /// without them may do whatever its person may.
+    #[test]
+    fn claims_keep_an_issued_tokens_scopes() {
+        let mut claims = Claims {
+            method: AuthenticationMethod::ApiToken,
+            row: Some([1; 16]),
+            verifier: "ab".repeat(32),
+            principal: [2; 16],
+            subject: vec![SqlValue::Text("ann".into())],
+            expires: 1_792_504_800_000,
+            csrf: None,
+            by: super::super::identity::SignedInBy {
+                scopes: Some(vec!["notes:read".into(), "notes:write".into()]),
+                ..Default::default()
+            },
+        };
+        let json = claims.to_json().unwrap();
+        assert!(json.contains("\"o\":\"notes:read notes:write\""), "{json}");
+        assert_eq!(Claims::from_json(&json), Some(claims.clone()));
+        claims.by.scopes = None;
+        let json = claims.to_json().unwrap();
+        assert!(!json.contains("\"o\""), "{json}");
+        assert_eq!(Claims::from_json(&json), Some(claims));
+    }
+
     /// A part records the encoding it was written in (area 19, chunk 5.9);
     /// one written before encodings were recorded, as chunk 5.1b wrote it,
     /// still reads, and one of an encoding this release doesn't know

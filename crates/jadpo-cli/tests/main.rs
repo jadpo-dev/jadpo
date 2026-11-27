@@ -98,6 +98,7 @@ mod hidden_records;
 mod http;
 mod inspect;
 mod installing;
+mod issued_scopes;
 mod interactive;
 mod json_columns;
 mod json_migrations;
