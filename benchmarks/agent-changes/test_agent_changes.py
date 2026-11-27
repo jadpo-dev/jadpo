@@ -21,6 +21,7 @@ sys.path.insert(0, str(HERE))
 import changes
 import desk_changes  # noqa: E402
 import harness  # noqa: E402
+import measure  # noqa: E402
 import scoring  # noqa: E402
 
 FROZEN = (HERE.parent / 'golden-todo/adversarial-changes.md').read_text()
@@ -191,10 +192,15 @@ class Isolation(unittest.TestCase):
                 command = harness.agent_command('claude', harness.PINNED, 'do it', app, HERE)
         text = ' '.join(command)
         for flag in ['--model claude-opus-5-5', '--effort high', '--safe-mode', '--restricted', '--strict-mcp-config',
-                     '--tools Bash,Read,Edit,Write,Glob,Grep', '--permission-prompts none', '--max-budget-usd 6.00',
-                     '--output-format stream-json']:
+                     '--disable-slash-commands', f'--settings {HERE / harness.CLAUDE_SETTINGS}',
+                     '--tools Bash,Read,Edit,Write,Glob,Grep', '--permission-prompts none', '--output-format stream-json']:
             self.assertIn(flag, text)
         self.assertNotIn('WebFetch', text)
+        # On the subscription a run is capped by time, as Codex is; a dollar cap only when asked for.
+        self.assertNotIn('--max-budget-usd', text)
+        with mock.patch.object(harness, 'tool', lambda name: name):
+            capped = harness.agent_command('claude', harness.PINNED | {'budget_usd': 6.0}, 'do it', app, HERE)
+        self.assertIn('--max-budget-usd 6.00', ' '.join(capped))
         self.assertEqual(harness.agent_command('python3 replay.py s.json', {}, 'p', app, HERE), ['python3', 'replay.py', 's.json', 'p'])
 
     def test_real_sessions_need_spend(self):
@@ -475,7 +481,7 @@ class Codex(unittest.TestCase):
                      'default_permissions = "agent-run"', '":minimal" = "read"', '"/private/tmp" = "none"',
                      '"/work/label/F07-jadpo-r1/app" = "write"', '"/work/label/F07-jadpo-r1/docs" = "read"',
                      '"/opt/node" = "read"', 'enabled = true', 'domains = {}',
-                     'unix_sockets = { "/work/label/F07-jadpo-r1/sock" = "allow" }', 'network_proxy = true',
+                     f'unix_sockets = {{ "{harness.socket_folder(self.folder)}" = "allow" }}', 'network_proxy = true',
                      'apps = false', 'plugins = false', 'memories = false', 'browser_use = false', 'computer_use = false',
                      'hooks = false', 'include_instructions = false']:
             self.assertIn(line + '\n', text)
@@ -861,7 +867,8 @@ class Results(unittest.TestCase):
         self.assertEqual([r['language'] for r in summary['languages']], ['jadpo', 'typescript'])
         table = scoring.table(summary)
         self.assertIn('| F07 | jadpo | 1/2 | 1 |', table)
-        self.assertEqual(len(table.splitlines()), 2 + 2 + 2)
+        self.assertEqual(table.split('\n\n')[0].count('\n') + 1, 2 + 2 + 2)
+        self.assertIn('Cost per correct change'.lower().split()[0], table.lower())
 
     def test_estimate(self):
         tokens = {'input_tokens': 1_000_000, 'output_tokens': 100_000, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 0}
@@ -869,6 +876,202 @@ class Results(unittest.TestCase):
         self.assertEqual(estimate['per_session_usd']['jadpo'], 6.0)
         self.assertEqual(estimate['sessions'], 108)
         self.assertEqual(estimate['total_usd'], 648.0)
+
+
+class CostPerCorrect(unittest.TestCase):
+    def test_cache_reads_are_priced_apart(self):
+        tokens = {'input_tokens': 1_000_000, 'output_tokens': 1_000_000, 'cache_creation_input_tokens': 1_000_000,
+                  'cache_read_input_tokens': 1_000_000}
+        self.assertAlmostEqual(scoring.price(tokens, 'claude-opus-5-5'), 4 + 20 + 5 + 0.20)
+        self.assertAlmostEqual(scoring.price(tokens, 'gpt-6.1-sol'), 2 + 10 + 2.5 + 0.10)
+        self.assertAlmostEqual(scoring.price(tokens, 'gpt-6-luna'), 0.10 + 0.50 + 0.125 + 0.01)
+        self.assertIsNone(scoring.price(tokens, 'no-such-model'))
+        for model, rates in scoring.PRICES.items():
+            self.assertIn(rates['provider'], scoring.PRICE_SOURCES, model)
+
+    def test_per_correct_for_each_model_and_language(self):
+        runs = [result('H01', 'jadpo', 1, True), result('H01', 'jadpo', 2, False), result('H01', 'typescript', 1, False)]
+        for run in runs:
+            run['settings'] = {'model': 'gpt-6.1-sol'}
+        rows = {row['language']: row for row in scoring.per_correct(runs)}
+        jadpo = rows['jadpo']
+        self.assertEqual((jadpo['changes'], jadpo['correct'], jadpo['fresh_tokens'], jadpo['fresh_tokens_per_correct']),
+                         (2, 1, 40, 40))
+        self.assertAlmostEqual(jadpo['usd'], 2 * (10 * 2 + 10 * 10 + 80 * 0.10) / 1e6, places=6)
+        self.assertEqual(jadpo['usd_per_correct'], jadpo['usd'])
+        self.assertIsNone(rows['typescript']['usd_per_correct'], 'nothing correct: no cost per correct change')
+        table = scoring.cost_table(scoring.per_correct(runs))
+        self.assertIn('| gpt-6.1-sol | jadpo | 1/2 | 40 | 40 |', table)
+        self.assertIn('developers.openai.com', table)
+        self.assertIn(scoring.PRICE_SOURCES['openai'][1], table)
+
+
+class Socket(unittest.TestCase):
+    def test_a_long_label_cannot_take_the_socket_past_the_limit(self):
+        folder = Path('/Users/someone/.cache/jadpo-agent-changes') / ('a-very-long-label-' * 6) / 'S12-typescript-r3'
+        socket = harness.socket_folder(folder)
+        self.assertLessEqual(len(str(socket / '.s.PGSQL.65535')), harness.SOCKET_LIMIT)
+        self.assertEqual(socket, harness.socket_folder(folder), 'the same run, the same folder')
+        self.assertNotEqual(socket, harness.socket_folder(folder.with_name('S12-jadpo-r3')))
+        self.assertTrue(socket.is_relative_to(harness.SOCKET_ROOT))
+
+
+class Claude(unittest.TestCase):
+    folder = Path('/work/label/S11-jadpo-r1')
+    environment = {'PATH': '/work/label/S11-jadpo-r1/bin:/opt/node/bin:/usr/bin:/bin'}
+
+    def settings(self):
+        with mock.patch.object(harness, 'real_git', lambda: '/usr/bin/git'), \
+                mock.patch.object(harness.shutil, 'which', lambda name: None):
+            return harness.claude_settings(self.folder, self.environment, [Path('/s/x'), Path('/s/x/.s.PGSQL.5')])
+
+    def test_settings_confine_the_shell(self):
+        sandbox = self.settings()['sandbox']
+        self.assertEqual((sandbox['enabled'], sandbox['autoAllowBashIfSandboxed'], sandbox['allowUnsandboxedCommands']),
+                         (True, True, False))
+        files = sandbox['filesystem']
+        own = [str(self.folder / name) for name in ('app', 'tmp', 'home')]
+        self.assertEqual(files['allowWrite'], own)
+        for denied in (str(Path.home()), '/Users', '/tmp', '/private/tmp'):
+            self.assertIn(denied, files['denyRead'])
+        self.assertIn(str(self.folder / 'docs'), files['allowRead'])
+        self.assertIn('/opt/node', files['allowRead'])
+        self.assertFalse([path for path in files['allowRead'] if 'claude-home' in path or 'codex-home' in path])
+        self.assertNotIn(str(self.folder), files['allowRead'], 'not the whole run folder: the config and settings stay out')
+        self.assertEqual(sandbox['network']['allowedDomains'], [])
+        self.assertEqual(sandbox['network']['allowUnixSockets'], ['/s/x', '/s/x/.s.PGSQL.5'])
+        self.assertFalse(sandbox['network']['allowLocalBinding'])
+
+    def test_environment_starts_empty_and_scrubs_the_login(self):
+        environment = harness.claude_environment(self.folder)
+        self.assertEqual(environment['CLAUDE_CONFIG_DIR'], str(self.folder / 'claude-home'))
+        self.assertEqual(environment['HOME'], str(self.folder / 'home'))
+        for name in ('CLAUDE_CODE_SUBPROCESS_ENV_SCRUB', 'CLAUDE_CODE_DISABLE_AUTO_MEMORY', 'CLAUDE_CODE_DISABLE_CLAUDE_MDS',
+                     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'):
+            self.assertEqual(environment[name], '1')
+        self.assertNotIn('CLAUDE_CODE_OAUTH_TOKEN', environment)
+
+    def test_home_starts_empty_and_goes_and_the_token_stays_out(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            token, folder = Path(scratch) / 'token', Path(scratch) / 'run'
+            folder.mkdir()
+            with mock.patch.object(harness, 'CLAUDE_TOKEN', token):
+                with self.assertRaises(SystemExit) as raised, harness.claude_home(folder, harness.PINNED, self.environment):
+                    pass
+                self.assertIn('setup-token', str(raised.exception))
+                token.write_text('sk-ant-oat-secret\n')
+                token.chmod(0o644)
+                with self.assertRaises(SystemExit), harness.claude_home(folder, harness.PINNED, self.environment):
+                    pass
+                token.chmod(0o600)
+                with mock.patch.object(harness, 'real_git', lambda: '/usr/bin/git'):
+                    with harness.claude_home(folder, harness.PINNED, self.environment) as home:
+                        self.assertEqual(list(home.iterdir()), [])
+                        self.assertEqual(stat.S_IMODE(os.stat(home).st_mode), 0o700)
+                        (home / 'projects/-work-app').mkdir(parents=True)
+                        (home / 'projects/-work-app/s1.jsonl').write_text('{}\n')
+                self.assertFalse((folder / 'claude-home').exists())
+                self.assertTrue((folder / 'claude-session/-work-app/s1.jsonl').is_file())
+                self.assertTrue((folder / harness.CLAUDE_SETTINGS).is_file())
+                written = [path.read_text() for path in folder.rglob('*') if path.is_file()]
+                self.assertFalse([text for text in written if 'sk-ant-oat-secret' in text])
+
+    def test_only_claude_code_is_given_the_login(self):
+        seen = {}
+
+        def fake_run(command, env, **_):
+            seen['env'] = env
+            return subprocess.CompletedProcess(command, 0)
+        with tempfile.TemporaryDirectory() as scratch:
+            token = Path(scratch) / 'token'
+            token.write_text('sk-ant-oat-secret')
+            token.chmod(0o600)
+            folder = Path(scratch)
+            with mock.patch.object(harness, 'CLAUDE_TOKEN', token), mock.patch.object(harness, 'tool', lambda n: n), \
+                    mock.patch.object(harness.subprocess, 'run', fake_run):
+                environment = {'PATH': '/usr/bin'}
+                harness.session('claude', harness.PINNED, 'p', folder, folder, environment, folder / 't.jsonl')
+        self.assertEqual(seen['env']['CLAUDE_CODE_OAUTH_TOKEN'], 'sk-ant-oat-secret')
+        self.assertNotIn('CLAUDE_CODE_OAUTH_TOKEN', environment, "the run's own environment, used by the gate, never holds it")
+
+    def test_probe_checks_the_login_the_config_and_the_file_tools(self):
+        names = [name for name, *_ in harness.probe_checks('claude')]
+        self.assertIn("the login in the shell's environment", names)
+        self.assertIn("this run's Claude config", names)
+        self.assertNotIn("this run's own login", names)
+        commands = ' '.join(command for _, command, _, _ in harness.probe_checks('claude'))
+        self.assertNotIn('echo "$CLAUDE_CODE_OAUTH_TOKEN"', commands, 'the probe never prints the login')
+        row = harness.probe_row
+        self.assertTrue(row('l', 'x', 'scrubbed', 'login-absent', 'login-absent', {})['ok'])
+        self.assertFalse(row('l', 'x', 'scrubbed', 'login-absent', 'login-present', {})['ok'])
+        self.assertTrue(row('n', 'curl', 'blocked', 'example.com', 'curl: (56) CONNECT tunnel failed, response 403', {})['ok'])
+
+    def test_file_tool_verdicts(self):
+        refused = [{'tool': 'Read', 'input': '{"file_path": "/r/README.md"}', 'error': True, 'output': 'outside the working directories'}]
+        leaked = [{'tool': 'Read', 'input': '{"file_path": "/r/README.md"}', 'error': False, 'output': 'Jadpo is a language for LLMs'}]
+        self.assertTrue(harness.tool_row('r', 'Read', '/r/README.md', 'Jadpo is a language for LLMs', refused)['ok'])
+        self.assertFalse(harness.tool_row('r', 'Read', '/r/README.md', 'Jadpo is a language for LLMs', leaked)['ok'])
+        self.assertFalse(harness.tool_row('r', 'Read', '/r/README.md', 'x', [])['ok'], 'not tried: no proof')
+
+    def test_stream_tools_name_everything_the_session_was_given(self):
+        init = json.dumps({'type': 'system', 'subtype': 'init', 'tools': ['Bash', 'Read'],
+                           'mcp_servers': [{'name': 'x', 'status': 'connected'}], 'plugins': [], 'skills': ['s']})
+        self.assertEqual(harness.stream_tools([init]), ['Bash', 'Read', 'mcp:x', 'skill:s'])
+
+
+class Measure(unittest.TestCase):
+    def test_sets_sessions_labels_and_names(self):
+        self.assertEqual(measure.sessions_of('desk-held3'), ['S9', 'S10'])
+        self.assertEqual(measure.label_for('final1015', 'gpt-6.1-sol'), 'final1015-6.1-sol')
+        self.assertEqual(measure.label_for('final1015', 'claude-opus-5-5'), 'final1015-opus-5-5')
+        self.assertEqual([measure.short_name(m) for m in ('gpt-6.1-sol', 'gpt-6-luna', 'claude-opus-5-5')],
+                         ['Sol', 'Luna', 'Opus 5.5'])
+        self.assertEqual([measure.agent_for(m) for m in ('gpt-6-luna', 'claude-opus-5-5')], ['codex', 'claude'])
+
+    def test_codex_week_from_the_latest_record(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            older, newer = Path(scratch) / 'rollout-a.jsonl', Path(scratch) / 'rollout-b.jsonl'
+            week = {'used_percent': 41.0, 'window_minutes': 10080, 'resets_at': 1796000000}
+            older.write_text(json.dumps({'timestamp': '2026-11-26T10:00:00Z', 'payload': {'rate_limits': {
+                'primary': {'used_percent': 37.0, 'window_minutes': 10080, 'resets_at': 1796000000}}}}) + '\n')
+            newer.write_text(json.dumps({'timestamp': '2026-11-27T10:00:00Z', 'payload': {'rate_limits': {
+                'primary': {'used_percent': 3.0, 'window_minutes': 300}, 'secondary': week}}}) + '\n')
+            limits = measure.rate_limits([older, newer])
+        self.assertEqual((limits['used'], limits['resets_at']), (41.0, 1796000000))
+
+    def test_a_usage_limit_is_told_apart_from_a_harness_failure(self):
+        hit = {'sessions': [{'is_error': True, 'text': "You've hit your limit · resets 4pm"}], 'tokens': {'input_tokens': 5}}
+        plain = {'sessions': [{'is_error': True, 'text': 'API Error: 500'}], 'tokens': {'input_tokens': 5}}
+        self.assertTrue(measure.limited([None, hit]))
+        self.assertFalse(measure.limited([plain]))
+        self.assertTrue(measure.unreached({'harness_failure': 'the agent wrote no session result', 'tokens': {}}))
+
+    def test_debrief_asks_about_decisions_not_reasoning(self):
+        for language in ('jadpo', 'typescript'):
+            prompt = measure.debrief_prompt(language, 'change 2, "x"')
+            self.assertNotRegex(prompt.lower(), r'reason|think|thought')
+            self.assertIn('decisions, information and effort only', prompt)
+        self.assertIn('jadpo explain', measure.debrief_prompt('jadpo', 'x'))
+        self.assertNotIn('jadpo explain', measure.debrief_prompt('typescript', 'x'))
+
+    def test_first_actions_from_either_agent(self):
+        claude = [('call', 'Read {"file_path": "README.md"}'), ('call', 'Write {"file_path": "QUESTIONS.md"}')]
+        codex = [('call', 'jadpo explain'), ('call', '*** Begin Patch\n*** Update File: x.jadpo')]
+        self.assertEqual(measure.features(claude)[0], 'ask')
+        self.assertTrue(measure.features(claude)[1]['readme'])
+        first, seen = measure.features(codex)
+        self.assertEqual(first, 'edit')
+        self.assertTrue(seen['explain'])
+
+    def test_the_brief_fills_every_blank(self):
+        with mock.patch('sys.stdout') as out:
+            measure.main(['brief', '--set', 'desk-held4', '--first', 'H51', '--tag', '1015', '--worktree', '/w',
+                          '--notes', '/t/held-out-10.15'])
+        text = ''.join(call.args[0] for call in out.write.call_args_list)
+        self.assertNotIn('{{', text)
+        for piece in ('H51–H60', "'S11': ('H51', …, 'H55'), 'S12': ('H56', …, 'H60')", 'H01–H50', 'HELD4',
+                      '--set desk-held4', 'calibration1015', 'pilot1015-ts', '/t/held-out-10.15/templates/control-example.py'):
+            self.assertIn(piece, text)
 
 
 if __name__ == '__main__':

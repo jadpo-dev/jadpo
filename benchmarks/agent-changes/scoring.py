@@ -522,7 +522,7 @@ def summarize(results):
     for result in results:
         languages.setdefault(result['language'], []).append(result)
     totals = [row('all', language, runs) for language, runs in sorted(languages.items())]
-    return {'cells': rows, 'languages': totals, 'runs': len(results)}
+    return {'cells': rows, 'languages': totals, 'runs': len(results), 'per_correct': per_correct(results)}
 
 
 def row(change, language, runs):
@@ -562,23 +562,78 @@ def table(summary):
                      f"| {item['asked']} | {show(item['attempts_to_green'])} | {show(item['tokens_to_green'])} "
                      f"| {item['caught_check']} / {item['caught_test']} / {item['escaped_tests']} "
                      f"| {show(item['review_lines'])} | {show(item['review_score'])} |")
+    if summary.get('per_correct'):
+        lines += ['', 'Cost per correct change:', '', cost_table(summary['per_correct'])]
     return '\n'.join(lines)
 
 
-# Prices per million tokens (Anthropic first-party, 2026-10): input, output,
-# cache read; a five-minute cache write costs 1.25 times input.
+# Each provider's published standard price per million tokens: fresh input, a
+# cache write, a cache read and output, cache reads priced apart. A cache write
+# is Anthropic's five-minute write and OpenAI's 30-minute one; Codex's output
+# tokens include its reasoning. Read from the pages below on the date given.
+PRICE_SOURCES = {
+    'anthropic': ('https://platform.claude.com/docs/en/about-claude/pricing', '2026-11-27'),
+    'openai': ('https://developers.openai.com/api/docs/pricing', '2026-11-27'),
+}
 PRICES = {
-    'claude-opus-5-5': (4.00, 20.00, 0.20),
-    'claude-sonnet-5-5': (2.00, 10.00, 0.20),
-    'claude-haiku-5-5': (0.10, 0.50, 0.01),
+    'claude-opus-5-5': {'provider': 'anthropic', 'input': 4.00, 'cache_write': 5.00, 'cache_read': 0.20, 'output': 20.00},
+    'claude-sonnet-5-5': {'provider': 'anthropic', 'input': 2.00, 'cache_write': 2.50, 'cache_read': 0.10, 'output': 10.00},
+    'claude-haiku-5-5': {'provider': 'anthropic', 'input': 0.10, 'cache_write': 0.125, 'cache_read': 0.01, 'output': 0.50},
+    'gpt-6.1-sol': {'provider': 'openai', 'input': 2.00, 'cache_write': 2.50, 'cache_read': 0.10, 'output': 10.00},
+    'gpt-6-luna': {'provider': 'openai', 'input': 0.10, 'cache_write': 0.125, 'cache_read': 0.01, 'output': 0.50},
 }
 
 
 def price(tokens, model):
-    rate_in, rate_out, rate_read = PRICES[model]
-    return (tokens['input_tokens'] * rate_in + tokens['output_tokens'] * rate_out
-            + tokens['cache_creation_input_tokens'] * rate_in * 1.25
-            + tokens['cache_read_input_tokens'] * rate_read) / 1_000_000
+    """Dollars at the model's published prices; None for an unpriced model."""
+    rates = PRICES.get(model)
+    if rates is None:
+        return None
+    return (tokens.get('input_tokens', 0) * rates['input'] + tokens.get('output_tokens', 0) * rates['output']
+            + tokens.get('cache_creation_input_tokens', 0) * rates['cache_write']
+            + tokens.get('cache_read_input_tokens', 0) * rates['cache_read']) / 1_000_000
+
+
+def fresh(tokens):
+    """Fresh input plus output: the headline token count."""
+    return tokens.get('input_tokens', 0) + tokens.get('output_tokens', 0)
+
+
+def per_correct(results):
+    """What one correct change costs, for each model and language: every
+    change's tokens and dollars over the changes scored correct."""
+    groups = {}
+    for result in results:
+        groups.setdefault(((result.get('settings') or {}).get('model'), result['language']), []).append(result)
+    rows = []
+    for (model, language), runs in sorted(groups.items(), key=lambda item: (str(item[0][0]), item[0][1])):
+        correct = sum(bool(r['outcome']['correct']) for r in runs)
+        spent = [price(r['tokens'], model) for r in runs]
+        usd = None if any(value is None for value in spent) else sum(spent)
+        tokens = sum(fresh(r['tokens']) for r in runs)
+        rows.append({'model': model, 'language': language, 'changes': len(runs), 'correct': correct,
+                     'fresh_tokens': tokens, 'cache_read_tokens': sum(r['tokens'].get('cache_read_input_tokens', 0) for r in runs),
+                     'usd': None if usd is None else round(usd, 6),
+                     'fresh_tokens_per_correct': round(tokens / correct) if correct else None,
+                     'usd_per_correct': round(usd / correct, 6) if correct and usd is not None else None})
+    return rows
+
+
+def cost_table(rows):
+    """The cost-per-correct-change table, with its price source."""
+    lines = ['| Model | Language | Correct | Fresh in+out tokens | Per correct change | Dollars | Per correct change |',
+             '|' + '---|' * 7]
+    for row in rows:
+        def show(value, money=False):
+            return '-' if value is None else f'${value:,.2f}' if money else f'{value:,.0f}'
+        lines.append(f"| {row['model']} | {row['language']} | {row['correct']}/{row['changes']} | {show(row['fresh_tokens'])} "
+                     f"| {show(row['fresh_tokens_per_correct'])} | {show(row['usd'], True)} | {show(row['usd_per_correct'], True)} |")
+    providers = sorted({PRICES[row['model']]['provider'] for row in rows if row['model'] in PRICES})
+    sources = '; '.join(f'{name}: {PRICE_SOURCES[name][0]}, read {PRICE_SOURCES[name][1]}' for name in providers)
+    if sources:
+        lines.append('')
+        lines.append(f'Published standard prices, cache reads and writes priced apart ({sources}).')
+    return '\n'.join(lines)
 
 
 def estimate(sessions_by_language, model, changes, runs):
