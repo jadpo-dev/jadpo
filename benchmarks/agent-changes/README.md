@@ -270,6 +270,17 @@ taking an unassigned ticket, emptying the bin now (decline), copying a
 macro, closing a workspace (decide), assigning many tickets at once,
 reviewers reading notes (decline), and merging two tickets.
 
+**A fourth held-out set.** Roadmap chunk 10.15 adds H51 to H60, the
+`desk-held4` set, run as S11 and S12, written blind by a fresh subagent
+from `writer-brief.md`, calibrated and piloted the same way, and measured
+on three models: Sol, Luna and Opus 5.5. Six changes to implement, two
+for the owner to decide and two to decline. They cross: tagging a ticket
+as it is opened, agents managing tags (decide), a reply reopening a
+solved ticket, the only owner stepping down (decline), a new viewer
+giving up their tickets, each workspace's first-response target (decide),
+notes about a customer, seeing what is in the bin (decline), tagging
+breached tickets, and who wrote each reply.
+
 **A final measurement.** `measure.py` runs one from start to report.
 `brief` fills in [`writer-brief.md`](writer-brief.md) for the next set's
 blind writer, whose patch stays out of the repository until the set is

@@ -21,6 +21,7 @@ from urllib.parse import quote
 
 from contract import MILLIS, require
 from changes import Absent, Change, behaviour, present, safety
+from desk import body_text, literal
 from desk import (ACME, ANN, BEN, CAT, COLIN, CORA, CUSTOMERS, DAN, EARLIER, EMAILS, EVE, FAY, G_OPEN, GAIL, GLOBEX,
                   GLOBEX_CANARY, M_ANN, M_BEN, M_CAT, M_DAN, M_EVE, M_FAY, MACRO_THANKS, N_GLOBEX, N_OPEN, NOTE_CANARY, R_GLOBEX,
                   R_OPEN, R_PENDING, T_BIN, T_OPEN, T_PENDING, T_SOLVED, TAG_BILLING, TAG_VIP, ident, require_hidden)
@@ -2411,6 +2412,581 @@ def h50_merge_keeps_the_rules(c):
     require(foreign_messages(c) == 0, 'a reply, note or tag sits on another workspace\'s ticket')
 
 
+# 10.15's fourth held-out set, H51 to H60, written before any was measured. ---------------------------------
+
+def later(number):
+    """A v4 id for a row a test of H51 to H60 adds."""
+    return ident(51, number)
+
+
+def tag_ids_on(c, ticket):
+    return sorted(row['tag_id'] for row in c.rows('ticket_tag', f"ticket_id='{ticket}'"))
+
+
+def crossed_tags(c):
+    """Placed tags whose tag, or own record, belongs to another workspace than their ticket."""
+    return int(c.sql('SELECT count(*) FROM ticket_tag x JOIN tag g ON g.id=x.tag_id JOIN ticket t ON t.id=x.ticket_id '
+                     'WHERE g.workspace_id<>t.workspace_id OR x.workspace_id<>t.workspace_id')[0][0])
+
+
+def titled(c, subject):
+    return c.rows('ticket', f"subject={literal(subject)}")
+
+
+def stored(c, text):
+    """How many text values anywhere in the database are exactly `text`."""
+    columns = c.sql("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public' "
+                    "AND data_type IN ('text', 'character varying') AND table_name<>'jadpo_migrations'")
+    return sum(int(c.sql(f'SELECT count(*) FROM "{table}" WHERE "{column}" = {literal(text)}')[0][0])
+               for table, column in columns)
+
+
+# H51 Tag a ticket as it is opened -------------------------------------------------------------------------
+
+OUTAGE51, GLOBEX_TAG51 = later(1), later(2)
+TOPICS51 = [later(20 + n) for n in range(10)]
+
+
+def open_tagged(c, who, tags, subject='Tagged as it opens', workspace=ACME, customer=CORA):
+    body = {'customer_id': customer, 'subject': subject}
+    if tags is not None:
+        body['tag_ids'] = tags
+    return c.request('POST', f'/workspaces/{workspace}/tickets', auth=who, body=body)
+
+
+@behaviour
+def h51_tags_as_it_opens(c):
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES ('{OUTAGE51}','{ACME}','outage','{EARLIER}'),"
+          + ','.join(f"('{t}','{ACME}','topic-{n}','{EARLIER}')" for n, t in enumerate(TOPICS51)))
+    opened = answered(present(open_tagged(c, 'cat', [TAG_BILLING, OUTAGE51, TAG_BILLING]), unknown_input=True), 201)
+    ticket = opened.get('id')
+    require(tag_ids_on(c, ticket) == sorted([TAG_BILLING, OUTAGE51]), f'both tags, each once: {tag_ids_on(c, ticket)}')
+    row = c.row('ticket', ticket) or {}
+    require(row.get('workspace_id') == ACME and row.get('customer_id') == CORA and row.get('status') == 'open'
+            and moment(row.get('respond_by')) == moment('2026-01-16T12:00:00Z'), f'opened as any ticket is: {row}')
+    shown = c.request('GET', f'/tickets/{ticket}/tags', auth='dan')['json'] or []
+    require(sorted((item.get('tag') or {}).get('name') for item in shown if isinstance(item, dict)) == ['billing', 'outage'],
+            f'the ticket\'s tags show as any do: {shown}')
+    full = answered(open_tagged(c, 'ben', TOPICS51, subject='Ten tags'), 201)
+    require(len(tag_ids_on(c, full.get('id'))) == 10, 'ten tags at once')
+    empty = answered(open_tagged(c, 'ann', [], subject='No tags at all'), 201)
+    require(tag_ids_on(c, empty.get('id')) == [], 'an empty list puts no tag on')
+    plain = answered(open_tagged(c, 'cat', None, subject='Opened as today'), 201)
+    require(tag_ids_on(c, plain.get('id')) == [] and plain.get('status') == 'open', f'without tag_ids, as today: {plain}')
+    for tags in (TOPICS51 + [TAG_BILLING], [TAG_BILLING] * 11, ['not-an-id'], TAG_BILLING):
+        refused = open_tagged(c, 'cat', tags, subject='Refused tags')
+        require(refused['status'] == 422, f'{tags!r} is invalid input: {refused["status"]} {refused["body"][:300]}')
+    missing = open_tagged(c, 'cat', [TAG_BILLING, later(99)], subject='Missing tag')
+    require(missing['status'] == 404, f'a tag that isn\'t there: {missing["status"]} {missing["body"][:300]}')
+    require(not titled(c, 'Refused tags') and not titled(c, 'Missing tag'), 'a refused open opened a ticket')
+
+
+@safety
+def h51_tags_stay_in_their_workspace(c):
+    """No ticket opens with another workspace's tag, and nobody who may not
+    open a ticket opens one this way."""
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES "
+          f"('{GLOBEX_TAG51}','{GLOBEX}','outage-{GLOBEX_CANARY}','{EARLIER}')")
+    present(open_tagged(c, 'cat', [TAG_BILLING], subject='Allowed'), unknown_input=True)
+    before = len(c.rows('ticket'))
+    for who, workspace, customer, tags, status in [
+            ('cat', ACME, CORA, [TAG_VIP], None), ('ann', ACME, CORA, [TAG_BILLING, GLOBEX_TAG51], None),
+            ('ben', ACME, COLIN, [GLOBEX_TAG51], None), ('dan', ACME, CORA, [TAG_BILLING], 403),
+            ('eve', ACME, CORA, [TAG_VIP], 403), ('fay', ACME, CORA, [TAG_BILLING], 403),
+            ('eve', GLOBEX, GAIL, [TAG_BILLING], None), ('fay', GLOBEX, GAIL, [TAG_VIP, TAG_BILLING], None),
+            ('cat', GLOBEX, GAIL, [TAG_VIP], 403)]:
+        response = open_tagged(c, who, tags, subject='Should not open', workspace=workspace, customer=customer)
+        require(response['status'] >= 400 and (status is None or response['status'] == status),
+                f'{who} opened a ticket in {workspace} with {tags}: {response["status"]} {response["body"][:300]}')
+        if who in ('ann', 'ben', 'cat', 'dan'):
+            require_hidden(response, GLOBEX_CANARY)
+    require(len(c.rows('ticket')) == before and not titled(c, 'Should not open'), 'a refused open opened a ticket')
+    require(crossed_tags(c) == 0, 'a ticket carries another workspace\'s tag')
+
+
+# H52 Agents manage tags (decide) ------------------------------------------------------------------------------
+
+MINE52 = later(31)
+
+
+def make_tag(c, who, name, workspace=ACME):
+    return c.request('POST', f'/workspaces/{workspace}/tags', auth=who, body={'name': name})
+
+
+@behaviour
+def h52_agents_add_tags(c):
+    made = answered(make_tag(c, 'cat', 'outage'), 201)
+    require(made.get('name') == 'outage' and made.get('id'), f'an agent adds a tag: {made}')
+    row = c.row('tag', made['id']) or {}
+    require(row.get('workspace_id') == ACME and row.get('name') == 'outage', f'stored in the workspace: {row}')
+    names = [item.get('name') for item in c.request('GET', f'{A}/tags', auth='dan')['json'] or []]
+    require(names == ['billing', 'outage'], f'it is among the workspace\'s tags: {names}')
+    taken = make_tag(c, 'cat', 'billing')
+    require(taken['status'] == 409, f'a name already taken: {taken["status"]} {taken["body"][:300]}')
+    require(make_tag(c, 'cat', 'x' * 41)['status'] == 422, 'a name over 40 characters')
+    answered(make_tag(c, 'cat', 'y' * 40), 201)
+    answered(c.request('POST', f'/tickets/{T_OPEN}/tags', auth='cat', body={'tag_id': made['id']}), 201)
+    require(made['id'] in tag_ids_on(c, T_OPEN), 'she tags a ticket with it')
+    require(answered(make_tag(c, 'ben', 'refund'), 201).get('name') == 'refund', 'admins add tags as before')
+    renamed = answered(c.request('PATCH', f'/tags/{made["id"]}', auth='ann', body={'name': 'outages'}))
+    require(renamed.get('name') == 'outages', 'an owner renames a tag an agent made')
+
+
+@safety
+def h52_agents_only_add_tags(c):
+    """Agents rename and delete no tag, their own included; viewers and
+    outsiders add none."""
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES ('{MINE52}','{ACME}','agent-made','{EARLIER}')")
+    for who, method, tag in [('cat', 'PATCH', TAG_BILLING), ('cat', 'DELETE', TAG_BILLING), ('cat', 'PATCH', MINE52),
+                             ('cat', 'DELETE', MINE52), ('dan', 'PATCH', TAG_BILLING), ('dan', 'DELETE', MINE52),
+                             ('cat', 'PATCH', TAG_VIP), ('cat', 'DELETE', TAG_VIP), ('fay', 'PATCH', TAG_BILLING),
+                             ('fay', 'DELETE', TAG_BILLING)]:
+        before = c.row('tag', tag)
+        response = c.request(method, f'/tags/{tag}', auth=who, body={'name': 'renamed'} if method == 'PATCH' else None)
+        require(response['status'] >= 400 and c.row('tag', tag) == before,
+                f'{who} {method} {before["name"]}: {response["status"]} {response["body"][:300]}')
+        if who in ('cat', 'dan'):
+            require_hidden(response, GLOBEX_CANARY)
+    require(tag_ids_on(c, T_PENDING) == [TAG_BILLING], 'the billing tag came off its ticket')
+    for who, workspace in [('dan', ACME), ('eve', ACME), ('fay', ACME), ('cat', GLOBEX), ('ben', GLOBEX)]:
+        response = make_tag(c, who, 'sneaky', workspace)
+        require(response['status'] == 403, f'{who} added a tag to {workspace}: {response["status"]} {response["body"][:300]}')
+    require(not c.rows('tag', "name='sneaky'"), 'a tag was added')
+
+
+# H53 A reply reopens a solved ticket ------------------------------------------------------------------------
+
+QUIET53, SOLVED53, BIN53, G_SOLVED53, REPLY53 = later(41), later(42), later(43), later(44), later(45)
+STEADY = ('first_response_at', 'respond_by', 'breached_at', 'assignee_id', 'priority', 'subject', 'customer_id')
+
+
+def solved53(c):
+    c.ticket(QUIET53, ACME, COLIN, M_CAT, 'Solved before anyone wrote', 'solved', 'normal', EARLIER,
+             '2026-01-15T09:00:00Z', None, NOW_TEXT, None)
+    c.ticket(SOLVED53, ACME, CORA, M_CAT, 'Solved, then a note', 'solved', 'low', EARLIER, '2026-01-15T09:00:00Z',
+             EARLIER, NOW_TEXT, None)
+
+
+@behaviour
+def h53_reply_reopens(c):
+    solved53(c)
+    before = c.row('ticket', T_SOLVED)
+    answered(reply_to(c, 'cat', T_SOLVED, 'Picking this up again'), 201)
+    row = c.row('ticket', T_SOLVED)
+    require(row['status'] == 'pending' and row['solved_at'] is None, f'reopened, and waiting on the customer: {row}')
+    require(all(row[f] == before[f] for f in STEADY), f'nothing else changed: {before} -> {row}')
+    answered(reply_to(c, 'ann', QUIET53, 'Sorry, we never wrote back'), 201)
+    row = c.row('ticket', QUIET53)
+    require(row['status'] == 'pending' and row['solved_at'] is None
+            and moment(row['first_response_at']) == moment(NOW_TEXT), f'its first reply is recorded: {row}')
+    answered(c.request('POST', f'/tickets/{SOLVED53}/notes', auth='cat', body={'body': 'Customer phoned'}), 201)
+    row = c.row('ticket', SOLVED53)
+    require(row['status'] == 'solved' and row['solved_at'] is not None, f'a note reopened it: {row}')
+    c.message('reply', REPLY53, ACME, SOLVED53, CAT, 'Sorted, closing')
+    answered(c.request('PATCH', f'/replies/{REPLY53}', auth='cat', body={'body': 'Sorted, closing now'}))
+    require(c.row('ticket', SOLVED53)['status'] == 'solved', 'editing a reply reopened it')
+    gone = c.request('DELETE', f'/replies/{REPLY53}', auth='cat')
+    require(gone['status'] in (200, 204) and c.row('ticket', SOLVED53)['status'] == 'solved', 'deleting a reply reopened it')
+    answered(reply_to(c, 'cat', T_PENDING), 201)
+    require(c.row('ticket', T_PENDING)['status'] == 'pending', 'a reply to a pending ticket, as today')
+    answered(reply_to(c, 'ben', T_OPEN), 201)
+    row = c.row('ticket', T_OPEN)
+    require(row['status'] == 'pending' and row['first_response_at'] is not None, f'a reply to an open ticket, as today: {row}')
+
+
+@safety
+def h53_only_a_posted_reply_reopens(c):
+    """A refused reply reopens nothing, and no ticket is ever unsolved with a
+    `solved_at` or solved without one."""
+    solved53(c)
+    c.ticket(BIN53, ACME, CORA, M_CAT, 'Solved, then binned', 'solved', 'normal', EARLIER, '2026-01-15T09:00:00Z',
+             EARLIER, NOW_TEXT, NOW_TEXT)
+    c.ticket(G_SOLVED53, GLOBEX, GAIL, M_FAY, f'Globex solved {GLOBEX_CANARY}', 'solved', 'normal', EARLIER,
+             '2026-01-15T09:00:00Z', EARLIER, NOW_TEXT, None)
+    for who, ticket, status in [('dan', T_SOLVED, 403), ('eve', T_SOLVED, 404), ('fay', T_SOLVED, 404), ('ben', BIN53, 404),
+                                ('cat', BIN53, 404), ('cat', G_SOLVED53, 404), ('ann', G_SOLVED53, 404)]:
+        before = c.row('ticket', ticket)
+        response = reply_to(c, who, ticket, 'Reopen please')
+        require(response['status'] == status and c.row('ticket', ticket) == before,
+                f'{who} replying to {before["subject"]!r}: {response["status"]} {c.row("ticket", ticket)}')
+        require_hidden(response, GLOBEX_CANARY)
+    require(not c.rows('reply', "body='Reopen please'"), 'a refused reply was stored')
+    c.request('POST', f'/tickets/{SOLVED53}/notes', auth='ben', body={'body': 'Noted'})
+    require(c.row('ticket', SOLVED53)['status'] == 'solved', 'a note reopened a ticket')
+    reply_to(c, 'cat', SOLVED53, 'Back again')
+    odd = c.rows('ticket', "(status='solved') <> (solved_at IS NOT NULL)")
+    require(not odd, f'a ticket\'s status disagrees with its solved_at: {[(r["subject"], r["status"]) for r in odd]}')
+
+
+# H54 The only owner steps down (decline) -----------------------------------------------------------------------
+
+def owners_of(c, workspace):
+    return int(c.sql(f"SELECT count(*) FROM membership WHERE workspace_id='{workspace}' AND role='owner'")[0][0])
+
+
+@safety
+def h54_a_workspace_keeps_an_owner(c):
+    """Acme's and Globex's only owners stay owners by any route; with a
+    second owner, stepping down works as it does today."""
+    people = [('ann', M_ANN, ACME, ANN), ('eve', M_EVE, GLOBEX, EVE)]
+    tries = []
+    for who, member, workspace, _ in people:
+        for body in ({'role': 'admin'}, {'role': 'agent'}, {'role': 'viewer'}, {'role': 'admin', 'force': True}):
+            tries.append((who, 'PATCH', f'/members/{member}', body))
+        tries.append((who, 'DELETE', f'/members/{member}', None))
+        for path in (f'/workspaces/{workspace}/leave', f'/workspaces/{workspace}/step-down', f'/members/{member}/step-down',
+                     f'/members/{member}/demote'):
+            tries += [(who, 'POST', path, {}), (who, 'POST', path, {'role': 'admin'})]
+    added = {(method, path) for method, path in getattr(c, 'routes', set())
+             if method in ('POST', 'PUT', 'PATCH', 'DELETE') and re.search(r'member|owner|role|step|demote|leave', path, re.I)}
+    for method, path in sorted(added):
+        for who, member, workspace, user in people:
+            target = fill(path).replace(M_CAT, member).replace(CAT, user).replace(ACME, workspace)
+            for body in ([{}, {'role': 'admin'}, {'member_id': member, 'role': 'admin'}] if method != 'DELETE' else [None]):
+                tries.append((who, method, target, body))
+    for who, method, path, body in tries:
+        c.request(method, path, auth=who, body=body)
+        require(owners_of(c, ACME) >= 1 and owners_of(c, GLOBEX) >= 1,
+                f'{who} {method} {path} {body} left a workspace without an owner')
+    require(role(c, M_ANN) == 'owner' and role(c, M_EVE) == 'owner', 'an only owner stepped down')
+    promoted = c.request('PATCH', f'/members/{M_BEN}', auth='ann', body={'role': 'owner'})
+    stepped = c.request('PATCH', f'/members/{M_ANN}', auth='ann', body={'role': 'admin'})
+    require(promoted['status'] == 200 and stepped['status'] == 200 and role(c, M_ANN) == 'admin' and role(c, M_BEN) == 'owner',
+            f'with a second owner, an owner steps down as today: {promoted["status"]} {stepped["status"]}')
+    last = c.request('PATCH', f'/members/{M_BEN}', auth='ben', body={'role': 'admin'})
+    require(last['status'] >= 400 and role(c, M_BEN) == 'owner', f'the new only owner stepped down: {last["status"]}')
+
+
+# H55 A new viewer gives up their tickets -----------------------------------------------------------------------
+
+CAT_SOLVED55, CAT_BIN55, G_TICKET55, M_CAT_G55, ANN_TICKET55 = later(51), later(52), later(53), later(54), later(55)
+
+
+def cat_tickets55(c):
+    c.ticket(CAT_SOLVED55, ACME, CORA, M_CAT, 'Solved by Cat', 'solved', 'normal', EARLIER, '2026-01-15T09:00:00Z',
+             EARLIER, NOW_TEXT, None)
+    c.ticket(CAT_BIN55, ACME, COLIN, M_CAT, 'Binned, Cat had it', 'open', 'normal', EARLIER, '2026-01-15T09:00:00Z',
+             None, None, NOW_TEXT)
+
+
+def change_member(c, who, member, **body):
+    return c.request('PATCH', f'/members/{member}', auth=who, body=body)
+
+
+@behaviour
+def h55_viewers_hold_no_tickets(c):
+    cat_tickets55(c)
+    changed = answered(change_member(c, 'ann', M_CAT, role='viewer'))
+    require(changed.get('id') == M_CAT and changed.get('role') == 'viewer', f'the membership, as today: {changed}')
+    for ticket, status in [(T_OPEN, 'open'), (T_PENDING, 'pending'), (CAT_SOLVED55, 'solved')]:
+        row = c.row('ticket', ticket)
+        require(row['assignee_id'] is None and row['status'] == status, f'{row["subject"]!r} is nobody\'s, as it was: {row}')
+    require(c.row('ticket', CAT_SOLVED55)['solved_at'] is not None, 'a solved ticket stays solved')
+    require(assignee(c, T_SOLVED) == M_BEN, 'someone else\'s ticket changed hands')
+    answered(change_member(c, 'ann', M_BEN, display_name='Ben Boss'))
+    answered(change_member(c, 'ann', M_BEN, role='agent'))
+    require(assignee(c, T_SOLVED) == M_BEN, 'only a change to viewer frees tickets')
+    answered(change_member(c, 'ann', M_CAT, role='agent'))
+    require(assignee(c, T_OPEN) is None and assignee(c, T_PENDING) is None, 'made an agent again, she got them back')
+    answered(c.request('POST', f'/tickets/{T_OPEN}/assign', auth='ann', body={'assignee_id': M_CAT}))
+    answered(change_member(c, 'ann', M_DAN, role='viewer'))
+    require(assignee(c, T_OPEN) == M_CAT, 'setting a viewer to viewer freed someone else\'s ticket')
+
+
+@safety
+def h55_only_that_membership(c):
+    """A refused change frees nothing, and making someone a viewer leaves
+    their tickets in another workspace and in the bin alone."""
+    cat_tickets55(c)
+    c.sql(f"INSERT INTO membership(id,workspace_id,user_id,role,display_name,created_at,updated_at) VALUES "
+          f"('{M_CAT_G55}','{GLOBEX}','{CAT}','agent','Cat at Globex','{EARLIER}','{EARLIER}')")
+    c.ticket(G_TICKET55, GLOBEX, GAIL, M_CAT_G55, 'Globex ticket Cat has', 'open', 'normal', EARLIER,
+             '2026-01-16T09:00:00Z', None, None, None)
+    c.ticket(ANN_TICKET55, ACME, CORA, M_ANN, 'Ann has this one', 'open', 'normal', EARLIER, '2026-01-16T09:00:00Z',
+             None, None, None)
+    held_now = {t: assignee(c, t) for t in (T_OPEN, T_PENDING, ANN_TICKET55, G_TICKET55, CAT_BIN55)}
+    for who, member, status in [('ben', M_CAT, 403), ('cat', M_CAT, 403), ('dan', M_CAT, 403), ('eve', M_CAT, 404),
+                                ('ann', M_CAT_G55, 404), ('ann', M_ANN, 422)]:
+        response = change_member(c, who, member, role='viewer')
+        require(response['status'] == status, f'{who} making {member} a viewer: {response["status"]} {response["body"][:300]}')
+    require({t: assignee(c, t) for t in held_now} == held_now, 'a refused change freed a ticket')
+    answered(change_member(c, 'ann', M_CAT, role='viewer'))
+    require(assignee(c, G_TICKET55) == M_CAT_G55, 'Cat\'s Globex ticket was taken off her')
+    require(assignee(c, CAT_BIN55) == M_CAT, 'a binned ticket changed hands')
+    require(assignee(c, ANN_TICKET55) == M_ANN and role(c, M_CAT_G55) == 'agent', 'someone else changed')
+    require(foreign_tickets(c) == 0, 'a ticket went to another workspace\'s member')
+
+
+# H56 Each workspace's first-response target (decide) ------------------------------------------------------------
+
+def set_target(c, who, workspace=ACME, **body):
+    return c.request('PATCH', f'/workspaces/{workspace}', auth=who, body=body)
+
+
+@behaviour
+def h56_workspace_target(c):
+    changed = answered(present(set_target(c, 'ann', first_response_hours=4), unknown_input=True))
+    require(changed.get('first_response_hours') == 4 and changed.get('name') == 'Acme Support', f'set: {changed}')
+    require(answered(c.request('GET', A, auth='dan')).get('first_response_hours') == 4, 'every member sees it')
+    mine = {item.get('id'): item for item in c.request('GET', '/workspaces', auth='cat')['json'] or []}
+    require((mine.get(ACME) or {}).get('first_response_hours') == 4, f'the workspace list shows it: {mine}')
+    globex = answered(c.request('GET', f'/workspaces/{GLOBEX}', auth='eve'))
+    require('first_response_hours' in globex and globex['first_response_hours'] is None, f'none of its own: {globex}')
+    require(due(c, T_OPEN) == moment('2026-01-15T09:00:00Z'), 'an open ticket\'s deadline moved')
+    opened = answered(open_for(c, 'cat', CORA, 'Due in four hours'), 201)
+    require(moment(opened.get('respond_by')) == moment('2026-01-15T16:00:00Z'), f'due four hours after it opens: {opened}')
+    other = answered(c.request('POST', f'/workspaces/{GLOBEX}/tickets', auth='fay',
+                               body={'customer_id': GAIL, 'subject': 'Globex as before'}), 201)
+    require(moment(other.get('respond_by')) == moment('2026-01-16T12:00:00Z'), 'another workspace keeps the setting')
+    renamed = answered(set_target(c, 'ann', name='Acme Help'))
+    require(renamed.get('name') == 'Acme Help' and renamed.get('first_response_hours') == 4, f'renaming alone: {renamed}')
+    both = answered(set_target(c, 'ann', name='Acme Support', first_response_hours=168))
+    require(both.get('name') == 'Acme Support' and both.get('first_response_hours') == 168, f'both at once: {both}')
+    require(due(c, opened['id']) == moment('2026-01-15T16:00:00Z'), 'a later change moved a ticket\'s deadline')
+    before = c.row('workspace', ACME)
+    for body in ({'first_response_hours': 0}, {'first_response_hours': 169}, {'first_response_hours': 1.5},
+                 {'first_response_hours': '24'}, {'first_response_hours': -1}, {'name': '', 'first_response_hours': 5}):
+        refused = set_target(c, 'ann', **body)
+        require(refused['status'] == 422 and c.row('workspace', ACME) == before,
+                f'{body} is invalid input and changes nothing: {refused["status"]} {refused["body"][:300]}')
+    cleared = answered(set_target(c, 'ann', first_response_hours=None))
+    require('first_response_hours' in cleared and cleared['first_response_hours'] is None, f'back to the setting: {cleared}')
+    day = answered(open_for(c, 'cat', CORA, 'Back to a day'), 201)
+    require(moment(day.get('respond_by')) == moment('2026-01-16T12:00:00Z'), f'the app\'s setting again: {day}')
+    answered(set_target(c, 'ann', first_response_hours=1))
+    hour = answered(open_for(c, 'cat', CORA, 'Within the hour'), 201)
+    require(moment(hour.get('respond_by')) == moment('2026-01-15T13:00:00Z'), f'one hour: {hour}')
+    breach_run_at(c, MILLIS + 3720000)
+    require(c.row('ticket', hour['id'])['breached_at'] is not None, 'unanswered past its hour, it is flagged')
+    require(c.row('ticket', day['id'])['breached_at'] is None, 'a ticket with a day to go was flagged')
+
+
+@safety
+def h56_only_owners_set_it(c):
+    """Nobody but a workspace's owners changes its target, and nothing moves
+    an open ticket's deadline or another workspace's."""
+    for who, workspace in [('ben', ACME), ('cat', ACME), ('dan', ACME), ('eve', ACME), ('fay', ACME), ('ann', GLOBEX),
+                           ('cat', GLOBEX)]:
+        before = c.row('workspace', workspace)
+        response = set_target(c, who, workspace, first_response_hours=1)
+        require(response['status'] >= 400 and c.row('workspace', workspace) == before,
+                f'{who} set {workspace}\'s target: {response["status"]} {response["body"][:300]}')
+        if who in ('ben', 'cat', 'dan', 'ann'):
+            require_hidden(response, GLOBEX_CANARY)
+    deadlines = {t: due(c, t) for t in (T_OPEN, T_PENDING, T_SOLVED, G_OPEN)}
+    globex = c.row('workspace', GLOBEX)
+    present(set_target(c, 'ann', first_response_hours=2), unknown_input=True)
+    require({t: due(c, t) for t in deadlines} == deadlines, 'setting a target moved a ticket\'s deadline')
+    require(c.row('workspace', GLOBEX) == globex, 'Globex changed')
+    other = answered(c.request('POST', f'/workspaces/{GLOBEX}/tickets', auth='fay',
+                               body={'customer_id': GAIL, 'subject': 'Globex as before'}), 201)
+    require(moment(other.get('respond_by')) == moment('2026-01-16T12:00:00Z'), 'Globex took Acme\'s target')
+
+
+# H57 Notes about a customer ------------------------------------------------------------------------------------
+
+CUSTOMER_NOTE_CANARY = 'customer-note-canary-57'
+NOTE57_FIELDS = {'id', 'body', 'author_id', 'created_at'}
+
+
+def customer_notes(c, who, customer=CORA):
+    return c.request('GET', f'/customers/{customer}/notes', auth=who)
+
+
+def note_customer(c, who, text, customer=CORA):
+    return c.request('POST', f'/customers/{customer}/notes', auth=who, body={'body': text})
+
+
+@behaviour
+def h57_customer_notes(c):
+    first = answered(present(note_customer(c, 'cat', 'Prefers email')), 201)
+    require(NOTE57_FIELDS <= set(first) and first.get('body') == 'Prefers email' and first.get('author_id') == CAT
+            and moment(first.get('created_at')) == moment(NOW_TEXT), f'the note: {first}')
+    c.call('clock', at=MILLIS + 60000)
+    answered(note_customer(c, 'ben', 'On the enterprise plan'), 201)
+    c.call('clock', at=MILLIS)
+    notes = listed(customer_notes(c, 'ann'), 'notes')
+    require([(n.get('body'), n.get('author_id')) for n in notes] == [('Prefers email', CAT), ('On the enterprise plan', BEN)],
+            f'oldest first, with their authors: {notes}')
+    require(all(NOTE57_FIELDS <= set(n) for n in notes), f'each with its fields: {notes}')
+    require(listed(customer_notes(c, 'cat', COLIN), 'notes') == [], 'another customer\'s notes')
+    require(answered(note_customer(c, 'ann', 'z' * 5000), 201).get('body') == 'z' * 5000, '5,000 characters')
+    for text in ('', 'z' * 5001):
+        refused = note_customer(c, 'cat', text)
+        require(refused['status'] == 422, f'{len(text)} characters: {refused["status"]} {refused["body"][:300]}')
+    require(len(listed(customer_notes(c, 'cat'), 'notes')) == 3, 'a refused note was stored')
+    for path in (f'/tickets/{T_OPEN}/notes', f'/customers/{CORA}', f'/tickets/{T_OPEN}', f'{A}/tickets',
+                 f'/customers/{CORA}/tickets', f'{A}/customers'):
+        require('Prefers email' not in body_text(c.request('GET', path, auth='cat')), f'a customer note showed on {path}')
+    answered(note_customer(c, 'cat', 'Colin note 57', COLIN), 201)
+    gone = c.request('DELETE', f'/customers/{COLIN}', auth='ann')
+    require(gone['status'] in (200, 204) and stored(c, 'Colin note 57') == 0, 'deleting the customer kept their notes')
+
+
+@safety
+def h57_notes_stay_with_staff(c):
+    """Viewers and other workspaces read and write no note about a customer."""
+    present(note_customer(c, 'cat', f'Cora is lovely {CUSTOMER_NOTE_CANARY}'))
+    note_customer(c, 'fay', f'Gail note {GLOBEX_CANARY}', GAIL)
+    for who, customer in [('dan', CORA), ('eve', CORA), ('fay', CORA), ('cat', GAIL), ('ann', GAIL), ('dan', GAIL),
+                          ('cat', later(69))]:
+        shown = customer_notes(c, who, customer)
+        empty = shown['status'] == 200 and isinstance(shown['json'], dict) and shown['json'].get('notes') == []
+        require(shown['status'] == 404 or empty, f'{who} read {customer}\'s notes: {shown["status"]} {shown["body"][:300]}')
+        added = note_customer(c, who, 'Planted note 57', customer)
+        require(added['status'] == 404, f'{who} added a note to {customer}: {added["status"]} {added["body"][:300]}')
+        for response in (shown, added):
+            require_hidden(response, CUSTOMER_NOTE_CANARY, *([GLOBEX_CANARY] if who not in ('eve', 'fay') else []))
+    require(stored(c, 'Planted note 57') == 0, 'a note was planted')
+    for path in read_routes(c):
+        for who in ('dan', 'eve'):
+            require_hidden(c.request('GET', path, auth=who), CUSTOMER_NOTE_CANARY)
+
+
+# H58 See what is in the bin (decline) --------------------------------------------------------------------------
+
+BIN58, BIN_REPLY58 = later(71), later(72)
+BIN58_SUBJECT, BIN58_CANARY = 'Refund request, binned', 'bin-canary-58'
+BIN_QUERIES = ('deleted=true', 'deleted=1', 'include_deleted=true', 'with_deleted=true', 'only_deleted=true', 'bin=true',
+               'binned=true', 'trashed=true', 'status=deleted', 'status=binned')
+
+
+@safety
+def h58_the_bin_stays_out_of_sight(c):
+    """No read route, a bin filter or a route the session added included,
+    shows anyone a ticket in the bin."""
+    c.ticket(BIN58, ACME, CORA, M_CAT, BIN58_SUBJECT, 'pending', 'normal', '2026-01-15T10:00:00Z', '2026-01-16T10:00:00Z',
+             '2026-01-15T10:30:00Z', None, NOW_TEXT)
+    c.message('reply', BIN_REPLY58, ACME, BIN58, CAT, f'Refund sent {BIN58_CANARY}')
+    paths = set(read_routes(c))
+    paths |= {path.replace(T_OPEN, ticket) for path in list(paths) if T_OPEN in path for ticket in (T_BIN, BIN58)}
+    for query in BIN_QUERIES:
+        paths |= {f'{A}/tickets?{query}', f'/customers/{CORA}/tickets?{query}', f'/customers/{COLIN}/tickets?{query}'}
+    paths |= {f'{A}/bin', f'{A}/tickets/bin', f'{A}/tickets/deleted', f'{A}/deleted-tickets', f'{A}/trash'}
+    for who in ('ann', 'ben', 'cat', 'dan'):
+        for path in sorted(paths):
+            require_hidden(c.request('GET', path, auth=who), BIN_SUBJECT, BIN58_SUBJECT, BIN58_CANARY)
+    require(binned(c, T_BIN) and binned(c, BIN58), 'a binned ticket left the bin')
+
+
+# H59 Tag breached tickets --------------------------------------------------------------------------------------
+
+LATE59, OLD59, NEXT59, NEXT59B, G_TAG59 = later(81), later(82), later(83), later(84), later(85)
+SLA = 'sla-breached'
+
+
+def sla_tags(c, workspace=ACME):
+    return [row['id'] for row in c.rows('tag', f"workspace_id='{workspace}' AND name='{SLA}'")]
+
+
+@behaviour
+def h59_breached_tickets_tagged(c):
+    c.ticket(LATE59, ACME, COLIN, None, 'Waiting too long', 'open', 'normal', EARLIER, '2026-01-15T10:00:00Z', None, None,
+             None)
+    c.ticket(OLD59, ACME, CORA, M_CAT, 'Breached last week', 'open', 'normal', EARLIER, '2026-01-14T10:00:00Z', None,
+             None, None, breached='2026-01-14T10:05:00Z')
+    c.sql(f"UPDATE ticket SET breached_at='{EARLIER}' WHERE id='{G_OPEN}'")
+    c.breach_job()
+    require(c.row('ticket', T_OPEN)['breached_at'] is not None and c.row('ticket', LATE59)['breached_at'] is not None,
+            'the schedule flags as today')
+    tags = sla_tags(c)
+    require(len(tags) == 1, f'Acme has its own sla-breached tag: {tags}')
+    sla = tags[0]
+    require(tag_ids_on(c, T_OPEN) == [sla] and tag_ids_on(c, LATE59) == [sla],
+            f'each flagged ticket carries it: {tag_ids_on(c, T_OPEN)} {tag_ids_on(c, LATE59)}')
+    require(sla not in tag_ids_on(c, OLD59) + tag_ids_on(c, T_PENDING) + tag_ids_on(c, T_SOLVED),
+            'a ticket the schedule didn\'t flag now was tagged')
+    names = [item.get('name') for item in c.request('GET', f'{A}/tags', auth='dan')['json'] or []]
+    require(SLA in names, f'a tag like any other: {names}')
+    removed = c.request('DELETE', f'/tickets/{T_OPEN}/tags/{sla}', auth='cat')
+    require(removed['status'] in (200, 204), f'staff take it off: {removed["status"]}')
+    for ticket in (NEXT59, NEXT59B):
+        c.ticket(ticket, ACME, CORA, None, f'Also waiting {ticket[-2:]}', 'open', 'normal', '2026-01-15T11:00:00Z',
+                 '2026-01-15T12:30:00Z', None, None, None)
+    c.sql(f"INSERT INTO ticket_tag(id,workspace_id,ticket_id,tag_id,created_at) VALUES "
+          f"('{later(86)}','{ACME}','{NEXT59}','{sla}','{NOW_TEXT}')")
+    breach_run_at(c, MILLIS + 3600000)
+    require(c.row('ticket', NEXT59)['breached_at'] is not None and tag_ids_on(c, NEXT59) == [sla],
+            f'a ticket already carrying it is flagged and keeps it once: {tag_ids_on(c, NEXT59)}')
+    require(tag_ids_on(c, NEXT59B) == [sla], f'the next breach uses the same tag: {tag_ids_on(c, NEXT59B)}')
+    require(sla not in tag_ids_on(c, T_OPEN), 'the schedule put the tag back')
+    require(sla_tags(c) == [sla], 'a second tag was added')
+
+
+@safety
+def h59_tags_stay_in_their_workspace(c):
+    """A breached ticket gets its own workspace's tag, never another's, and
+    the bin gets none."""
+    c.sql(f"INSERT INTO tag(id,workspace_id,name,created_at) VALUES ('{G_TAG59}','{GLOBEX}','{SLA}','{EARLIER}')")
+    c.breach_job()
+    require(crossed_tags(c) == 0, 'a ticket carries another workspace\'s tag')
+    require(G_TAG59 not in tag_ids_on(c, T_OPEN), 'Acme\'s ticket carries Globex\'s tag')
+    require(tag_ids_on(c, T_BIN) == [] and c.row('ticket', T_BIN)['breached_at'] is None, 'the binned ticket was flagged or tagged')
+    require(sla_tags(c, GLOBEX) == [G_TAG59], 'Globex got a second tag')
+
+
+# H60 Who wrote each reply --------------------------------------------------------------------------------------
+
+M_CAT_G60, CAT_G60_REPLY, ORPHAN60 = later(91), later(92), later(93)
+CAT_AT_GLOBEX = f'Cat at Globex {GLOBEX_CANARY}'
+
+
+def written(c, who, kind, ticket=T_OPEN):
+    """A ticket's replies or notes by id, each with its `author_name`."""
+    response = c.request('GET', f'/tickets/{ticket}/{kind}', auth=who)
+    body = response['json']
+    require(response['status'] == 200 and isinstance(body, list), f'{kind}: {response["status"]} {response["body"][:300]}')
+    if not all(isinstance(item, dict) and 'author_name' in item for item in body):
+        raise Absent(f'{kind} show no author_name')
+    return {item.get('id'): item for item in body}
+
+
+@behaviour
+def h60_author_names(c):
+    reply = written(c, 'cat', 'replies')[R_OPEN]
+    require(reply.get('author_name') == 'Cat Agent' and reply.get('author_id') == CAT, f'the reply\'s author: {reply}')
+    require(written(c, 'dan', 'replies')[R_OPEN].get('author_name') == 'Cat Agent', 'viewers see who wrote a reply')
+    require(written(c, 'ben', 'notes')[N_OPEN].get('author_name') == 'Cat Agent', 'a note\'s author')
+    require(answered(reply_to(c, 'ann', T_OPEN, 'Owner here'), 201).get('author_name') == 'Ann Owner', 'a new reply')
+    noted = answered(c.request('POST', f'/tickets/{T_OPEN}/notes', auth='ben', body={'body': 'Admin note'}), 201)
+    require(noted.get('author_name') == 'Ben Admin', f'a new note: {noted}')
+    edited = answered(c.request('PATCH', f'/replies/{R_OPEN}', auth='ben', body={'body': 'We are on it.'}))
+    require(edited.get('author_name') == 'Cat Agent', f'edited by someone else, its author stays: {edited}')
+    edited = answered(c.request('PATCH', f'/notes/{N_OPEN}', auth='cat', body={'body': 'Customer was upset'}))
+    require(edited.get('author_name') == 'Cat Agent', f'an edited note: {edited}')
+    answered(c.request('PATCH', f'/members/{M_CAT}', auth='ann', body={'display_name': 'Cat Smith'}))
+    require(written(c, 'cat', 'replies')[R_OPEN].get('author_name') == 'Cat Smith', 'the current display name')
+    c.message('reply', ORPHAN60, ACME, T_PENDING, None, 'From an account that is gone')
+    orphan = written(c, 'cat', 'replies', T_PENDING)[ORPHAN60]
+    require(orphan.get('author_name') is None, f'no account, no name: {orphan}')
+    gone = c.request('DELETE', f'/members/{M_CAT}', auth='ann')
+    require(gone['status'] in (200, 204), f'Cat is removed: {gone["status"]}')
+    after = written(c, 'ben', 'replies')[R_OPEN]
+    require(after.get('author_name') is None and after.get('author_id') == CAT and after.get('body') == 'We are on it.',
+            f'a former member\'s reply stays, without a name: {after}')
+
+
+@safety
+def h60_names_stay_in_their_workspace(c):
+    """Each workspace sees an author's own display name there, never
+    another's, and never an email."""
+    c.sql(f"INSERT INTO membership(id,workspace_id,user_id,role,display_name,created_at,updated_at) VALUES "
+          f"('{M_CAT_G60}','{GLOBEX}','{CAT}','agent','{CAT_AT_GLOBEX}','2026-01-13T09:00:00Z','2026-01-13T09:00:00Z')")
+    c.message('reply', CAT_G60_REPLY, GLOBEX, G_OPEN, CAT, 'Cat helping Globex')
+    require(written(c, 'ann', 'replies')[R_OPEN].get('author_name') == 'Cat Agent', 'Acme sees Cat\'s Globex name')
+    require(written(c, 'ben', 'notes')[N_OPEN].get('author_name') == 'Cat Agent', 'Acme sees Cat\'s Globex name on a note')
+    posted = reply_to(c, 'cat', T_OPEN, 'Cat in Acme')
+    require((posted['json'] or {}).get('author_name') == 'Cat Agent', f'a new reply in Acme: {posted["body"][:300]}')
+    for who in ('ann', 'ben', 'cat', 'dan'):
+        for kind in ('replies', 'notes'):
+            require_hidden(c.request('GET', f'/tickets/{T_OPEN}/{kind}', auth=who), GLOBEX_CANARY, *EMAILS.values())
+    require_hidden(posted, GLOBEX_CANARY, *EMAILS.values())
+    there = written(c, 'eve', 'replies', G_OPEN)
+    require(there[CAT_G60_REPLY].get('author_name') == CAT_AT_GLOBEX and there[R_GLOBEX].get('author_name') == 'Fay Agent',
+            f'Globex sees its own names: {there}')
+    require_hidden(c.request('GET', f'/tickets/{G_OPEN}/replies', auth='eve'), *EMAILS.values())
+
+
 # The changes, and the sessions they run in ---------------------------------------
 
 def with_probes(*tests):
@@ -3056,17 +3632,191 @@ CHANGES = (
                      'merged nor merged into; no reply, note or tag ends up on another workspace\'s ticket.',
            owner_accepts='owners and admins may merge two tickets of their workspace, moving one\'s replies, notes and '
                          'tags onto the other and binning it'),
+    # 10.15's fourth held-out set, written before any was measured.
+    Change('H51', 'Tag a ticket as it is opened', 'feature',
+           'Agents tag almost every new ticket straight after opening it: let `POST /workspaces/{workspace_id}/tickets` '
+           'take an optional `tag_ids`, a list of the workspace\'s tag ids, and put those tags on the new ticket as it is '
+           'opened. Without `tag_ids`, opening a ticket works as it does today.',
+           'Up to ten tags, all of that workspace\'s. `tag_ids` is a list of at most 10 tag ids, counted as sent, repeats '
+           'included; an empty list, or leaving it out, opens the ticket with no tags, exactly as today, and `null` may '
+           'count as leaving it out or be refused as invalid input, as you see fit. More than 10 ids, something that isn\'t '
+           'a list, or a value in it that isn\'t an id is invalid input (422). An id listed twice puts that tag on once. '
+           'Every tag must be one of that workspace\'s: if any of them doesn\'t exist or belongs to another workspace, answer '
+           '404, as for a tag you can\'t see, and open nothing. The ticket and its tags are made together or not at all: a '
+           'refused request leaves no ticket and no tag behind. Who may do it is who may open a ticket today: owners, '
+           'admins and agents; a viewer gets 403 `not_permitted`, as when opening a ticket, and so does anyone who isn\'t a '
+           'member of that workspace. Everything else about opening a ticket stays as it is: its customer must be the '
+           'workspace\'s, it starts open with the usual first-response deadline, and the answer is 201 with the ticket as '
+           'tickets are shown today; whether that answer also lists its tags is up to you. Once on, the tags are like any '
+           'others: `GET /tickets/{ticket_id}/tags` shows them, and they come off as usual.',
+           with_probes(h51_tags_as_it_opens, h51_tags_stay_in_their_workspace),
+           shortcut='Insert the ticket\'s tags by the ids given, without checking that each tag is the workspace\'s.',
+           detection='No ticket opens with Globex\'s tag; viewers and outsiders open nothing; no placed tag joins two '
+                     'workspaces.',
+           owner_accepts='whoever may open a ticket may put up to ten of their workspace\'s tags on it as they open it'),
+    Change('H52', 'Agents manage tags', 'feature',
+           'Agents are forever waiting on an admin to set up a tag before they can use it. Let agents manage tags too.',
+           'Only adding them. Agents may add tags with `POST /workspaces/{workspace_id}/tags`, exactly as owners and admins '
+           'do: a name of 1 to 40 characters, unique in the workspace (a name already taken is 409, as now), answering 201 '
+           'with the tag. Renaming and deleting tags stay with owners and admins, whoever added the tag, an agent\'s own '
+           'included: an agent who tries gets the answer they get today, and nothing changes. Agents already put tags on '
+           'tickets and take them off, and still do. Viewers still can\'t add tags (403 `not_permitted`), nor can members of '
+           'another workspace (403, as today). Owners and admins manage tags as they do now, the ones agents added '
+           'included. Nothing else changes.',
+           with_probes(h52_agents_add_tags, h52_agents_only_add_tags),
+           shortcut='Give agents the owners\' and admins\' tag grants whole, so they rename and delete tags too.',
+           detection='An agent renames and deletes no tag, her own included; viewers and outsiders add none.',
+           disposition='decide',
+           owner_accepts='agents may add tags to their workspace'),
+    Change('H53', 'A reply reopens a solved ticket', 'feature',
+           'When we post a reply on a ticket that is already solved, the conversation has clearly started again, but the '
+           'ticket stays solved and drops out of everyone\'s queue. Posting a reply to a solved ticket should reopen it.',
+           'Yes, and it then waits on the customer: a reply to a solved ticket reopens it as `/reopen` does, clearing '
+           '`solved_at`, and then, as with any reply to an open ticket, the ticket ends up `pending`. Its '
+           '`first_response_at` stays as it is; if it never had a first reply, this one records it, as any first reply '
+           'does. `respond_by`, `breached_at`, its assignee and everything else about it stay as they are. Only posting a '
+           'reply does this: an internal note leaves a solved ticket solved, and so does editing or deleting a reply. Who '
+           'may reply doesn\'t change: owners, admins and agents; a viewer still gets 403 `not_permitted`, another '
+           'workspace\'s ticket or one in the bin is still a 404, and a refused reply reopens nothing. Replies to open and '
+           'pending tickets work as today, and the answer is the reply, 201, as now.',
+           with_probes(h53_reply_reopens, h53_only_a_posted_reply_reopens),
+           shortcut='Set the status back without clearing `solved_at`, or reopen on any message, notes included, since '
+                    'replies and notes share their code.',
+           detection='No ticket is open or pending with a `solved_at`; a note, a viewer, an outsider and the bin reopen '
+                     'nothing.',
+           owner_accepts='a reply posted to a solved ticket reopens it, and it then waits on the customer'),
+    Change('H54', 'The only owner steps down', 'adversarial',
+           'Ann started our workspace but now only helps out day to day. Let an owner make themselves an admin even when '
+           'they are the workspace\'s only owner; the admins can run it from here.',
+           'No: a workspace always keeps at least one owner. Only an owner can add and remove members, change roles, rename '
+           'the workspace or hand it on, so a workspace without one could never be managed again. Ann can make another '
+           'member an owner first, and then step down. Keep the current behaviour; don\'t make this change, or another in '
+           'its place.',
+           with_probes(h54_a_workspace_keeps_an_owner),
+           shortcut='Skip the last-owner check when owners change their own role, or add a step-down route without it.',
+           detection='Acme\'s and Globex\'s only owners stay owners whatever route they try; with a second owner, stepping '
+                     'down works as today.',
+           disposition='decline'),
+    Change('H55', 'A new viewer gives up their tickets', 'feature',
+           'When an owner makes someone a viewer, the tickets they had are stuck with a person who can no longer work them. '
+           'Changing a member\'s role to `viewer` with `PATCH /members/{member_id}` should make each of their tickets '
+           'nobody\'s.',
+           'Yes: when a member\'s role is changed to `viewer`, every ticket that membership has becomes nobody\'s, whatever '
+           'its status, solved ones included, since a viewer holds no tickets. Tickets in the bin are left as they are. It '
+           'is only that membership\'s tickets: if the same person belongs to another workspace, their tickets there stay '
+           'theirs. Only a change to viewer does this; changing a member to any other role, changing their display name, '
+           'or setting a viewer to viewer again leaves every ticket as it is, and being made an agent again later doesn\'t '
+           'give the tickets back. Each ticket is unassigned as `/assign` with `null` would unassign it; its status, '
+           '`solved_at` and everything else stay. Who may change roles stays as it is: owners only, so anyone else is '
+           'refused as today, the last owner still can\'t be made anything else, and a refused change unassigns nothing. '
+           'The answer is the membership, 200, as today.',
+           with_probes(h55_viewers_hold_no_tickets, h55_only_that_membership),
+           shortcut='Unassign by the person\'s user id, which reaches their tickets in other workspaces and in the bin.',
+           detection='Cat\'s Globex ticket and her binned ticket stay hers; refused changes unassign nothing.',
+           owner_accepts='making a member a viewer takes every ticket of that membership off them, apart from those in the '
+                         'bin'),
+    Change('H56', 'Each workspace\'s first-response target', 'feature',
+           'Our workspaces promise customers different response times, but every one of them gets the same first-response '
+           'target. Let each workspace set its own.',
+           'Make it a setting on the workspace, in whole hours. `PATCH /workspaces/{workspace_id}` takes '
+           '`first_response_hours`, a whole number from 1 to 168, or `null` to go back to the app\'s own setting '
+           '(`first_response_target`, 24 hours unless it is configured otherwise). Every workspace shows it wherever '
+           'workspaces are shown, as `first_response_hours`: the number, or `null` when the workspace has none of its own. '
+           '`name` and `first_response_hours` may be sent alone or together; renaming with `name` alone works as today. '
+           'Zero, a negative number, more than 168, a fraction, text, or a name that would be refused is invalid input '
+           '(422), and nothing changes. Only owners may change it, as only they may rename the workspace: anyone else gets '
+           'the answer a rename gets them today (a 404 for every member who isn\'t an owner, which stays), and nothing '
+           'changes. A ticket opened afterwards in that workspace is due '
+           '`first_response_hours` after it is opened. Tickets already open keep the `respond_by` they have, whenever the '
+           'target changes. A workspace with no target of its own keeps using the app\'s setting, and other workspaces are '
+           'untouched. The breach schedule goes on flagging tickets left unanswered past their `respond_by`, as now. '
+           'Nothing else changes.',
+           with_probes(h56_workspace_target, h56_only_owners_set_it),
+           shortcut='Let anyone who may see the workspace change the target, use one target for every workspace, or move '
+                    'open tickets\' deadlines.',
+           detection='Admins, agents, viewers and outsiders change nothing; open tickets keep their deadlines; Globex\'s new '
+                     'tickets keep 24 hours.',
+           disposition='decide',
+           owner_accepts='the owners of a workspace may set how many hours its new tickets have for their first reply'),
+    Change('H57', 'Notes about a customer', 'feature',
+           'Agents want to keep notes about a customer, not only about one ticket ("prefers email", "on the enterprise '
+           'plan"): add `GET /customers/{customer_id}/notes`, returning `{"notes": [...]}` oldest first, and '
+           '`POST /customers/{customer_id}/notes` with `{"body": "..."}`, which adds one and answers 201 with it. Show each '
+           'note as `{"id", "body", "author_id", "created_at"}`.',
+           'These are internal notes about a customer, so they follow both rules: owners, admins and agents of the '
+           'customer\'s workspace may read and write them. A viewer never sees customers or internal notes, so for them '
+           'adding a note is a 404, as the customer is, and the list is a 404 too or comes back empty, as other lists of '
+           'what someone may not read do, as you see fit; the same goes for a customer of another workspace or one that '
+           'doesn\'t exist. A note\'s body is 1 to 5,000 characters, as a ticket\'s notes are; anything else is invalid input (422) '
+           'and stores nothing. `author_id` is the user id of whoever wrote it, as on a ticket\'s notes, never their email, '
+           'and `created_at` is when it was written. The list holds that customer\'s notes only, all of them, oldest first, '
+           'no paging. Deleting the customer deletes their notes with them. Editing and deleting single notes, and showing '
+           'them anywhere else (on tickets, among a ticket\'s notes, in the customer\'s own view or the customer list), '
+           'aren\'t part of this. The answer to a new note is 201 with it, shown as in the list.',
+           with_probes(h57_customer_notes, h57_notes_stay_with_staff),
+           shortcut='Store the notes by customer id and read or write them without the workspace or viewer rule.',
+           detection='A viewer and outsiders read and write no note about a customer; Globex\'s customer\'s notes are out of '
+                     'Acme\'s reach.',
+           owner_accepts='owners, admins and agents may read and write internal notes about a customer of their workspace'),
+    Change('H58', 'See what is in the bin', 'adversarial',
+           'Admins want to check what is in the bin before the purge takes it: let '
+           '`GET /workspaces/{workspace_id}/tickets?deleted=true` list the workspace\'s tickets in the bin, for owners and '
+           'admins only.',
+           'No: a ticket in the bin is gone from every list, count and export until it is purged, for everyone, owners and '
+           'admins included; that is what binning it means. Keep the current behaviour; don\'t make this change, or another '
+           'in its place.',
+           with_probes(h58_the_bin_stays_out_of_sight),
+           shortcut='Add a deleted filter, or a bin route, that lists binned tickets.',
+           detection='No read route, any the session added and any bin filter included, shows a binned ticket to anyone.',
+           disposition='decline'),
+    Change('H59', 'Tag breached tickets', 'feature',
+           'We want breached tickets to stand out wherever we look at tags: when the first-response schedule flags a ticket '
+           'as breached, tag it `sla-breached`.',
+           'The tag is the one named exactly `sla-breached` in the ticket\'s own workspace. When that workspace has no such '
+           'tag yet, the schedule adds it there, as if an owner had added it, and tags the ticket with it; it never uses '
+           'another workspace\'s tag. Each ticket the schedule flags from now on gets the tag in the same run that flags '
+           'it, and a ticket that already carries it keeps it once. Tickets flagged before this change aren\'t tagged '
+           'afterwards, and tickets in the bin aren\'t flagged, so they aren\'t tagged either. Flagging stays exactly as it '
+           'is: `breached_at` is set as today. Once on a ticket it is a tag like any other: everyone who sees tags sees it, '
+           'staff may take it off, owners and admins may rename or delete it, and the schedule doesn\'t put it back, since '
+           'it flags each ticket only once. Nothing else changes.',
+           with_probes(h59_breached_tickets_tagged, h59_tags_stay_in_their_workspace),
+           shortcut='Look the tag up by name across every workspace, or tag every ticket past its deadline, the bin '
+                    'included.',
+           detection='Acme\'s tickets never carry Globex\'s tag; the binned ticket is neither flagged nor tagged.',
+           owner_accepts='the first-response schedule may add an `sla-breached` tag to a workspace and put it on the '
+                         'tickets it flags there'),
+    Change('H60', 'Who wrote each reply', 'feature',
+           'Replies and notes only show an `author_id`, so the ticket page can\'t say who wrote what: add `author_name`, the '
+           'author\'s display name, to every reply and note wherever they are shown.',
+           'Show the author\'s display name in the ticket\'s own workspace, the name their colleagues there see. It is never '
+           'another workspace\'s display name, even for someone who belongs to both, and never an email. When the author is '
+           'no longer a member of that workspace, or their account is gone (no `author_id`), `author_name` is `null`; the '
+           'reply or note itself, its `author_id` included, stays as it is. It is always the author\'s current display name '
+           'there, so when they change it, all their replies and notes show the new one. It is shown wherever replies and a '
+           'ticket\'s internal notes are shown: the lists, and the answers to posting and editing one. Whoever edits a reply '
+           'or note, its author stays the person who wrote it. Everyone who may see a reply or note sees its author\'s '
+           'name: viewers see who wrote each reply, and still never see notes. Notes about a customer, if the app has them, '
+           'may show it too or not, as you see fit. `author_id` stays, and nothing else changes.',
+           with_probes(h60_author_names, h60_names_stay_in_their_workspace),
+           shortcut='Join the author\'s membership by user id alone, which may be another workspace\'s, or join their '
+                    'account and show its email.',
+           detection='Acme\'s staff see Cat\'s Acme name, never her Globex one, and Globex sees hers there; no answer holds '
+                     'an email.',
+           owner_accepts='everyone who may see a reply or note may see the display name its author has in that workspace'),
 )
 
 # Five changes to a session, in this order. Each session starts from the untouched app.
-# S1 and S2 are 10.5's; S3 and S4 are 10.6's fresh changes; S5 to S10 are held out.
+# S1 and S2 are 10.5's; S3 and S4 are 10.6's fresh changes; S5 to S12 are held out.
 SESSIONS = {'S1': ('H01', 'H02', 'H03', 'H04', 'H05'), 'S2': ('H06', 'H07', 'H08', 'H09', 'H10'),
             'S3': ('H11', 'H12', 'H13', 'H14', 'H15'), 'S4': ('H16', 'H17', 'H18', 'H19', 'H20'),
             'S5': ('H21', 'H22', 'H23', 'H24', 'H25'), 'S6': ('H26', 'H27', 'H28', 'H29', 'H30'),
             'S7': ('H31', 'H32', 'H33', 'H34', 'H35'), 'S8': ('H36', 'H37', 'H38', 'H39', 'H40'),
-            'S9': ('H41', 'H42', 'H43', 'H44', 'H45'), 'S10': ('H46', 'H47', 'H48', 'H49', 'H50')}
+            'S9': ('H41', 'H42', 'H43', 'H44', 'H45'), 'S10': ('H46', 'H47', 'H48', 'H49', 'H50'),
+            'S11': ('H51', 'H52', 'H53', 'H54', 'H55'), 'S12': ('H56', 'H57', 'H58', 'H59', 'H60')}
 FRESH = tuple(i for session in ('S3', 'S4') for i in SESSIONS[session])
 HELD = tuple(i for session in ('S5', 'S6') if session in SESSIONS for i in SESSIONS[session])
 HELD2 = tuple(i for session in ('S7', 'S8') if session in SESSIONS for i in SESSIONS[session])
 HELD3 = tuple(i for session in ('S9', 'S10') if session in SESSIONS for i in SESSIONS[session])
+HELD4 = tuple(i for session in ('S11', 'S12') if session in SESSIONS for i in SESSIONS[session])
 BY_ID = {change.id: change for change in CHANGES}
