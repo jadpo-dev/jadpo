@@ -192,6 +192,22 @@ fn by_id(reached: &Reached) -> bool {
         .is_some_and(|way| way.len() == 1 && way[0].is_empty())
 }
 
+/// The entity the action `key` is declared to return one record of,
+/// itself or `none` (chunk 10.13).
+fn returned_entity(flow: &Flow<'_>, key: &Key) -> Option<String> {
+    let mut ty = &crate::types::callables(flow.db, flow.project)
+        .plain
+        .get(key.name())?
+        .result;
+    while let crate::types::Ty::Nullable(inner) = ty {
+        ty = inner;
+    }
+    let crate::types::Ty::Named(name) = ty else {
+        return None;
+    };
+    flow.entities.get(name).is_some().then(|| name.clone())
+}
+
 /// `src` as the caller who reached it as `reached` holds it.
 fn as_held_by(src: &Src, reached: &Reached) -> Src {
     match src {
@@ -2816,9 +2832,16 @@ impl Walk<'_> {
                 }
                 self.query(flow, site, key)
             }
-            Callee::Action(key) | Callee::Function(key) => {
-                self.called(flow, site, key, args, &provs, true)
+            // A record an action returns is one it read, created or
+            // changed under the same caller, in the same transaction: one
+            // record each time the call runs, as a `get` here would be
+            // (area 9, "Tenant proof across actions"; chunk 10.13).
+            Callee::Action(key) => {
+                let returned = returned_entity(flow, key)
+                    .and_then(|entity| Some((self.mint(site)?, entity)));
+                self.called(flow, site, key, args, &provs, true, returned)
             }
+            Callee::Function(key) => self.called(flow, site, key, args, &provs, true, None),
             Callee::Caller(kind) => Prov::of(Src::Caller(*kind)),
             // How many there are shows only what decided which were kept.
             Callee::Std(Op::ListCount) => Prov {
@@ -3070,7 +3093,7 @@ impl Walk<'_> {
                 live: live.clone(),
                 tenant: tenant.clone(),
             });
-            self.called(flow, call.site, &call.key, &call.args, &provs, false);
+            self.called(flow, call.site, &call.key, &call.args, &provs, false, None);
             self.run = outer;
             let summary = flow.summary(&call.key);
             let inner = Prov {
@@ -3114,7 +3137,7 @@ impl Walk<'_> {
                 tenant,
             });
             let was = std::mem::replace(&mut self.summary, true);
-            self.called(flow, call.site, &call.key, &call.args, &provs, false);
+            self.called(flow, call.site, &call.key, &call.args, &provs, false, None);
             self.summary = was;
             self.run = outer;
             // Whether `finished:`'s action fails decides the run's state.
@@ -3237,6 +3260,7 @@ impl Walk<'_> {
     /// terms, and, when it runs `here` rather than in a batch's run
     /// later, what it shows its caller and whether it fails; gives its
     /// result.
+    #[allow(clippy::too_many_arguments)]
     fn called(
         &mut self,
         flow: &Flow<'_>,
@@ -3245,6 +3269,7 @@ impl Walk<'_> {
         args: &[Option<SiteId>],
         provs: &[Prov],
         here: bool,
+        returned: Option<(u32, String)>,
     ) -> Prov {
         let summary = flow.summary(key);
         if here && self.report {
@@ -3306,11 +3331,26 @@ impl Walk<'_> {
             let fails = decide(&fails.substitute(provs));
             self.may_fail(flow, site, &fails);
         }
-        summary
-            .returns
-            .retold(&|src| loosened(src, &loose))
-            .substitute(provs)
+        let mut returns = summary.returns.retold(&|src| loosened(src, &loose));
+        // The record it returns, of the entity it is declared to return,
+        // is the one this call gives; what it was handed is the caller's
+        // own, substituted below.
+        if let Some((origin, entity)) = &returned {
+            for src in &mut returns.whole {
+                if let Src::Record {
+                    entity: of,
+                    origin: at @ None,
+                    ..
+                } = src
+                    && of == entity
+                {
+                    *at = Some(*origin);
+                }
+            }
+        }
+        returns.substitute(provs)
     }
+
 
     /// Whether the expression at `site` is made only of parameters: a
     /// parameter, a part of one, or a standard operation given only such
