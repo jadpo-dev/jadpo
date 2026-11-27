@@ -2365,10 +2365,9 @@ pub async fn session(
         (SessionOp::Tokens | SessionOp::BrowserSessions | SessionOp::Keys, [holder]) => {
             identity::issued(ctx, plan, identity::Held::of(op), holder, at).await
         }
-        (
-            SessionOp::RevokeToken | SessionOp::RevokeBrowserSession | SessionOp::RevokeKey,
-            [id],
-        ) => identity::revoke(ctx, plan, identity::Held::of(op), id, at).await,
+        (SessionOp::RevokeToken | SessionOp::RevokeBrowserSession | SessionOp::RevokeKey, [id]) => {
+            identity::revoke(ctx, plan, identity::Held::of(op), id, at).await
+        }
         // The webhooks entity's addresses (area 16, "Outgoing webhooks";
         // chunk C1b), boxed so this frame stays small.
         (SessionOp::RegisterWebhook, _) => {

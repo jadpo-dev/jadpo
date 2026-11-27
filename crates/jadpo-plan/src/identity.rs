@@ -50,8 +50,13 @@ impl Planner<'_> {
             gated.tokens = self.gated(entity, Effect::Read, 2, &holder, statements::tokens);
             gated.revoke_token =
                 self.gated(entity, Effect::Update, 1, &holder, statements::revoke_token);
-            gated.browser_sessions =
-                self.gated(entity, Effect::Read, 2, &holder, statements::browser_sessions);
+            gated.browser_sessions = self.gated(
+                entity,
+                Effect::Read,
+                2,
+                &holder,
+                statements::browser_sessions,
+            );
             gated.revoke_browser_session = self.gated(
                 entity,
                 Effect::Update,

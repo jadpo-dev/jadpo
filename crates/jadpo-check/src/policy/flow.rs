@@ -2837,8 +2837,8 @@ impl Walk<'_> {
             // record each time the call runs, as a `get` here would be
             // (area 9, "Tenant proof across actions"; chunk 10.13).
             Callee::Action(key) => {
-                let returned = returned_entity(flow, key)
-                    .and_then(|entity| Some((self.mint(site)?, entity)));
+                let returned =
+                    returned_entity(flow, key).and_then(|entity| Some((self.mint(site)?, entity)));
                 self.called(flow, site, key, args, &provs, true, returned)
             }
             Callee::Function(key) => self.called(flow, site, key, args, &provs, true, None),
@@ -3350,7 +3350,6 @@ impl Walk<'_> {
         }
         returns.substitute(provs)
     }
-
 
     /// Whether the expression at `site` is made only of parameters: a
     /// parameter, a part of one, or a standard operation given only such

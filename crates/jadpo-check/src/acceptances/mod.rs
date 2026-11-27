@@ -889,7 +889,8 @@ fn unmatched(
         before.described, before.why
     ));
     let next = if uncompared.is_empty() {
-        "Remove the entry, or run `jadpo acceptance new <purpose>` to list what this change needs".to_string()
+        "Remove the entry, or run `jadpo acceptance new <purpose>` to list what this change needs"
+            .to_string()
     } else {
         reason.push_str(&format!(
             " While other errors stand, {} aren't compared, so a change in them isn't seen yet.",

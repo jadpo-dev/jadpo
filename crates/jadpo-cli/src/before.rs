@@ -56,7 +56,11 @@ fn default_branch(top: &Path) -> Option<(String, String, String)> {
             &["symbolic-ref", "-q", &format!("refs/remotes/{remote}/HEAD")],
         ) {
             let short = head.rsplit('/').next().unwrap_or("main").to_string();
-            return Some((head, short, format!("the default branch {remote}'s `HEAD` names")));
+            return Some((
+                head,
+                short,
+                format!("the default branch {remote}'s `HEAD` names"),
+            ));
         }
         for name in ["main", "master"] {
             let candidate = format!("refs/remotes/{remote}/{name}");
