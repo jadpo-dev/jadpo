@@ -11,7 +11,6 @@ use jadpo_diag::{Diagnostic, nearest, rule};
 use jadpo_term::{Block, ColorChoice, Fact, Json, Outcome, Screen};
 use jadpo_test::{Options, Ran, TestKind};
 
-
 use crate::fmt::project_not_found;
 use crate::interactive::InteractiveArgs;
 use crate::run::{Call, Reply, Session, either, quoted};
@@ -200,8 +199,7 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
             Reply::Failed(problem) => (Json::Null, vec![*problem], BTreeMap::new()),
             _ => (Json::Null, Vec::new(), BTreeMap::new()),
         };
-        let conformed =
-            crate::package_conform::conformed_from(suite.capability.clone(), &data);
+        let conformed = crate::package_conform::conformed_from(suite.capability.clone(), &data);
         let conforms = conformed.conforms && problems.is_empty();
         for problem in &problems {
             screen.push(Block::diagnostic_from(problem, &frames, None));
@@ -234,7 +232,8 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
     if took >= std::time::Duration::from_millis(100)
         && let Some(last) = facts.last_mut()
     {
-        last.text.push_str(&format!(" in {:.1} s", took.as_secs_f64()));
+        last.text
+            .push_str(&format!(" in {:.1} s", took.as_secs_f64()));
     }
     let problems = !found.uncovered.is_empty() || suites.iter().any(|(_, _, ok)| !ok);
     let footer = if failed > 0 {
@@ -244,8 +243,7 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
         Block::summary(Outcome::Failure, "contract run failed", facts)
             .with_plain_headline("test failed")
     } else if cases == 0 {
-        Block::summary(Outcome::Success, "contract run passed", facts)
-            .with_plain_headline("tested")
+        Block::summary(Outcome::Success, "contract run passed", facts).with_plain_headline("tested")
     } else {
         Block::summary(Outcome::Success, format!("{passed} passed"), facts)
             .with_plain_headline("tested")
@@ -280,10 +278,16 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
                             *value = (*conforms).into();
                         }
                     }
-                    entries.insert(0, ("package".to_string(), Json::from(suite.package.as_str())));
+                    entries.insert(
+                        0,
+                        ("package".to_string(), Json::from(suite.package.as_str())),
+                    );
                     entries.insert(
                         1,
-                        ("connection".to_string(), Json::from(suite.connection.as_str())),
+                        (
+                            "connection".to_string(),
+                            Json::from(suite.connection.as_str()),
+                        ),
                     );
                     entries.push(("against".to_string(), Json::from("live")));
                 }

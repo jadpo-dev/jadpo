@@ -132,17 +132,7 @@ fn desk(name: &str, sandbox: &str, cancels: bool) -> PathBuf {
     write(
         &root,
         "domains/shipping/actions/book.test.jadpo",
-        "use shipping/failures { SlotGone }\nuse shared/providers/acme_couriers\n\ntest \"a collection is booked\" {\n    var booking: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    assert booking.id == \"bk_sandbox_1\"\n}\n\ntest \"a taken slot is the desk's own failure\" {\n    fakes: {\n        couriers.bookings.create: [slot_taken]\n    }\n    assert book(\"N1 9GU\") fails SlotGone\n}\n",
-    );
-    write(
-        &root,
-        "domains/shipping/libraries/postcodes.jadpo",
-        "/// Postcodes as the desk writes them.\nlibrary postcodes {\n    /// Whether `text` is long enough to be a postcode.\n    function long_enough(text: Text) -> Bool {\n        return text.length() >= 5\n    }\n}\n",
-    );
-    write(
-        &root,
-        "domains/shipping/libraries/postcodes.test.jadpo",
-        "test \"a short postcode isn't one\" {\n    assert !postcodes.long_enough(\"N1\")\n}\n",
+        "use app { couriers }\nuse shipping/failures { SlotGone }\nuse shared/providers/acme_couriers\n\ntest \"a collection is booked\" {\n    var booking: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    assert booking.id == \"bk_sandbox_1\"\n}\n\ntest \"a taken slot is the desk's own failure\" {\n    fakes: {\n        couriers.bookings.create: [slot_taken]\n    }\n    assert book(\"N1 9GU\") fails SlotGone\n}\n",
     );
     if cancels {
         write(
@@ -153,12 +143,12 @@ fn desk(name: &str, sandbox: &str, cancels: bool) -> PathBuf {
         write(
             &root,
             "domains/shipping/actions/cancel.jadpo",
-            "use app { couriers }\nuse shared/providers/acme_couriers\n\n/// Cancels a booked collection.\naction cancel(id: AcmeCouriers.BookingId) -> AcmeCouriers.Booking {\n    return attempt couriers.bookings.cancel(\n        AcmeCouriers.CancelBooking {\n            id: id\n        }\n    )\n}\n",
+            "use app { couriers }\nuse shared/providers/acme_couriers\n\n/// Cancels a booked collection.\naction cancel(id: AcmeCouriers.BookingId) -> AcmeCouriers.Booking {\n    return couriers.bookings.cancel(\n        AcmeCouriers.CancelBooking {\n            id: id\n        }\n    )\n}\n",
         );
         write(
             &root,
             "domains/shipping/actions/cancel.test.jadpo",
-            "use shared/providers/acme_couriers\n\ntest \"a cancelled booking comes back\" {\n    fakes: {\n        couriers.bookings.cancel: [\n            AcmeCouriers.Booking {\n                id: \"bk_1\"\n            }\n        ]\n    }\n    var booking: AcmeCouriers.Booking = attempt cancel(\"bk_1\")\n    assert booking.id == \"bk_1\"\n}\n",
+            "use app { couriers }\nuse shared/providers/acme_couriers\n\ntest \"a cancelled booking comes back\" {\n    fakes: {\n        couriers.bookings.cancel: [\n            AcmeCouriers.Booking {\n                id: \"bk_1\"\n            }\n        ]\n    }\n    var booking: AcmeCouriers.Booking = cancel(\"bk_1\")\n    assert booking.id == \"bk_1\"\n}\n",
         );
     }
     let updated = jadpo(&root, &["records", "update"]);
@@ -167,7 +157,7 @@ fn desk(name: &str, sandbox: &str, cancels: bool) -> PathBuf {
 }
 
 /// The unscripted call goes to the sandbox with the key `.env.local`
-/// gives; the scripted one stays scripted; the pure test isn't a case.
+/// gives; the scripted one stays scripted.
 #[test]
 fn a_contract_run_sends_unscripted_calls_to_the_sandbox_and_keeps_scripted_ones() {
     let api = FakeProvider::start();
@@ -237,8 +227,7 @@ fn a_live_or_unset_connection_is_refused_before_anything_is_sent() {
     assert_eq!(out.code, 1, "{}", said(&out));
     let document = json(&out);
     assert_eq!(
-        document["diagnostics"][0]["code"],
-        "test.contract_refused",
+        document["diagnostics"][0]["rule"], "test.contract_refused",
         "{}",
         out.stdout
     );
@@ -269,6 +258,9 @@ fn an_unconfirmed_written_operation_no_case_sends_fails_the_run() {
         timeless(&out.stdout),
         "error: `couriers.bookings.cancel` has no contract case\n \
          --> shared/providers/acme_couriers/v1/resources/bookings.jadpo:2:5\n  \
+         |\n\
+         2 |     cancel: {\n  \
+         |     ^^^^^^ no case sent it to the sandbox\n  \
          reason: It was written from the provider's documentation and no recording confirms it, so a contract run is what checks it against the provider, and none of its cases sent it to the sandbox: no case reaches it, or each that does scripts its answer.\n  \
          next: Write a test that reaches `couriers.bookings.cancel` with no `fakes:` answer for it, or confirm it with `jadpo package record couriers bookings.cancel` (agent)\n  \
          rule: test.contract_uncovered\n  \

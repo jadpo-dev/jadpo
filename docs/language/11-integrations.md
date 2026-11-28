@@ -6663,6 +6663,9 @@ One that leaves an operation unchecked names it:
 $ jadpo test --kind contract
 ✗ error  `couriers.bookings.cancel` has no contract case
   --> shared/providers/acme_couriers/v1/resources/bookings.jadpo:2:5
+   │
+ 2 │     cancel: {
+   │     ^^^^^^ no case sent it to the sandbox
   reason  It was written from the provider's documentation and no recording confirms
           it, so a contract run is what checks it against the provider, and none of
           its cases sent it to the sandbox: no case reaches it, or each that does

@@ -111,6 +111,7 @@ action track_parcel(lookup: AcmeCouriers.ParcelLookup) -> AcmeCouriers.Parcel {
 domains/shipping/actions/track_parcel.test.jadpo:
 
 ```jadpo check project=e-contract-uncovered file=domains/shipping/actions/track_parcel.test.jadpo
+use app { couriers }
 use shared/providers/acme_couriers
 
 test "a delivered parcel says so" {
@@ -138,6 +139,17 @@ jadpo test --kind contract
 ```
 
 ```text output
+error: `couriers.parcels.get` has no contract case
+ --> shared/providers/acme_couriers/v1/resources/parcels.jadpo:2:5
+  |
+2 |     get: {
+  |     ^^^ no case sent it to the sandbox
+  reason: It was written from the provider's documentation and no recording confirms it, so a contract run is what checks it against the provider, and none of its cases sent it to the sandbox: no case reaches it, or each that does scripts its answer.
+  next: Write a test that reaches `couriers.parcels.get` with no `fakes:` answer for it, or confirm it with `jadpo package record couriers parcels.get` (agent)
+  rule: test.contract_uncovered
+  help: https://jadpo.dev/docs/errors/test.contract_uncovered
+
+test failed: contract run failed, 1 contract case, 1 operation with no case
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can
@@ -251,6 +263,7 @@ action track_parcel(lookup: AcmeCouriers.ParcelLookup) -> AcmeCouriers.Parcel {
 ```
 
 ```jadpo check project=e-contract-uncovered-fixed file=domains/shipping/actions/track_parcel.test.jadpo hidden
+use app { couriers }
 use shared/providers/acme_couriers
 
 test "a delivered parcel says so" {

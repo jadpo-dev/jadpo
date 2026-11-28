@@ -131,6 +131,13 @@ jadpo test --kind contract
 ```
 
 ```text output
+error: `couriers` has nothing set for the provider's sandbox
+  reason: A contract run sends its cases' calls through `couriers` to the provider's sandbox, with the settings `jadpo dev` reads, and nothing sets `COURIERS_API_KEY`, so only a stand-in would be sent.
+  next: Set `COURIERS_API_KEY` in `.env.local`, or in the job's environment, for the sandbox, then run it again (human)
+  rule: test.contract_refused
+  help: https://jadpo.dev/docs/errors/test.contract_refused
+
+tests not run: 1 error, 9 files
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
@@ -146,6 +153,13 @@ jadpo test --kind contract
 ```
 
 ```text output
+error: `couriers`'s environment is live
+  reason: A contract run sends its cases' calls to the provider's sandbox, never its live API, and `COURIERS_ENVIRONMENT` chooses `live`.
+  next: Set `COURIERS_ENVIRONMENT` to `sandbox` for the run, then run it again (human)
+  rule: test.contract_refused
+  help: https://jadpo.dev/docs/errors/test.contract_refused
+
+tests not run: 1 error, 9 files
 ```
 
 ## How to fix it
