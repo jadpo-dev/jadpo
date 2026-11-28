@@ -117,6 +117,29 @@ pub struct Once<'a> {
     /// records its plan makes and the erasure it runs, in place of running
     /// `callable`, which is then not a test's.
     pub erasing: Option<&'a str>,
+    /// For a contract run's case (area 13, "Kinds of test"; chunk K4c),
+    /// where its unscripted provider calls go; `None` for every other run,
+    /// whose provider calls the package's fake answers.
+    pub sandbox: Option<&'a Sandbox>,
+}
+
+/// Where a contract run's case sends the provider calls its `fakes:`
+/// doesn't script (area 11, "Tests and fakes"; chunk K4c): the
+/// connections' real driver, to the provider's sandbox, and the settings
+/// read from the environment as `jadpo dev` reads them, which a test's own
+/// `config:` doesn't change. Each call sent there is kept by its name.
+pub struct Sandbox {
+    pub driver: Rc<dyn Capability>,
+    pub settings: Vec<u32>,
+    pub sent: Rc<std::cell::RefCell<std::collections::BTreeSet<String>>>,
+}
+
+impl std::fmt::Debug for Sandbox {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sandbox")
+            .field("settings", &self.settings)
+            .finish_non_exhaustive()
+    }
 }
 
 /// One request a generated test sends (area 13, "Tests generated for each route"),
@@ -183,12 +206,22 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         Some(models) => Faked::new(host).with(models, Rc::clone(&ai) as Rc<dyn Capability>),
         None => Faked::new(host),
     };
+    // A contract run's case sends what its `fakes:` doesn't script to the
+    // sandbox (chunk K4c).
+    let answering: Rc<dyn Capability> = match once.sandbox {
+        Some(sandbox) => Rc::new(crate::fakes::ToSandbox::new(
+            Rc::clone(&fake),
+            Rc::clone(&sandbox.driver),
+            Rc::clone(&sandbox.sent),
+        )),
+        None => Rc::clone(&fake) as Rc<dyn Capability>,
+    };
     let faked = plan
         .provider_connections()
         .into_iter()
         .filter(|connection| Some(*connection) != mail)
         .fold(faked, |faked, connection| {
-            faked.with(connection, Rc::clone(&fake) as Rc<dyn Capability>)
+            faked.with(connection, Rc::clone(&answering))
         });
     let faked = match &once.record {
         Some(record) => faked.with_record(Rc::clone(record)),
@@ -201,7 +234,13 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     // Q10).
     let faked = faked.with_records(plan.redis_connections());
     let mut ctx = Ctx::of(executor, &faked, env(plan, once.key, once.callable));
-    ctx.set_settings(plan.test_settings(once.callable));
+    // A contract run's connections keep the settings the environment
+    // gave them, whatever the test's own `config:` says (chunk K4c).
+    let mut settings = plan.test_settings(once.callable);
+    if let Some(sandbox) = once.sandbox {
+        settings.retain(|(at, _)| !sandbox.settings.contains(at));
+    }
+    ctx.set_settings(settings);
     ctx.set_test_flags(plan.test_flags(once.callable));
     // The paths its bodies take are kept with the rest of its record
     // (chunk 9.3).

@@ -72,6 +72,10 @@ pub struct Called {
     pub operation: String,
     /// Whether `recordings/<operation>.json` confirms it.
     pub confirmed: bool,
+    /// Whether it was written from the provider's documentation,
+    /// `source: PackageSource.written`, so a contract run needs a case for
+    /// it while it is unconfirmed (chunk K4c).
+    pub written: bool,
 }
 
 /// The calls out through a connection each non-test file's bodies make:
@@ -131,16 +135,17 @@ pub fn review(db: &dyn Db, project: Project) -> Vec<ProviderReview> {
         for connection in connections.iter().filter(|c| c.folder == *folder) {
             for (_, operation) in calls.iter().filter(|(c, _)| *c == connection.name) {
                 let recording = format!("{folder}/recordings/{operation}.json");
+                let found = operation
+                    .split_once('.')
+                    .and_then(|(resource, name)| operations.find(folder, resource, name));
                 called.push(Called {
                     call: format!("{}.{operation}", connection.name),
                     connection: connection.name.clone(),
                     operation: operation.clone(),
                     confirmed: recordings.contains(recording.as_str()),
+                    written: found.is_some_and(|found| found.written),
                 });
-                let Some((resource, name)) = operation.split_once('.') else {
-                    continue;
-                };
-                if let Some(found) = operations.find(folder, resource, name) {
+                if let Some(found) = found {
                     starts.extend(found.input.iter().map(|(ty, _)| ty.clone()));
                     starts.push(found.output.clone());
                     starts.extend(found.decode.iter().map(|(ty, _)| ty.clone()));

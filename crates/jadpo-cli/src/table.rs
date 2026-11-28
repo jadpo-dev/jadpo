@@ -243,6 +243,10 @@ pub const KINDS: &[Value] = &[
         name: "recording",
         description: "Each recording of the app's own integrations, read by its decoders",
     },
+    Value {
+        name: "contract",
+        description: "The tests that reach a provider, their unscripted calls sent to its sandbox",
+    },
 ];
 
 pub static COMMANDS: &[Command] = &[
@@ -316,7 +320,12 @@ pub static COMMANDS: &[Command] = &[
                       grouped by domain and file with each one's last result, to search, run and read \
                       failures in; it needs a terminal. \
                       Every recording of the app's own integrations in shared/providers/ is read by its \
-                      operation's decoders as a test of its own.",
+                      operation's decoders as a test of its own. --kind contract runs the tests that \
+                      reach a provider operation with each call their fakes: doesn't script sent \
+                      through its connection to the provider's sandbox, the connection's settings read \
+                      as jadpo dev reads them, and each of the app's own integrations' conformance \
+                      suites through --live; it fails when no case sends an unconfirmed operation \
+                      written from the provider's documentation, and never calls a live API.",
         arguments: &[Argument {
             name: "path",
             description: "A test file, <file>:<line>, or a folder",
@@ -399,6 +408,10 @@ pub static COMMANDS: &[Command] = &[
                 command: "jadpo test --interactive",
             },
             Example {
+                description: "Run the tests that reach a provider against its sandbox, as a scheduled job does",
+                command: "jadpo test --kind contract",
+            },
+            Example {
                 description: "Print the results as data for tools",
                 command: "jadpo test --json",
             },
@@ -413,6 +426,10 @@ pub static COMMANDS: &[Command] = &[
             &rule::TEST_NO_TESTS,
             &rule::TEST_RUNTIME_START_FAILED,
             &rule::TEST_DATABASE_UNAVAILABLE,
+            &rule::TEST_CONTRACT_REFUSED,
+            &rule::TEST_CONTRACT_UNCOVERED,
+            &rule::CONFORM_FAILED,
+            &rule::CONFORM_REFUSED,
             &rule::MIGRATION_APPLY_FAILED,
             &rule::MIGRATION_EXTENSION_MISSING,
             &rule::MIGRATION_EXTENSION_OUTDATED,
