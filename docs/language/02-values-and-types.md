@@ -90,9 +90,9 @@ type CakeCount = Int {
     max: 500
 }
 
-/// A ledger's balance in pence, past what a JavaScript number holds
+/// A till's takings in pence, past what a JavaScript number holds
 /// exactly, so it is sent as a string.
-type LedgerBalance = Int {
+type TakingsPence = Int {
     min: 0
     max: 9000000000000000000
 }
@@ -100,7 +100,7 @@ type LedgerBalance = Int {
 /// One line of an order, as a till sends it.
 type TillLine = Input {
     cakes: CakeCount
-    balance: LedgerBalance
+    takings: TakingsPence
 }
 
 type TillText = Text {}
@@ -121,12 +121,12 @@ function till_line(sent: TillText) fails NotALine -> TillLine {
 ```jadpo check project=int-forms file=main.test.jadpo
 test "an Int is read in the form Jadpo writes it" {
     var line: TillLine = attempt till_line(
-        "{\"cakes\": 24, \"balance\": \"9007199254740993\"}"
+        "{\"cakes\": 24, \"takings\": \"9007199254740993\"}"
     )
     assert line.cakes == 24
-    assert line.balance == 9007199254740993
-    assert till_line("{\"cakes\": \"24\", \"balance\": \"9007199254740993\"}") fails NotALine
-    assert till_line("{\"cakes\": 24, \"balance\": 9007199254740993}") fails NotALine
+    assert line.takings == 9007199254740993
+    assert till_line("{\"cakes\": \"24\", \"takings\": \"9007199254740993\"}") fails NotALine
+    assert till_line("{\"cakes\": 24, \"takings\": 9007199254740993}") fails NotALine
 }
 ```
 

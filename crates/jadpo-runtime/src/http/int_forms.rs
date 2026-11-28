@@ -22,25 +22,25 @@ const INT: CodecId = CodecId(0);
 const BIG: CodecId = CodecId(1);
 
 /// Each route, its input's codec and whether it reads the query string:
-/// `POST /counts` takes `Count { count: Int }`, `POST /ledgers` takes
-/// `Ledger { balance: Int { max: 2^62 } }`, `POST /orders` takes
-/// `Order { line: Line { quantity: Int } }`, `POST /paged` takes
+/// `POST /narrow` takes `Narrow { small: Int }`, `POST /wide` takes
+/// `Wide { large: Int { max: 2^62 } }`, `POST /outer` takes
+/// `Outer { inner: Inner { small: Int } }`, `POST /paged` takes
 /// `Paged { page: Int }` from the `X-Page` header, and `GET /listed` takes
-/// `Count` from the query string.
+/// `Narrow` from the query string.
 const ROUTES: [(&str, u32, bool); 5] = [
-    ("counts", 2, false),
-    ("ledgers", 3, false),
-    ("orders", 5, false),
+    ("narrow", 2, false),
+    ("wide", 3, false),
+    ("outer", 5, false),
     ("paged", 6, false),
     ("listed", 2, true),
 ];
 
 fn shapes() -> Vec<Shape> {
     [
-        ("Count", "count"),
-        ("Ledger", "balance"),
-        ("Line", "quantity"),
-        ("Order", "line"),
+        ("Narrow", "small"),
+        ("Wide", "large"),
+        ("Inner", "small"),
+        ("Outer", "inner"),
         ("Paged", "page"),
     ]
     .iter()
@@ -122,7 +122,7 @@ fn table() -> RouteTable {
         caller: None,
         confirm: false,
         rate_limit: None,
-        file: format!("domains/ints/routes/{name}.jadpo"),
+        file: format!("domains/forms/routes/{name}.jadpo"),
         line: 1,
     };
     RouteTable {
@@ -169,21 +169,21 @@ fn object(
     reading.build(shape, &mut slots)
 }
 
-fn line(reading: &mut Reading<'_>, item: Item<'_>, at: &At<'_>) -> Option<Value> {
+fn inner(reading: &mut Reading<'_>, item: Item<'_>, at: &At<'_>) -> Option<Value> {
     let members = reading.members(item, at)?;
-    object(reading, &members, 2, ("quantity", int), at)
+    object(reading, &members, 2, ("small", int), at)
 }
 
-fn read_counts(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value> {
-    object(reading, members, 0, ("count", int), &At::Top)
+fn read_narrow(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value> {
+    object(reading, members, 0, ("small", int), &At::Top)
 }
 
-fn read_ledgers(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value> {
-    object(reading, members, 1, ("balance", big), &At::Top)
+fn read_wide(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value> {
+    object(reading, members, 1, ("large", big), &At::Top)
 }
 
-fn read_orders(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value> {
-    object(reading, members, 3, ("line", line), &At::Top)
+fn read_outer(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value> {
+    object(reading, members, 3, ("inner", inner), &At::Top)
 }
 
 fn read_paged(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value> {
@@ -193,17 +193,17 @@ fn read_paged(reading: &mut Reading<'_>, members: &Members<'_>) -> Option<Value>
 static ENTRIES: [Entry; 5] = [
     Entry {
         params: &[],
-        input: Some(read_counts),
+        input: Some(read_narrow),
         output: None,
     },
     Entry {
         params: &[],
-        input: Some(read_ledgers),
+        input: Some(read_wide),
         output: None,
     },
     Entry {
         params: &[],
-        input: Some(read_orders),
+        input: Some(read_outer),
         output: None,
     },
     Entry {
@@ -213,7 +213,7 @@ static ENTRIES: [Entry; 5] = [
     },
     Entry {
         params: &[],
-        input: Some(read_counts),
+        input: Some(read_narrow),
         output: None,
     },
 ];
@@ -280,33 +280,33 @@ fn accepted(request: &Request) {
 
 #[test]
 fn a_route_s_int_is_a_number_and_text_is_refused() {
-    accepted(&post("/counts", r#"{"count": 24}"#));
+    accepted(&post("/narrow", r#"{"small": 24}"#));
     assert_eq!(
-        read(&post("/counts", r#"{"count": "24"}"#)),
-        refused("count", "type")
+        read(&post("/narrow", r#"{"small": "24"}"#)),
+        refused("small", "type")
     );
 }
 
 #[test]
 fn an_int_past_the_safe_integers_is_a_string_and_a_number_is_refused() {
-    accepted(&post("/ledgers", r#"{"balance": "9007199254740993"}"#));
+    accepted(&post("/wide", r#"{"large": "9007199254740993"}"#));
     assert_eq!(
-        read(&post("/ledgers", r#"{"balance": 9007199254740993}"#)),
-        refused("balance", "type")
+        read(&post("/wide", r#"{"large": 9007199254740993}"#)),
+        refused("large", "type")
     );
     assert_eq!(
-        read(&post("/ledgers", r#"{"balance": 3}"#)),
-        refused("balance", "type"),
+        read(&post("/wide", r#"{"large": 3}"#)),
+        refused("large", "type"),
         "a small value too is sent as the string Jadpo writes"
     );
 }
 
 #[test]
 fn a_type_s_int_field_inside_the_body_refuses_text() {
-    accepted(&post("/orders", r#"{"line": {"quantity": 2}}"#));
+    accepted(&post("/outer", r#"{"inner": {"small": 2}}"#));
     assert_eq!(
-        read(&post("/orders", r#"{"line": {"quantity": "2"}}"#)),
-        refused("line.quantity", "type")
+        read(&post("/outer", r#"{"inner": {"small": "2"}}"#)),
+        refused("inner.small", "type")
     );
 }
 
@@ -315,7 +315,7 @@ fn a_query_string_s_int_and_a_header_s_are_text() {
     accepted(&Request {
         method: "GET".into(),
         path: "/listed".into(),
-        query: Some("count=24".into()),
+        query: Some("small=24".into()),
         ..Request::default()
     });
     let mut paged = post("/paged", "{}");
