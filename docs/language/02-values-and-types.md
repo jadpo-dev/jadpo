@@ -120,9 +120,7 @@ function till_line(sent: TillText) fails NotALine -> TillLine {
 
 ```jadpo check project=int-forms file=main.test.jadpo
 test "an Int is read in the form Jadpo writes it" {
-    var line: TillLine = attempt till_line(
-        "{\"cakes\": 24, \"takings\": \"9007199254740993\"}"
-    )
+    var line: TillLine = attempt till_line("{\"cakes\": 24, \"takings\": \"9007199254740993\"}")
     assert line.cakes == 24
     assert line.takings == 9007199254740993
     assert till_line("{\"cakes\": \"24\", \"takings\": \"9007199254740993\"}") fails NotALine
