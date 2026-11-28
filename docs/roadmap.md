@@ -196,7 +196,7 @@ The application itself is built in the jadpo.dev repository against
 [the registry protocol](language/11-integrations.md#the-registry-protocol);
 these chunks are what is left on either side.
 
-- [ ] **R10b What an app's contract run sends** `opus · high` after K4c: area
+- [ ] **R10b What an app's contract run sends** `opus · high`: area
   11, "What a release shows" and "The registry protocol". The app's opt-in,
   and `jadpo test --kind contract` reporting an answer a package can no longer
   decode to `POST decode-failures` with `jadpo_registry::report::shape_of`.
@@ -325,25 +325,6 @@ work below (Richard, 2026-11-08).
    - [x] **K2 What else a provider call can be**: area 11, "How provider calls are made", "How connections to packages are read" and "How webhooks are received", and its notes.
    - [x] **K4 Capability mappings and conformance suites**: area 11, "How a package provides a capability" and "Proving a package works"; area 14, "`jadpo package conform`"; and the notes for area 11.
    - [x] **K4b The conformance run a release shows**: area 11, "Proving a package works", "What a release shows" and "The verifier"; area 14, "`jadpo package check`" and "`jadpo package verify`"; and the notes for area 11.
-   - [ ] **K4c Contract runs against the sandbox** `opus · high`
-     **needs a maintainer** to confirm what a contract case is: area 11,
-     "Proving a package works", "Tests and fakes" and "Provenance and
-     confirmation"; area 13, "Kinds of test"; area 14, "`jadpo test`". The
-     app's own integrations running the suite in scheduled CI, and
-     `jadpo test --kind contract`, the same cases against the provider's
-     sandbox, every written operation no recording confirms needing one.
-     The pages don't say what a case is or what generates scheduled CI.
-     Recommended: a case is one of the app's tests that reaches a provider
-     operation, run with its unscripted calls sent through the connection
-     to the sandbox and its scripted ones still scripted, the connection's
-     settings read from the environment as `jadpo dev` reads them and one
-     whose environment chooses `live` refused; an unconfirmed written
-     operation no case reaches fails the run; the run also takes each of
-     the app's own integrations' suites through `--live` where the app
-     uses the capability through it; and Jadpo generates no CI, the guide
-     showing a scheduled job that runs `jadpo test --kind contract`. Done
-     when each is built and tested against doubles, with nothing sent to a
-     third party.
    - [x] **K5 Types from recordings and recipes' tests**: area 11, "Recordings" and "Package subscribers and recipes in `sample/`"; area 14, "`jadpo package record`"; and the notes for area 11.
    - [x] **K6 What's left of `ai`**: area 21, "Keeping prompts and answers" and "Streams, embeddings and the OpenAI and Anthropic packages"; and the notes for area 21.
 6. Product work: the developer console and MCP, acting as an OAuth

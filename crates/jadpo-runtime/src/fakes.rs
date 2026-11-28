@@ -113,6 +113,89 @@ impl ProviderFake {
     }
 }
 
+impl ProviderFake {
+    /// Whether the test's `fakes:` scripts `connection.resource.operation`
+    /// at all, its answers used up or not.
+    pub fn scripts(&self, name: &str) -> bool {
+        self.scripts
+            .borrow()
+            .iter()
+            .any(|script| script.name == name)
+    }
+
+    /// Lists `call` among what the code sent, for `.requests`, as a call
+    /// the fake answers is listed: for a call it doesn't answer.
+    pub fn note(&self, call: &Call) {
+        self.requests
+            .borrow_mut()
+            .push((call.name(), jadpo_value::secret::redacted(&call.input)));
+    }
+}
+
+/// A contract run's provider connection (area 11, "Tests and fakes";
+/// area 13, "Kinds of test"; chunk K4c): each operation the test's
+/// `fakes:` scripts still answered by the package's fake, every other
+/// call sent through the connection's real driver to the provider's
+/// sandbox, and the name of each call sent there kept in `sent`, so the
+/// run knows which operations a case confirmed.
+pub struct ToSandbox {
+    fake: std::rc::Rc<ProviderFake>,
+    sandbox: std::rc::Rc<dyn Capability>,
+    sent: std::rc::Rc<RefCell<std::collections::BTreeSet<String>>>,
+}
+
+impl ToSandbox {
+    pub fn new(
+        fake: std::rc::Rc<ProviderFake>,
+        sandbox: std::rc::Rc<dyn Capability>,
+        sent: std::rc::Rc<RefCell<std::collections::BTreeSet<String>>>,
+    ) -> ToSandbox {
+        ToSandbox {
+            fake,
+            sandbox,
+            sent,
+        }
+    }
+}
+
+impl std::fmt::Debug for ToSandbox {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToSandbox").finish_non_exhaustive()
+    }
+}
+
+impl Capability for ToSandbox {
+    fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
+        let name = call.name();
+        if self.fake.scripts(&name) {
+            return self.fake.call(call);
+        }
+        self.fake.note(call);
+        self.sent.borrow_mut().insert(name);
+        self.sandbox.call(call)
+    }
+
+    fn source(&self) -> Source {
+        Source::Sandbox
+    }
+
+    fn source_of(&self, call: &Call) -> Source {
+        if self.fake.scripts(&call.name()) {
+            self.fake.source_of(call)
+        } else {
+            Source::Sandbox
+        }
+    }
+
+    fn script(&self, connection: &str, operation: &str, answer: Answer, from: Frame) -> bool {
+        self.fake.script(connection, operation, answer, from)
+    }
+
+    fn requests(&self, connection: &str, operation: &str) -> Vec<jadpo_value::Value> {
+        self.fake.requests(connection, operation)
+    }
+}
+
 impl Capability for ProviderFake {
     fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
         // The same request again under the key its provider keeps, as a

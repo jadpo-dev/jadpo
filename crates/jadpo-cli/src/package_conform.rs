@@ -671,7 +671,7 @@ pub(crate) fn release_runs(app: &Path, package: &str, folder: &Path) -> Vec<Conf
 }
 
 /// A suite's run, from the data its report gives `--json`.
-fn conformed_from(capability: String, data: &Json) -> Conformed {
+pub(crate) fn conformed_from(capability: String, data: &Json) -> Conformed {
     let field = |json: &'_ Json, name: &str| -> Option<Json> {
         match json {
             Json::Object(entries) => entries

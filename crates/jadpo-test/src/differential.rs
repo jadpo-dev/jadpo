@@ -353,6 +353,7 @@ mod tests {
         Run {
             full: false,
             generated: std::sync::Arc::default(),
+            contract: None,
             seed: 1,
             root: None,
             selection: Selection::default(),

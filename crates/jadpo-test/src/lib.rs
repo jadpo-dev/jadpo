@@ -36,6 +36,7 @@
 //! schedule tests come with their areas.
 
 pub mod compiled;
+pub mod contract;
 pub mod database;
 mod diff;
 pub mod differential;
@@ -174,6 +175,10 @@ pub struct Options {
     /// `--affected`: only the tests that reach what changed since this
     /// base, within what else was asked for.
     pub since: Option<Arc<Since>>,
+    /// `--kind contract`: the tests that reach a provider operation, their
+    /// unscripted calls sent to its sandbox with the connection's settings
+    /// read from these variables (chunk K4c).
+    pub contract: Option<Arc<contract::Contract>>,
 }
 
 /// What `--affected` measures a change against (area 14, "What
@@ -249,6 +254,9 @@ pub struct Run {
     /// What each generated test that ran sends and expects (area 13,
     /// "Tests generated for each route"), by key, which `--json --full` lists.
     pub generated: Arc<generated::Table>,
+    /// A contract run's operations no case sent and the suites it takes
+    /// through `--live` (chunk K4c); `None` for every other run.
+    pub contract: Option<contract::ContractRun>,
 }
 
 /// A recording of a prompt's answer made from another version of its
@@ -623,9 +631,30 @@ pub(crate) fn choose_and_run(
         failed: options.failed,
         affected: options.since.as_ref().map(|since| since.described.clone()),
     };
-    let mut chosen = match select::choose(tests, &selection, last.as_ref(), project) {
-        Ok(chosen) => chosen,
-        Err(diagnostic) => return Ran::Stopped(diagnostic),
+    // A path, line, name, `--failed` or `--affected` leaves cases out, so
+    // a contract run then judges no operation's cover and takes no suite.
+    let selected = selection.path.is_some()
+        || selection.line.is_some()
+        || selection.name.is_some()
+        || selection.failed
+        || selection.affected.is_some();
+    // A contract run's cases, the suites it takes and the operations a
+    // case must send (chunk K4c).
+    let scope = options.contract.as_ref().map(|_| {
+        let mut scope = contract::scope(loaded, prepared, tests);
+        if selected {
+            scope.suites.clear();
+            scope.needed.clear();
+        }
+        scope
+    });
+    let mut chosen = if scope.is_some() && tests.is_empty() {
+        Vec::new()
+    } else {
+        match select::choose(tests, &selection, last.as_ref(), project) {
+            Ok(chosen) => chosen,
+            Err(diagnostic) => return Ran::Stopped(diagnostic),
+        }
     };
     if let Some(only) = only {
         chosen.retain(|test| {
@@ -637,6 +666,34 @@ pub(crate) fn choose_and_run(
                         if erasure.entities.iter().any(|entity| only.contains(entity))
                 )
         });
+    }
+    let mut contracted = None;
+    if let (Some(scope), Some(contract)) = (&scope, &options.contract) {
+        let asked = chosen.len();
+        chosen.retain(|test| scope.cases.contains_key(&test.key));
+        let more = !(scope.suites.is_empty() && scope.needed.is_empty());
+        if chosen.is_empty() && !more {
+            return Ran::Stopped(contract::no_cases(asked, selected));
+        }
+        let mut names: std::collections::BTreeSet<String> = chosen
+            .iter()
+            .filter_map(|test| scope.cases.get(&test.key))
+            .flatten()
+            .cloned()
+            .collect();
+        names.extend(scope.suites.iter().map(|suite| suite.connection.clone()));
+        let mut values = run::test_values(prepared).unwrap_or_default();
+        match contract::settings(prepared, &names, &mut values, contract) {
+            Ok(settings) => contracted = Some(run::Contracted { values, settings }),
+            Err(refusals) => {
+                return Ran::Refused {
+                    diagnostics: refusals,
+                    sources: sources(loaded),
+                    files: loaded.project.files(&loaded.db).len(),
+                    root: jadpo_db::shown_root(&options.cwd, &loaded.root),
+                };
+            }
+        }
     }
     let seed = options.seed.unwrap_or_else(select::new_seed);
     let ordered = select::shuffle(chosen, seed);
@@ -687,21 +744,32 @@ pub(crate) fn choose_and_run(
         run::Keep {
             record: options.record,
         },
-        maker,
+        (maker, contracted.as_ref()),
     );
     drop(databases);
+    let mut sent = std::collections::BTreeSet::new();
     let results: Vec<TestResult> = ordered
         .into_iter()
         .zip(failures)
-        .map(|(test, (failure, record))| TestResult {
-            test,
-            failure,
-            record,
+        .map(|(test, ((failure, record), to_sandbox))| {
+            sent.extend(to_sandbox);
+            TestResult {
+                test,
+                failure,
+                record,
+            }
         })
         .collect();
-    if project {
+    // A contract run is not the run `--failed` reruns.
+    if project && options.contract.is_none() {
         record::write(&loaded.root, tests, &results);
     }
+    let contract = scope.map(|scope| contract::ContractRun {
+        whole: !selected,
+        uncovered: contract::uncovered(scope.needed, &sent),
+        suites: scope.suites,
+        sources: scope.sources,
+    });
     let mut total = BTreeMap::new();
     for test in tests {
         *total.entry(test.kind).or_default() += 1;
@@ -736,6 +804,7 @@ pub(crate) fn choose_and_run(
         elapsed: started.elapsed(),
         full: options.full,
         generated: Arc::clone(generated),
+        contract,
     }))
 }
 
@@ -930,6 +999,7 @@ mod a_person_tests {
             elapsed: Duration::ZERO,
             full: false,
             generated: Arc::default(),
+            contract: None,
         };
         assert!(run("Check the database it runs against (human)").needs_a_person());
         assert!(!run("Bound the values (agent)").needs_a_person());
