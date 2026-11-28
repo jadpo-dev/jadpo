@@ -81,8 +81,7 @@ pub(crate) fn run_all(
     generated: &generated::Table,
     databases: Option<&TestDatabases>,
     keep: Keep,
-    maker: Option<Maker<'_>>,
-    contract: Option<&Contracted>,
+    (maker, contract): (Option<Maker<'_>>, Option<&Contracted>),
 ) -> Vec<(Done, BTreeSet<String>)> {
     let sources = prepared.plan().files();
     // Every test reads the same settings: each field's `test:` value, its

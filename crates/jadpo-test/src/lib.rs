@@ -744,8 +744,7 @@ pub(crate) fn choose_and_run(
         run::Keep {
             record: options.record,
         },
-        maker,
-        contracted.as_ref(),
+        (maker, contracted.as_ref()),
     );
     drop(databases);
     let mut sent = std::collections::BTreeSet::new();
