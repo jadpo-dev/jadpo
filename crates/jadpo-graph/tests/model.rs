@@ -110,6 +110,36 @@ fn what_carries_its_domain_follows_the_domains_line() {
 }
 
 #[test]
+fn a_members_name_now_follows_its_host() {
+    let mut registry = Registry::new();
+    registry.rename(Kind::Entity, "Task", "Todo");
+    registry.rename(Kind::Type, "plans.Place", "plans.Address");
+    registry.rename(Kind::Library, "sacks", "bags");
+    registry.rename(Kind::Function, "sacks.weigh", "bags.weight_in");
+    // A field or variant follows its entity or type.
+    assert_eq!(
+        registry.now_name(&Key::new(Kind::Field, "Todo.title")),
+        "Task.title"
+    );
+    assert_eq!(
+        registry.now_name(&Key::new(Kind::Field, "plans.Address.street")),
+        "plans.Place.street"
+    );
+    // A library's function follows its own line, or else its library.
+    assert_eq!(
+        registry.now_name(&Key::new(Kind::Function, "bags.weight_in")),
+        "sacks.weigh"
+    );
+    assert_eq!(
+        registry.now_name(&Key::new(Kind::Constant, "bags.limit")),
+        "sacks.limit"
+    );
+    // A declaration is its own line's, as `now_of` reads it.
+    assert_eq!(registry.now_name(&Key::new(Kind::Entity, "Todo")), "Task");
+    assert_eq!(registry.now_name(&Key::new(Kind::Action, "greet")), "greet");
+}
+
+#[test]
 fn building_sorts_by_key_keeps_the_first_of_a_key_and_drops_dangling_edges() {
     let mut builder = Builder::new();
     let mut first = node(Kind::Type, "Count");

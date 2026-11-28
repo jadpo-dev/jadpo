@@ -12,7 +12,7 @@ use jadpo_db::{
 };
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_graph::body::{Callee, Expr, Node, Refers};
-use jadpo_graph::{Key, Kind};
+use jadpo_graph::{Key, Kind, Registry};
 use jadpo_syntax::ast::{self, AstNode, Decl};
 
 use crate::case::{starts_upper, to_snake};
@@ -104,7 +104,12 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
             }
         }
     }
-    let host_of = |key: &Key| canonical_of(contested, key);
+    // A typed body refers to declarations by key, which holds the name
+    // each was born with; users are counted by the name each has now, so
+    // a renamed declaration is still used where it was (area 18, "Stable
+    // identity").
+    let registry = crate::graph::registry(db, project);
+    let host_of = |key: &Key| canonical_of(contested, registry, key);
     // The latest migration's computed backfills use what they call (area
     // 5, chunk 5.6b).
     for callable in callables_of(db, file)
@@ -123,7 +128,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         for (_, callee) in body.calls() {
             match callee {
                 Callee::LibraryFunction(key) => {
-                    if let Some((library, function)) = key.name().rsplit_once('.') {
+                    if let Some((library, function)) = registry.now_name(key).rsplit_once('.') {
                         found
                             .library_calls
                             .insert((library.to_string(), function.to_string()));
@@ -135,7 +140,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Fixture(key)
                 | Callee::PackageAction { action: key, .. }
                 | Callee::Schedule { schedule: key, .. } => {
-                    found.names.insert(canonical_of(contested, key));
+                    found.names.insert(host_of(key));
                 }
                 Callee::Object(key) | Callee::Variant(key) | Callee::Entity { entity: key, .. } => {
                     found.names.insert(host_of(key));
@@ -176,27 +181,29 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
             match &site.node {
                 // A constant read: a library's counts as a call of it, one
                 // beside its use as a mention (area 3).
-                Node::Expr(Expr::Constant { constant }) => match constant.name().split_once('.') {
-                    Some((library, own))
-                        if !jadpo_db::symbols(db, project).domains.contains(library) =>
-                    {
-                        found
-                            .library_calls
-                            .insert((library.to_string(), own.to_string()));
+                Node::Expr(Expr::Constant { constant }) => {
+                    match registry.now_name(constant).split_once('.') {
+                        Some((library, own))
+                            if !jadpo_db::symbols(db, project).domains.contains(library) =>
+                        {
+                            found
+                                .library_calls
+                                .insert((library.to_string(), own.to_string()));
+                        }
+                        _ => {
+                            found.names.insert(host_of(constant));
+                        }
                     }
-                    _ => {
-                        found.names.insert(canonical_of(contested, constant));
-                    }
-                },
+                }
                 Node::Expr(Expr::Reject {
                     failure: Some(failure),
                     ..
                 }) => {
-                    found.raised.insert(canonical_of(contested, failure));
+                    found.raised.insert(host_of(failure));
                 }
                 Node::Expr(Expr::Attempt { arms, .. }) => {
                     for arm in arms {
-                        found.raised.insert(canonical_of(contested, &arm.failure));
+                        found.raised.insert(host_of(&arm.failure));
                     }
                 }
                 _ => {}
@@ -310,12 +317,12 @@ fn constants_in_query(
     }
 }
 
-/// The name the checker's tables know the declaration `key` names by, or
+/// The name the checker's tables know the declaration `key` names now, or
 /// its host's for a field or variant: a key of a function or type declared
 /// in a domain carries the domain (`type billing.Address`), which the
 /// tables use only for a contested private name ([`jadpo_db::Contested`]).
-fn canonical_of(contested: &jadpo_db::Contested, key: &Key) -> String {
-    let name = key.name();
+fn canonical_of(contested: &jadpo_db::Contested, registry: &Registry, key: &Key) -> String {
+    let name = registry.now_name(key);
     let parts: Vec<&str> = name.split('.').collect();
     match key.kind() {
         Some(Kind::Type | Kind::Entity | Kind::Field | Kind::Variant) => {
@@ -336,7 +343,7 @@ fn canonical_of(contested: &jadpo_db::Contested, key: &Key) -> String {
         Some(Kind::Function | Kind::Constant) if parts.len() == 2 => {
             contested.canonical(parts[1], Some(parts[0]))
         }
-        _ => name.to_string(),
+        _ => name,
     }
 }
 
