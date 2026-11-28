@@ -3,10 +3,12 @@ scoring, review metrics, results and the isolation of an agent's session.
 No agent runs and no database here."""
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import os
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -326,12 +328,16 @@ class Helpdesk(unittest.TestCase):
     def test_fresh_changes_are_their_own_set(self):
         self.assertEqual(harness.SETS['desk-fresh'], ('H11', 'H12', 'H13', 'H14', 'H15', 'H16', 'H17', 'H18', 'H19', 'H20'))
         self.assertEqual(set(harness.SETS['desk']) | set(harness.SETS['desk-fresh']) | set(harness.SETS['desk-held'])
-                         | set(harness.SETS['desk-held2']) | set(harness.SETS['desk-held3']), set(desk_changes.BY_ID))
+                         | set(harness.SETS['desk-held2']) | set(harness.SETS['desk-held3']) | set(harness.SETS['desk-held4']),
+                         set(desk_changes.BY_ID))
         self.assertFalse(set(harness.SETS['desk-held']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])))
         self.assertFalse(set(harness.SETS['desk-held2']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])
                                                            | set(harness.SETS['desk-held'])))
         self.assertFalse(set(harness.SETS['desk-held3']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])
                                                            | set(harness.SETS['desk-held']) | set(harness.SETS['desk-held2'])))
+        self.assertFalse(set(harness.SETS['desk-held4']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])
+                                                           | set(harness.SETS['desk-held']) | set(harness.SETS['desk-held2'])
+                                                           | set(harness.SETS['desk-held3'])))
         self.assertEqual(harness.set_of('H11'), 'desk-fresh')
         self.assertEqual(desk_changes.SESSIONS['S3'] + desk_changes.SESSIONS['S4'], desk_changes.FRESH)
 
@@ -1053,6 +1059,40 @@ class Claude(unittest.TestCase):
                 written = [path.read_text() for path in folder.rglob('*') if path.is_file()]
                 self.assertFalse([text for text in written if 'sk-ant-oat-secret' in text])
 
+    def test_a_claude_run_logs_wrapped_calls_inside_its_own_tmp(self):
+        """The sandbox writes only the copy, the run's short tmp and its
+        home, so the wrappers' log lives in the tmp while the session runs
+        and comes back to the run folder when it ends, failed or not."""
+        with tempfile.TemporaryDirectory() as scratch:
+            token, folder = Path(scratch) / 'token', Path(scratch) / 'run'
+            app = folder / 'app'
+            app.mkdir(parents=True)
+            token.write_text('sk-ant-oat-secret\n')
+            token.chmod(0o600)
+            fake = Path(scratch) / 'fake-jadpo'
+            fake.write_text('#!/bin/sh\necho "ran $*"\n')
+            fake.chmod(0o755)
+            harness.install_wrapper(folder, app, {'jadpo': fake})
+            trace = folder / 'tmp/jadpo-calls'
+            with mock.patch.object(harness, 'CLAUDE_TOKEN', token), mock.patch.object(harness, 'real_git', lambda: '/usr/bin/git'), \
+                    mock.patch.object(harness, 'CLAUDE_TMP_ROOT', Path(scratch) / 'jt'), mock.patch.object(harness, 'CLAUDE_TMP_LIMIT', 4096):
+                for fails in (False, True):
+                    with contextlib.suppress(RuntimeError), harness.claude_home(folder, harness.PINNED, self.environment):
+                        live = harness.claude_tmp(folder) / 'jadpo-calls'
+                        self.assertIn(f'trace={shlex.quote(str(live))};', (folder / 'bin/jadpo').read_text())
+                        subprocess.run([str(folder / 'bin/jadpo'), 'version'], cwd=app, capture_output=True, check=True)
+                        self.assertTrue((live / 'calls.jsonl').is_file(), 'written inside the tmp')
+                        self.assertEqual(harness.line_count(trace / 'calls.jsonl'), 1 + fails,
+                                         'the harness reads it where it always has')
+                        if fails:
+                            raise RuntimeError('the run failed')
+                    self.assertFalse(trace.is_symlink())
+                    self.assertEqual([json.loads(line)['args'] for line in (trace / 'calls.jsonl').read_text().splitlines()],
+                                     [['version']] * (1 + fails))
+                    self.assertTrue((trace / 'snapshots.git').is_dir())
+                    self.assertFalse(live.exists())
+                    self.assertIn(f'trace={shlex.quote(str(trace))};', (folder / 'bin/jadpo').read_text())
+
     def test_only_claude_code_is_given_the_login(self):
         seen = {}
 
@@ -1097,6 +1137,20 @@ class Claude(unittest.TestCase):
         self.assertFalse(harness.clean_row('c', command, 'shell-clean', stdout)['ok'])
         self.assertFalse(harness.clean_row('c', command, 'shell-clean', [dict(call, error=True, output='Exit code 1')])['ok'])
         self.assertEqual(harness.clean_row('c', command, 'shell-clean', [])['saw'], 'not tried')
+
+    def test_probe_checks_the_wrapper_logs_each_call(self):
+        for agent in ('codex', 'claude'):
+            self.assertIn(('the compiler', 'jadpo version', 'allowed', 'jadpo 0.'),
+                          [tuple(check) for check in harness.probe_checks(agent)])
+        with tempfile.TemporaryDirectory() as scratch:
+            folder = Path(scratch)
+            self.assertEqual(harness.wrapper_row(folder)['saw'], 'no log')
+            (folder / 'tmp/jadpo-calls').mkdir(parents=True)
+            log = folder / 'tmp/jadpo-calls/calls.jsonl'
+            log.write_text(json.dumps({'name': 'jadpo', 'args': ['check'], 'exit': 0}) + '\n')
+            self.assertFalse(harness.wrapper_row(folder)['ok'])
+            log.write_text(log.read_text() + json.dumps({'name': 'jadpo', 'args': ['version'], 'exit': 0}) + '\n')
+            self.assertTrue(harness.wrapper_row(folder)['ok'])
 
     def test_file_tool_verdicts(self):
         refused = [{'tool': 'Read', 'input': '{"file_path": "/r/README.md"}', 'error': True, 'output': 'outside the working directories'}]
@@ -1200,6 +1254,13 @@ class Measure(unittest.TestCase):
             self.assertIn('decisions, information and effort only', prompt)
         self.assertIn('jadpo explain', measure.debrief_prompt('jadpo', 'x'))
         self.assertNotIn('jadpo explain', measure.debrief_prompt('typescript', 'x'))
+
+    def test_a_claude_debrief_keeps_the_whole_answer(self):
+        answer = 'a' * 3000
+        lines = [json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': answer}]}}),
+                 json.dumps({'type': 'result', 'result': answer, 'usage': {'input_tokens': 2, 'output_tokens': 900}})]
+        self.assertEqual(measure.claude_answers(lines), [answer])
+        self.assertEqual(measure.claude_answers([json.dumps({'type': 'result', 'result': ''})]), [])
 
     def test_first_actions_from_either_agent(self):
         claude = [('call', 'Read {"file_path": "README.md"}'), ('call', 'Write {"file_path": "QUESTIONS.md"}')]

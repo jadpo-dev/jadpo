@@ -142,8 +142,11 @@ without the hidden results; the language can't be hidden.
   bytes, the room a Unix socket path leaves; past that they fall back to
   `/tmp/claude-<uid>`, which the sandbox refuses, and every command comes
   back failed. A run folder is far longer than that, hence the folder
-  outside it. The isolation probe checks that a command that should pass
-  comes back clean. That sandbox
+  outside it. The wrappers' log and snapshots move into that folder for
+  the session, since the run's `tmp` isn't writable to it, and back when
+  it ends. The isolation probe checks that a command that should pass
+  comes back clean, and that the log holds the probe's own `jadpo
+  version`. That sandbox
   covers commands only; `--restricted` keeps the file tools to the copy
   and the docs. Codex runs with its own
   `CODEX_HOME` for the run, holding only a mode-0600 copy of the login
@@ -269,6 +272,17 @@ member by email, setting a ticket's status from the form (decide), a reply
 taking an unassigned ticket, emptying the bin now (decline), copying a
 macro, closing a workspace (decide), assigning many tickets at once,
 reviewers reading notes (decline), and merging two tickets.
+
+**A fourth held-out set.** Roadmap chunk 10.15 adds H51 to H60, the
+`desk-held4` set, run as S11 and S12, written blind by a fresh subagent
+from `writer-brief.md`, calibrated and piloted the same way, and measured
+on three models: Sol, Luna and Opus 5.5. Six changes to implement, two
+for the owner to decide and two to decline. They cross: tagging a ticket
+as it is opened, agents managing tags (decide), a reply reopening a
+solved ticket, the only owner stepping down (decline), a new viewer
+giving up their tickets, each workspace's first-response target (decide),
+notes about a customer, seeing what is in the bin (decline), tagging
+breached tickets, and who wrote each reply.
 
 **A final measurement.** `measure.py` runs one from start to report.
 `brief` fills in [`writer-brief.md`](writer-brief.md) for the next set's

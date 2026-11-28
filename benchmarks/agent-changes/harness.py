@@ -118,11 +118,12 @@ TUNING = ('F01', 'F03', 'F06', 'C03', 'C11', 'C14')
 SETS = {'tuning': TUNING,
         'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING and c.id not in change_set.FRESH),
         'fresh': change_set.FRESH,
-        'desk': tuple(i for i in desk_set.BY_ID if i not in desk_set.FRESH + desk_set.HELD + desk_set.HELD2 + desk_set.HELD3),
+        'desk': tuple(i for i in desk_set.BY_ID if i not in desk_set.FRESH + desk_set.HELD + desk_set.HELD2 + desk_set.HELD3 + desk_set.HELD4),
         'desk-fresh': desk_set.FRESH,
         'desk-held': desk_set.HELD,
         'desk-held2': desk_set.HELD2,
-        'desk-held3': desk_set.HELD3}
+        'desk-held3': desk_set.HELD3,
+        'desk-held4': desk_set.HELD4}
 
 # The apps a change is made to: the golden todo, and 10.5's helpdesk, whose
 # changes run five to a session (desk_changes.SESSIONS).
@@ -808,17 +809,51 @@ def claude_home(folder, settings, environment, sockets=()):
     (folder / 'home').mkdir(parents=True, exist_ok=True)
     CLAUDE_TMP_ROOT.mkdir(mode=0o700, exist_ok=True)
     tmp.mkdir(mode=0o700)
+    moved = False
     try:
         home.mkdir(mode=0o700)
         (folder / CLAUDE_SETTINGS).write_text(json.dumps(claude_settings(folder, environment, sockets), indent=2) + '\n')
+        moved = move_trace(folder, folder / TRACE, tmp / 'jadpo-calls')
         yield home
     finally:
         save_claude_session(folder)
+        if moved:
+            restore_trace(folder, folder / TRACE, tmp / 'jadpo-calls')
         shutil.rmtree(home, ignore_errors=True)
         shutil.rmtree(tmp, ignore_errors=True)
         # ~/.jt itself stays: runs side by side make and remove their own
         # folders in it, and it is on no sandbox list.
         CLAUDE_TMPS.pop(str(folder), None)
+
+
+# The wrappers' log and snapshots. The Claude sandbox writes only the copy,
+# the short tmp and the run's home, so for a Claude session the folder moves
+# into the tmp, the wrappers write there, and the harness keeps reading it
+# through a link where it always has. It moves back when the session ends.
+TRACE = 'tmp/jadpo-calls'
+
+
+def move_trace(folder, trace, live):
+    if not trace.is_dir():
+        return False
+    shutil.move(trace, live)
+    trace.symlink_to(live)
+    point_wrappers(folder, trace, live)
+    return True
+
+
+def restore_trace(folder, trace, live):
+    if trace.is_symlink():
+        trace.unlink()
+    if live.is_dir():
+        shutil.move(live, trace)
+    point_wrappers(folder, live, trace)
+
+
+def point_wrappers(folder, old, new):
+    for wrapper in sorted((folder / 'bin').glob('*')):
+        text = wrapper.read_text()
+        wrapper.write_text(text.replace(f'trace={shlex.quote(str(old))};', f'trace={shlex.quote(str(new))};', 1))
 
 
 def save_claude_session(folder):
@@ -1676,6 +1711,16 @@ def clean_row(name, command, marker, calls):
             'saw': 'worked' if ok else 'not tried' if not tried else 'a refusal' if refused else 'a failure'}
 
 
+def wrapper_row(folder):
+    """The wrappers log every call the agent makes: the probe's `jadpo
+    version` must be in the run's log once the session has ended."""
+    log = folder / TRACE / 'calls.jsonl'
+    calls = [json.loads(line) for line in log.read_text(errors='replace').splitlines() if line.strip()] if log.is_file() else None
+    ok = any(call.get('name') == 'jadpo' and (call.get('args') or [])[:1] == ['version'] for call in calls or [])
+    return {'name': 'the wrapper logs each call', 'command': 'jadpo version', 'expect': 'logged', 'ok': ok,
+            'saw': 'no log' if calls is None else 'logged' if ok else 'not logged'}
+
+
 def tool_checks():
     """Claude Code's file tools run outside the shell's sandbox: (name, tool,
     path, the file's first line) for reads --restricted must refuse."""
@@ -1753,6 +1798,7 @@ def command_isolation_probe(args):
     rows = [clean_row(name, command, marker, stream_calls(stream)) if expect == 'clean' else
             probe_row(name, command, expect, marker, seen, effects, direct.get(command)) for name, command, expect, marker in checks]
     rows += [tool_row(name, which, path, first, stream_calls(stream)) for name, which, path, first in tools]
+    rows.append(wrapper_row(folder))
     if not codex:
         extra = sorted(name for name in offered if not name.startswith('command:') and name not in CLAUDE_TOOLS)
         rows.append({'name': 'only the six tools', 'command': 'the session init', 'expect': 'only', 'ok': not extra,
