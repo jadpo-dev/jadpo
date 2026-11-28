@@ -35,18 +35,16 @@ the fix itself.
 ## How to fix it
 
 **If the id was mistyped**, take it from the request's line in `jadpo
-dev`, its `x-request-id` header or its error's `request_id`, or list the
-requests kept:
-
-```sh
-jadpo traces
-```
-
-Then give any start of its id that no other request's shares:
+dev`, its `x-request-id` header or its error's `request_id`; `jadpo
+traces` lists the requests kept. Give any start of it that no other
+request's shares:
 
 ```sh
 jadpo trace req_0b1e
 ```
+
+It now shows that request's timeline: its route, caller, queries and
+writes, and how it ended.
 
 ## Related
 

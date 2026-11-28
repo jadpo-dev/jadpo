@@ -118,7 +118,7 @@ impl Watch {
         Watch(Rc::new(Kept {
             current: Cell::new(None),
             timeline: RefCell::new(Timeline::default()),
-            hasher: Hasher::of(host).or_key(key(host)),
+            hasher: Hasher::of(host).or_key(|| key(host)),
         }))
     }
 

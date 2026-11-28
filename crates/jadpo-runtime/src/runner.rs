@@ -495,7 +495,12 @@ pub(crate) async fn attempt_delivery(
         delivery.event.clone(),
         delivery.trace.map(|trace| trace.trace_id),
     );
-    let started = ctx.host().monotonic_ms();
+    // Timed only for a call log, which keeps the attempt: a host's clock
+    // may move each time it is read, as a test's does.
+    let started = ctx
+        .host()
+        .call_log()
+        .and_then(|_| ctx.host().monotonic_ms());
     // Each attempt counts its keyed calls from none under its own key,
     // with none of the models' answers whoever runs `ctx` was given, as
     // its retry in a context of its own does, a route waiting for it
@@ -519,7 +524,7 @@ pub(crate) async fn attempt_delivery(
         let event = event
             .split_once(' ')
             .map_or(event.as_str(), |(_, name)| name);
-        let ms = started.zip(ctx.host().monotonic_ms());
+        let ms = started.and_then(|start| Some((start, ctx.host().monotonic_ms()?)));
         log.attempt_ended(&crate::call_log::DeliveryAttempt {
             delivery: id,
             subscriber: name,

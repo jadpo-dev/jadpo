@@ -593,6 +593,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "records a `Measure` given a `Duration` as its milliseconds, a metric's number, never sent as the type (chunk O1)",
     ),
     (
+        "crates/jadpo-runtime/src/timeline.rs",
+        "shows a statement's time and date parameters in a timeline, a report read by people and never read back as data (chunk E0)",
+    ),
+    (
+        "crates/jadpo-cli/src/trace.rs",
+        "writes when a request was answered into its timeline, a report read by people and never read back as data (chunk E0)",
+    ),
+    (
         "crates/jadpo-runtime/src/logging.rs",
         "writes a log event: an access record's time through the contract's `text.from`, and a value by the rule a log follows",
     ),

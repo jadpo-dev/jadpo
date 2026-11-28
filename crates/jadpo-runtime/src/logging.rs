@@ -66,10 +66,10 @@ impl Hasher {
         }
     }
 
-    /// This hasher, or one with `key` when it has none of its own.
-    pub(crate) fn or_key(self, key: Vec<u8>) -> Hasher {
+    /// This hasher, or one with `key`'s when it has none of its own.
+    pub(crate) fn or_key(self, key: impl FnOnce() -> Vec<u8>) -> Hasher {
         Hasher {
-            key: self.key.or(Some(key)),
+            key: self.key.or_else(|| Some(key())),
         }
     }
 
