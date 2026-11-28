@@ -101,6 +101,7 @@ Production
   deliveries    Retry, dismiss or cancel deliveries
   batches       Watch and stop batch runs     list, show, cancel
   privacy       List data requests            requests
+  manifest      Send manifests to monitoring  send, protocol
   runs          Check runs before a deploy    unfinished
 
 Set up
@@ -194,6 +195,7 @@ Production
   deliveries    Retry, dismiss or cancel deliveries
   batches       Watch and stop batch runs     list · show · cancel
   privacy       List data requests            requests
+  manifest      Send manifests to monitoring  send · protocol
   runs          Check runs before a deploy    unfinished
 
 Set up
@@ -384,6 +386,7 @@ fn help_json_is_the_whole_command_reference() {
             "deliveries",
             "batches",
             "privacy",
+            "manifest",
             "runs",
             "new",
             "config",
@@ -867,6 +870,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "deliveries\tRetry, dismiss or cancel deliveries",
             "batches\tWatch and stop batch runs",
             "privacy\tList data requests",
+            "manifest\tSend manifests to monitoring",
             "runs\tCheck runs before a deploy",
             "new\tStart a project",
             "config\tCheck and set local settings",

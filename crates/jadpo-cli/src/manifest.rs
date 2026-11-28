@@ -204,7 +204,7 @@ fn send(call: &Call) -> Reply {
     for (deployable, program) in &programs {
         let reached = jadpo_check::deployables::reached(db, project, deployable);
         let body = build_manifest(
-            &graph,
+            graph,
             &Build {
                 deployable: &deployable.name,
                 target: deployable.builds_for().name(),

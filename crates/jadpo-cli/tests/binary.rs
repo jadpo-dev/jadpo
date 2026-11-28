@@ -142,6 +142,7 @@ fn bash_completes_commands_and_values() {
             "deliveries",
             "batches",
             "privacy",
+            "manifest",
             "runs",
             "new",
             "config",

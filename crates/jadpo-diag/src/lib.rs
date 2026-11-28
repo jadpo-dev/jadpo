@@ -705,7 +705,7 @@ rules! {
     MANIFEST_PROTOCOL_MISMATCH: "manifest.protocol_mismatch", area 14, Error, Agent,
         "A monitoring product's endpoint answers the manifest protocol's requests differently from the protocol";
     MANIFEST_SEND_FAILED: "manifest.send_failed", area 14, Error, Human,
-        "`jadpo manifest send` had nowhere to send a build's manifest, couldn't reach the endpoint, or was refused";
+        "A build's manifest had nowhere to go, or the endpoint `jadpo manifest send` gives it to couldn't be reached or refused it";
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
         "Applying the project's migrations to a database stopped at a step that failed";
     MIGRATION_BACKFILL_CAN_FAIL: "migration.backfill_can_fail", area 5, Error, Agent,

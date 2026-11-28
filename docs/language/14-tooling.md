@@ -4388,7 +4388,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `lsp.root_missing` | `lsp` | Language server has no workspace root |
 | `lsp.write_failed` | `lsp` | Language-server response could not be written |
 | `manifest.protocol_mismatch` | `manifest protocol` | A monitoring product's endpoint answers the manifest protocol's requests differently from the protocol |
-| `manifest.send_failed` | `manifest send` | `jadpo manifest send` had nowhere to send a build's manifest, couldn't reach the endpoint, or was refused |
+| `manifest.send_failed` | `manifest send` | A build's manifest had nowhere to go, or the endpoint `jadpo manifest send` gives it to couldn't be reached or refused it |
 | `migration.decision_artifact_exists` | `schema` | Migration decision file already exists |
 | `migration.decision_artifact_invalid` | `schema` | Migration decision file is invalid |
 | `migration.decision_artifact_read_failed` | `schema` | Migration decision file could not be read |

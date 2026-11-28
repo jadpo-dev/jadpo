@@ -1959,7 +1959,7 @@ pub static COMMANDS: &[Command] = &[
         name: "manifest",
         synonyms: &[],
         group: "Production",
-        summary: "Give a monitoring product each build's manifest",
+        summary: "Send manifests to monitoring",
         description: "The manifest protocol (area 16): `send`, run as a deploy happens, checks the \
                       project and gives the monitoring product at the app's telemetry endpoint each \
                       deployable's manifest, or the one deployable it names, which its telemetry's \

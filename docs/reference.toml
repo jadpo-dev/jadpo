@@ -981,7 +981,7 @@ commands = ["package"]
 [[group.page.section]]
 id = "commands-for-services-calls-email-and-stored-data"
 title = "Commands for services, calls, email and stored data"
-commands = ["flags", "calls", "traces", "metrics", "logs", "email", "files", "batches", "runs"]
+commands = ["flags", "calls", "traces", "metrics", "logs", "email", "files", "batches", "runs", "manifest"]
 
 [[group.page.section]]
 id = "commands-for-debugging-editors-and-help"

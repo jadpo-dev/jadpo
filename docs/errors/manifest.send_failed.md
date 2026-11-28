@@ -1,6 +1,6 @@
 # `manifest.send_failed`
 
-`jadpo manifest send` had nowhere to send a build's manifest, couldn't reach the endpoint, or was refused.
+A build's manifest had nowhere to go, or the endpoint `jadpo manifest send` gives it to couldn't be reached or refused it.
 
 ## Why Jadpo refuses it
 
@@ -68,7 +68,13 @@ TELEMETRY_ENDPOINT=https://collector.example jadpo manifest send
 Each deployable's manifest is sent, and sending again is safe: the
 product keeps the first it was sent.
 
-**If it shouldn't**, leave `jadpo manifest send` out of the deploy.
+**If it shouldn't**, leave `jadpo manifest send` out of the deploy, which builds and ships the app without it:
+
+```sh
+jadpo build
+```
+
+Nothing is sent anywhere.
 
 ## Related
 

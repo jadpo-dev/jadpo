@@ -42,20 +42,20 @@ pub fn sample() -> Value {
         "deployable": "api",
         "nodes": [
             {
-                "domain": "planning",
-                "file": "domains/planning/actions/complete_todo.jadpo",
-                "id": "action complete_todo",
+                "domain": "claims",
+                "file": "domains/claims/actions/approve_claim.jadpo",
+                "id": "action approve_claim",
                 "kind": "action",
                 "lines": [4, 22],
-                "name": "complete_todo"
+                "name": "approve_claim"
             },
             {
-                "domain": "planning",
-                "file": "domains/planning/queries/todos_for_owner.jadpo",
-                "id": "query todos_for_owner",
+                "domain": "claims",
+                "file": "domains/claims/queries/claims_for_reviewer.jadpo",
+                "id": "query claims_for_reviewer",
                 "kind": "query",
                 "lines": [3, 9],
-                "name": "todos_for_owner"
+                "name": "claims_for_reviewer"
             }
         ],
         "protocol": 1,
@@ -159,15 +159,15 @@ pub(crate) fn conformance(address: &Address, headers: &[(String, String)]) -> Co
     let changed = {
         let mut changed = sample.clone();
         if let Some(nodes) = changed["nodes"].as_array_mut() {
-            // In key order, after `action complete_todo`.
+            // In key order, after `action approve_claim`.
             nodes.insert(
                 1,
                 json!({
-                    "file": "domains/planning/actions/start_todo.jadpo",
-                    "id": "action start_todo",
+                    "file": "domains/claims/actions/decline_claim.jadpo",
+                    "id": "action decline_claim",
                     "kind": "action",
                     "lines": [1, 8],
-                    "name": "start_todo"
+                    "name": "decline_claim"
                 }),
             );
         }
