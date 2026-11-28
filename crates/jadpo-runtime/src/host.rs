@@ -465,6 +465,13 @@ pub trait Host {
         false
     }
 
+    /// Keeps what answering request `request_id` did in full, as a host
+    /// that keeps timelines does (chunk E0): `jadpo dev`'s hands it to the
+    /// line it prints for the request.
+    fn timeline_kept(&self, request_id: &str, timeline: Box<crate::timeline::Timeline>) {
+        let _ = (request_id, timeline);
+    }
+
     /// The outcome-and-effect record each outside call is kept in (chunk
     /// 8.1c): only a test's host keeps one ([`crate::capability::Faked`]),
     /// so everywhere else a call pays only this asking. Only with the
@@ -716,6 +723,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn keeps_timelines(&self) -> bool {
         (**self).keeps_timelines()
+    }
+
+    fn timeline_kept(&self, request_id: &str, timeline: Box<crate::timeline::Timeline>) {
+        (**self).timeline_kept(request_id, timeline);
     }
 
     #[cfg(feature = "testing")]

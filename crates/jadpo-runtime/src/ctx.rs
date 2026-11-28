@@ -702,8 +702,8 @@ impl<'p> Ctx<'p> {
     ) -> crate::spans::Begun {
         let now = self.host().monotonic_ms();
         let begun = self.spans.begin(kind, frame, now);
-        if let Some(watch) = self.capabilities.timeline() {
-            watch.set_current(self.spans.innermost());
+        if self.capabilities.watching() {
+            self.timeline_moved();
         }
         begun
     }
@@ -718,6 +718,17 @@ impl<'p> Ctx<'p> {
     ) {
         let now = self.host().monotonic_ms();
         self.spans.end(begun, now, rows, ended);
+        if self.capabilities.watching() {
+            self.timeline_moved();
+        }
+    }
+
+    /// Tells the timeline which span is innermost now. Out of line, so a
+    /// span's start and end keep no room for it on the stack, where a
+    /// WebAssembly module has little (chunk E0).
+    #[cold]
+    #[inline(never)]
+    fn timeline_moved(&self) {
         if let Some(watch) = self.capabilities.timeline() {
             watch.set_current(self.spans.innermost());
         }
@@ -725,10 +736,17 @@ impl<'p> Ctx<'p> {
 
     /// Names what the span `begun` started is of, in the timeline when
     /// one is kept: `Todo.get`, `Todo.update` (chunk E0).
-    pub(crate) fn name_span(&self, begun: crate::spans::Begun, name: impl FnOnce() -> String) {
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn name_span(&self, begun: crate::spans::Begun, op: crate::store::StoreOp<'_>) {
         if let (Some(watch), Some(at)) = (self.capabilities.timeline(), begun.index()) {
-            watch.name(at, name());
+            watch.name(at, crate::timeline::store_name(op));
         }
+    }
+
+    /// Whether this invocation keeps its timeline.
+    pub(crate) fn watching(&self) -> bool {
+        self.capabilities.watching()
     }
 
     /// Keeps this invocation's timeline from now on (area 17; chunk E0):
@@ -742,16 +760,22 @@ impl<'p> Ctx<'p> {
     }
 
     /// The timeline kept so far, with who it ran as; `None` when none is
-    /// kept.
-    pub fn timeline(&self) -> Option<crate::timeline::Timeline> {
+    /// kept. Never inlined, and boxed, so what asks for it keeps no room
+    /// for one on its stack: a WebAssembly module's stack is small.
+    #[inline(never)]
+    pub fn timeline(&self) -> Option<Box<crate::timeline::Timeline>> {
         let watch = self.capabilities.timeline()?;
         watch.set_caller(self.caller.as_ref().map(|caller| caller.key.clone()));
-        Some(watch.taken())
+        Some(Box::new(watch.taken()))
     }
 
-    /// The timeline being kept, for what records into it from elsewhere.
-    pub(crate) fn timeline_watch(&self) -> Option<&crate::timeline::Watch> {
-        self.capabilities.timeline()
+    /// Keeps the failure that ended the invocation in its timeline.
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn timeline_raised(&self, failure: &crate::Failure) {
+        if let Some(watch) = self.capabilities.timeline() {
+            watch.raised(failure);
+        }
     }
 
     /// Where the operation at `site` of the frame on top is, for its span:

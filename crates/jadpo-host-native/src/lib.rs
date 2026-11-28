@@ -306,9 +306,9 @@ pub struct NativeHost {
     /// `jadpo dev`'s call log, which keeps each provider call with its
     /// values (chunk 7.2d).
     call_log: Option<CallLog>,
-    /// Whether every invocation keeps its timeline, as `jadpo dev`'s do
-    /// (chunk E0).
-    timelines: bool,
+    /// Where each request's timeline goes, when every invocation keeps
+    /// one, as `jadpo dev`'s do (chunk E0).
+    timelines: Option<Timelines>,
     /// The rate-limit counters: the server's one table, which its workers
     /// share (chunk 8.1l).
     limits: Arc<RateLimits>,
@@ -354,6 +354,20 @@ impl std::fmt::Debug for FileStores {
 /// A development call log, held for the host.
 #[derive(Clone)]
 struct CallLog(Rc<dyn jadpo_runtime::call_log::CallLog>);
+
+/// What `jadpo dev`'s host hands each request's timeline to, with its
+/// request id (chunk E0).
+pub type KeepTimeline = Rc<dyn Fn(&str, Box<jadpo_runtime::timeline::Timeline>)>;
+
+/// Where `jadpo dev`'s host hands each request's timeline.
+#[derive(Clone)]
+struct Timelines(KeepTimeline);
+
+impl std::fmt::Debug for Timelines {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Timelines")
+    }
+}
 
 impl std::fmt::Debug for CallLog {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -459,9 +473,10 @@ impl NativeHost {
         self
     }
 
-    /// Keeps every invocation's timeline, for `jadpo trace` (chunk E0).
-    pub fn keeping_timelines(mut self) -> NativeHost {
-        self.timelines = true;
+    /// Keeps every invocation's timeline, handing each request's to
+    /// `kept` with its request id, for `jadpo trace` (chunk E0).
+    pub fn keeping_timelines(mut self, kept: KeepTimeline) -> NativeHost {
+        self.timelines = Some(Timelines(kept));
         self
     }
 
@@ -538,7 +553,13 @@ impl Host for NativeHost {
     }
 
     fn keeps_timelines(&self) -> bool {
-        self.timelines
+        self.timelines.is_some()
+    }
+
+    fn timeline_kept(&self, request_id: &str, timeline: Box<jadpo_runtime::timeline::Timeline>) {
+        if let Some(kept) = &self.timelines {
+            (kept.0)(request_id, timeline);
+        }
     }
 
     /// The runtime's ceremonies ([`PASSKEYS`]).

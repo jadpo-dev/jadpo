@@ -22,14 +22,14 @@ pub(crate) fn keep(
     rerun: &Rerun,
     test: &Test,
     failure: Option<Box<TestFailure>>,
-    timeline: Option<serde_json::Value>,
+    timeline: Option<Box<serde_json::Value>>,
 ) -> Option<Box<TestFailure>> {
     let mut failure = failure?;
     if rerun.keep_trace
         && let Some(document) = timeline
     {
         let location = format!("{}:{}", failure.location.path, failure.location.line);
-        failure.trace = kept(&rerun.project, &test.name, &location, document);
+        failure.trace = kept(&rerun.project, &test.name, &location, *document);
     }
     Some(failure)
 }

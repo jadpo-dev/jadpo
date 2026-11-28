@@ -152,12 +152,12 @@ impl Flags {
 /// calls, steps and fault, and its flags. `None` when its host kept none.
 pub(crate) fn request_document(
     answered: &jadpo_runtime::serve::Answered<'_>,
+    timeline: &jadpo_runtime::timeline::Timeline,
     known: &Known,
     at_ms: i64,
     steps: Json,
 ) -> Option<(Value, Flags)> {
     let response = answered.response;
-    let timeline = response.timeline.as_deref()?;
     let places = answered.program.places();
     let mut document = jadpo_runtime::timeline::document(answered.spans, timeline, places);
     let route = response.route.as_deref();

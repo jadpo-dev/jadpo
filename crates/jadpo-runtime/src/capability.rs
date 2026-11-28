@@ -859,6 +859,10 @@ impl<H: Host> Host for Faked<H> {
         self.host.keeps_timelines()
     }
 
+    fn timeline_kept(&self, request_id: &str, timeline: Box<crate::timeline::Timeline>) {
+        self.host.timeline_kept(request_id, timeline);
+    }
+
     fn record(&self) -> Option<&crate::record::Record> {
         self.record.as_deref().or_else(|| self.host.record())
     }

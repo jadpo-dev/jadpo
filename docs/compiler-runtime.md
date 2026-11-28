@@ -3073,8 +3073,12 @@ parameters shown by area 4's rule (`Hasher`), the rows it gave or
 changed, and each transaction's end; an outbox insert is kept as the
 events it writes. `store` names a read or write span not inside a query
 (`Todo.get`, `Todo.update`), and `logging::rejected` keeps the failure
-that ended the invocation with its frame. `serve_request` hands it on
-`Response::timeline` with the caller; `timeline::document` makes the
+that ended the invocation with its frame. Each hook is a cold call out
+of line behind one check (`Capabilities::watching`), so a deployable's
+stack, which a WebAssembly module has little of, keeps no room for it.
+`serve_request` hands the timeline, with the caller, to its host
+(`Host::timeline_kept`, by request id), which `jadpo dev`'s gives the
+request's line; `timeline::document` makes the
 versioned document of spans and what was kept, which `jadpo dev` (with
 the request, its route's place, calls, steps, fault and flags) and
 `jadpo test` (`jadpo_test::kept_trace`, with the test) keep and `jadpo

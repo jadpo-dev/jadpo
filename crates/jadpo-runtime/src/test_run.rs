@@ -170,7 +170,7 @@ pub struct Ran {
     pub answers: Vec<Answer>,
     /// Its timeline as a document ([`crate::timeline::document`]), when
     /// [`Once::timeline`] asked for one.
-    pub timeline: Option<serde_json::Value>,
+    pub timeline: Option<Box<serde_json::Value>>,
 }
 
 /// Runs one test on `executor` over `host`, which holds its stores, as
@@ -249,9 +249,7 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     }
     let mut usage = fake.usage();
     usage.extend(ai.usage());
-    let timeline = ctx
-        .timeline()
-        .map(|timeline| crate::timeline::document(ctx.spans(), &timeline, executor.places()));
+    let timeline = kept_timeline(&ctx, executor.places());
     Ran {
         timeline,
         outcome,
@@ -262,6 +260,18 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         effects: fake.effects(),
         answers,
     }
+}
+
+/// The timeline `ctx` kept, as a document: out of line, so a test's run
+/// keeps no room for building one on its stack.
+#[inline(never)]
+fn kept_timeline(ctx: &Ctx<'_>, places: &Places) -> Option<Box<serde_json::Value>> {
+    let timeline = ctx.timeline()?;
+    Some(Box::new(crate::timeline::document(
+        ctx.spans(),
+        &timeline,
+        places,
+    )))
 }
 
 /// Sends a generated test's requests, each through the HTTP component in
@@ -1014,6 +1024,10 @@ impl<H: Host> Host for AtClock<H> {
 
     fn keeps_timelines(&self) -> bool {
         self.host.keeps_timelines()
+    }
+
+    fn timeline_kept(&self, request_id: &str, timeline: Box<crate::timeline::Timeline>) {
+        self.host.timeline_kept(request_id, timeline);
     }
 
     fn record(&self) -> Option<&Record> {

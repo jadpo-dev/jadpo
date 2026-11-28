@@ -208,9 +208,6 @@ pub struct Response {
     pub parent_span: Option<[u8; 8]>,
     /// What its code recorded through `telemetry.` (chunk O1); never sent.
     pub recorded: crate::telemetry::Recorded,
-    /// What answering it did in full, when its host keeps timelines (area
-    /// 17; chunk E0): what `jadpo dev` keeps for `jadpo trace`; never sent.
-    pub timeline: Option<Box<crate::timeline::Timeline>>,
 }
 
 impl Response {
@@ -445,8 +442,21 @@ pub async fn serve_request(
     response.steps = ctx.take_steps(0);
     response.spans = ctx.take_spans();
     response.recorded = ctx.take_recorded();
-    response.timeline = ctx.timeline().map(Box::new);
+    if ctx.watching() {
+        hand_on_timeline(&ctx, host, &id);
+    }
     response
+}
+
+/// Hands what answering request `id` did in full to `host`, which keeps
+/// timelines (area 17; chunk E0). Out of line, so answering a request
+/// keeps no room for it on the stack.
+#[cold]
+#[inline(never)]
+fn hand_on_timeline(ctx: &Ctx<'_>, host: &dyn Host, id: &str) {
+    if let Some(timeline) = ctx.timeline() {
+        host.timeline_kept(id, timeline);
+    }
 }
 
 /// Answers `request` with `app`'s routes, running what a route runs with
@@ -2209,7 +2219,6 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         trace: None,
         parent_span: None,
         recorded: crate::telemetry::Recorded::default(),
-        timeline: None,
     }
 }
 

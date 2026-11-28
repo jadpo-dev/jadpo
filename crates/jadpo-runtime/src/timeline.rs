@@ -114,6 +114,7 @@ impl std::fmt::Debug for Watch {
 }
 
 impl Watch {
+    #[inline(never)]
     pub(crate) fn new(host: &dyn crate::Host) -> Watch {
         Watch(Rc::new(Kept {
             current: Cell::new(None),
@@ -329,6 +330,7 @@ impl Transaction for Watched {
 
 /// What a read or a write is of, for its span: a query's reads are named
 /// after the query, from its place, so this names the rest.
+#[inline(never)]
 pub(crate) fn store_name(op: crate::store::StoreOp<'_>) -> String {
     use crate::store::StoreOp;
     match op {
@@ -375,6 +377,7 @@ fn bare(label: &str) -> &str {
 /// statements no span holds; each transaction's end; the events emitted;
 /// and the failure that ended it, with its place. What the invocation was,
 /// a request or a test, its host adds.
+#[inline(never)]
 pub fn document(spans: &Spans, timeline: &Timeline, places: &Places) -> Json {
     let place = |frame: Option<Frame>| {
         frame

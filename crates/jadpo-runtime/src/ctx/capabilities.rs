@@ -84,11 +84,18 @@ impl<'p> Capabilities<'p> {
         self.timeline.as_ref()
     }
 
+    /// Whether a timeline is kept.
+    #[inline]
+    pub(crate) fn watching(&self) -> bool {
+        self.timeline.is_some()
+    }
+
     pub(crate) fn set_timeline(&mut self, timeline: Option<crate::timeline::Watch>) {
         self.timeline = timeline;
     }
 
     /// `transaction`, its statements kept in the timeline when one is.
+    #[inline(never)]
     pub(crate) fn watched(
         &self,
         transaction: Box<dyn crate::Transaction>,

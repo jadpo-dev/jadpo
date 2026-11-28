@@ -269,6 +269,9 @@ impl jadpo_runtime::call_log::CallLog for DevCalls {
     }
 }
 
+/// The timelines a worker's host hands over, by request id (chunk E0).
+type Timelines = Rc<RefCell<BTreeMap<String, Box<jadpo_runtime::timeline::Timeline>>>>;
+
 /// What every worker reads: the version being served and where its
 /// stores are.
 struct Shared {
@@ -327,6 +330,8 @@ impl Current {
 /// request it answers, each schedule's run or skipped tick, and each alert
 /// the tick raised.
 struct Lines {
+    /// The timelines this worker's host handed over, by request id.
+    timelines: Timelines,
     shared: Arc<Shared>,
     /// The schedules whose paused skip was printed, so a paused one prints
     /// once, not on every tick, until it runs again.
@@ -356,12 +361,18 @@ impl Observer for Lines {
             .map_or(0, |since| {
                 i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
             });
-        let flags = match crate::trace::request_document(
-            answered,
-            &known,
-            now,
-            steps_json(&response.steps),
-        ) {
+        let id = response.header("x-request-id").unwrap_or_default();
+        let timeline = self.timelines.borrow_mut().remove(id);
+        let document = timeline.and_then(|timeline| {
+            crate::trace::request_document(
+                answered,
+                &timeline,
+                &known,
+                now,
+                steps_json(&response.steps),
+            )
+        });
+        let flags = match document {
             Some((document, flags)) => {
                 self.shared.timelines.request(&document);
                 flags
@@ -1161,6 +1172,10 @@ pub fn serve_unwatched_to(
                 .find(|(name, _, _)| *name == connection)
                 .map_or(0, |(_, _, floor)| floor)
         });
+        // Each request's timeline, which the host hands over as it is
+        // answered and its line takes (chunk E0).
+        let timelines: Timelines = Rc::default();
+        let handed = Rc::clone(&timelines);
         // Counting rate limits in the one table every worker shares
         // (chunk 8.1l).
         let mut native = worker
@@ -1174,7 +1189,9 @@ pub fn serve_unwatched_to(
                 jadpo_std::connections::files(current.plan().connections())
                     .any(|(name, _, _)| name == connection)
             })
-            .keeping_timelines()
+            .keeping_timelines(Rc::new(move |id: &str, timeline| {
+                handed.borrow_mut().insert(id.to_string(), timeline);
+            }))
             .with_call_log(Rc::new(DevCalls {
                 log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
                 shared: Arc::clone(&make_shared),
@@ -1254,6 +1271,7 @@ pub fn serve_unwatched_to(
             },
         );
         let lines = Lines {
+            timelines,
             shared: Arc::clone(&make_shared),
             paused: RefCell::new(Default::default()),
         };
