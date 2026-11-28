@@ -181,6 +181,34 @@ test "a parcel's status comes back" {
 }
 ```
 
+```jadpo check project=e-contract-uncovered-fixed file=domains/shipping/actions/track_parcel.test.jadpo hidden
+use app { couriers }
+use shared/providers/acme_couriers
+
+test "a delivered parcel says so" {
+    fakes: {
+        couriers.parcels.get: [
+            AcmeCouriers.Parcel {
+                status: "delivered"
+            }
+        ]
+    }
+    var lookup: AcmeCouriers.ParcelLookup = AcmeCouriers.ParcelLookup {
+        parcel_id: "P1"
+    }
+    var parcel: AcmeCouriers.Parcel = track_parcel(lookup)
+    assert parcel.status == "delivered"
+}
+
+test "a parcel's status comes back" {
+    var lookup: AcmeCouriers.ParcelLookup = AcmeCouriers.ParcelLookup {
+        parcel_id: "P1"
+    }
+    var parcel: AcmeCouriers.Parcel = track_parcel(lookup)
+    assert parcel.status != ""
+}
+```
+
 ```jadpo check project=e-contract-uncovered-fixed file=config.jadpo hidden
 config {
     couriers_api_key: Text {
@@ -259,34 +287,6 @@ use shared/providers/acme_couriers
 /// Where a customer's parcel is.
 action track_parcel(lookup: AcmeCouriers.ParcelLookup) -> AcmeCouriers.Parcel {
     return couriers.parcels.get(lookup)
-}
-```
-
-```jadpo check project=e-contract-uncovered-fixed file=domains/shipping/actions/track_parcel.test.jadpo hidden
-use app { couriers }
-use shared/providers/acme_couriers
-
-test "a delivered parcel says so" {
-    fakes: {
-        couriers.parcels.get: [
-            AcmeCouriers.Parcel {
-                status: "delivered"
-            }
-        ]
-    }
-    var lookup: AcmeCouriers.ParcelLookup = AcmeCouriers.ParcelLookup {
-        parcel_id: "P1"
-    }
-    var parcel: AcmeCouriers.Parcel = track_parcel(lookup)
-    assert parcel.status == "delivered"
-}
-
-test "a parcel's status comes back" {
-    var lookup: AcmeCouriers.ParcelLookup = AcmeCouriers.ParcelLookup {
-        parcel_id: "P1"
-    }
-    var parcel: AcmeCouriers.Parcel = track_parcel(lookup)
-    assert parcel.status != ""
 }
 ```
 
