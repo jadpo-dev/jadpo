@@ -27,6 +27,7 @@ pub use crate::flags::flags;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 pub use crate::inspect::{impact, inspect};
+pub use crate::manifest::manifest;
 pub use crate::migrate::migrate;
 pub use crate::new::new;
 pub use crate::package::package;

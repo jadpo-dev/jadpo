@@ -1929,12 +1929,104 @@ naming the variable to set.
   `jadpo.build`, and each action's and query's place in the source, its
   stable identity and its domain's name as `jadpo.source`,
   `jadpo.identity` and `jadpo.name`. A monitoring product decodes them
-  against the build manifest
-  ([The manifest](18-records-and-manifest.md#the-manifest)).
+  against the build's manifest, which a deploy gives it through [the
+  manifest protocol](#the-manifest-protocol).
 
 Health checks send nothing, and a payload the collector refuses or
 doesn't answer is counted in the host's log as `telemetry.send_failed`,
 never sent twice.
+
+### The manifest protocol
+
+A monitoring product shows a request's spans by the names in your source
+when it holds the manifest of the build that sent them. The manifest
+protocol is how every product is given it, in one published form, so
+that every product decodes `jadpo.build`, `jadpo.identity` and
+`jadpo.source` the same way. A vendor still needs nothing but an
+endpoint and a header: the product serves the protocol below the
+telemetry endpoint, and reads the same credential.
+
+Run `jadpo manifest send` as you deploy
+([`jadpo manifest`](14-tooling.md#jadpo-manifest)). It sends each
+deployable's manifest, reading the endpoint and credential as the
+deployed app does. The deployed app itself carries no manifest and
+serves nothing about its structure
+([Production builds](18-records-and-manifest.md#production-builds)).
+
+| Request | Answers |
+|---|---|
+| `PUT jadpo/v1/builds/{build}` | `201` with `{ "build": "b_9a1f03c6d2e4" }` when the product didn't hold the build, `200` when it did. The body is the build's manifest |
+| `GET jadpo/v1/builds/{build}` | `200` with the build's manifest, as it was first sent |
+
+Each path is added to the endpoint as `/v1/traces` is, so with the
+endpoint `https://api.honeycomb.io` a build is sent to
+`https://api.honeycomb.io/jadpo/v1/builds/b_9a1f03c6d2e4`. The body is
+JSON, and so is every answer. A product keeps the first manifest it is
+sent for a build and never replaces it, so sending again is safe and
+can't change how an old build's telemetry reads. A failure has the body
+`{ "error": { "code": "…", "message": "…" } }`:
+
+- `401 unauthorised`: the credential is missing or wrong;
+- `404 build_not_found`: no manifest is held for that build;
+- `413 too_large`: a manifest over 16 MiB;
+- `422 manifest_invalid`: the body isn't this protocol's manifest, or it
+  names another build than its path.
+
+A manifest holds only what decoding needs. It has the build's id,
+deployable, target and compiler, and a node for each declaration the
+deployable reaches that has a place in your source:
+
+```json
+{
+  "build": "b_9a1f03c6d2e4",
+  "compiler": "X.Y.Z",
+  "deployable": "api",
+  "nodes": [
+    {
+      "domain": "planning",
+      "file": "domains/planning/actions/complete_todo.jadpo",
+      "id": "action complete_todo",
+      "kind": "action",
+      "lines": [4, 22],
+      "name": "complete_todo"
+    }
+  ],
+  "protocol": 1,
+  "target": "wasm"
+}
+```
+
+Each node is the build manifest's node of the same key
+([What a node holds](18-records-and-manifest.md#what-a-node-holds))
+without its description, digest or edges. The JSON is canonical:
+members sorted, nodes in key order, no timestamps. So everything in it
+is decided by the build id. `protocol` changes only when a member is
+removed or changes meaning, as the build manifest's `format` does, and a
+product leaves alone a member it doesn't know.
+
+The attributes decode like this:
+
+- **`jadpo.build`**, on every payload's resource, is the build whose
+  manifest is at `builds/{build}`.
+- **`jadpo.identity`**, on each action's and query's span, is a node's
+  `id`. It stays the same across builds while the declaration keeps its
+  name, and a rename keeps it too
+  ([Stable identity](18-records-and-manifest.md#stable-identity)).
+- **`jadpo.source`** is `file:line`, a line of `file` in that build. The
+  node it falls in is the node of that `file` whose `lines` hold it, the
+  narrowest when several do.
+- **`jadpo.path`**, once requests carry it ([Path IDs](#path-ids)), will
+  decode against the control flow the manifest gains then. That is an
+  addition, so `protocol` stays 1.
+
+`jadpo manifest protocol <endpoint>` is the protocol's conformance test.
+A monitoring product runs it in its own CI against its own endpoint,
+needing only `jadpo` at the release it targets. It sends a sample build
+whose id no build has, `b_000000000000`, and checks every answer above:
+the first manifest is kept, one naming another build and one that isn't
+a manifest are refused, and an unknown build isn't found. With
+`OTEL_EXPORTER_OTLP_HEADERS` set, it sends that credential, and a request
+without it must be refused.
 
 ### Custom metrics
 
@@ -5929,7 +6021,7 @@ The errors this page describes are built with the feature they belong to.
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Partly built: chosen events posted to one address, a `Driver.webhook` connection, and to the addresses customers register through the operations generated on the entity whose `webhooks:` lists them, each with its own secret, sealed, signed as Standard Webhooks signs and retried, through the one runtime-owned network exception ([Outgoing webhooks](#outgoing-webhooks)). Not built yet: the records of a second entity registering addresses. |
-| The `telemetry:` section | Partly built: `telemetry:` with `endpoint:`, `credential:`, `send:` and `detail:`, or the standard OpenTelemetry variables, sending each request's trace, metrics and log events over OTLP as JSON, interpreted and compiled natively, and from a Workers deployable in each request's `waitUntil`, which no test has yet run under workerd; custom metrics in `monitoring.jadpo` and `telemetry.note`, a personal field refused as either; `jadpo dev`'s copy on the machine, `--export-telemetry`, and `jadpo traces`, `jadpo metrics` and `jadpo logs` ([Telemetry](#telemetry)). Not built yet: spans of schedule runs and deliveries of their own, `jadpo.path` and `jadpo.path_key`, which come with path IDs on requests, the queue's size and its oldest delivery's age, which come with a tick's metrics, a request id from outside, and telemetry in the developer console. |
+| The `telemetry:` section | Partly built: `telemetry:` with `endpoint:`, `credential:`, `send:` and `detail:`, or the standard OpenTelemetry variables, sending each request's trace, metrics and log events over OTLP as JSON, interpreted and compiled natively, and from a Workers deployable in each request's `waitUntil`, which no test has yet run under workerd; custom metrics in `monitoring.jadpo` and `telemetry.note`, a personal field refused as either; `jadpo dev`'s copy on the machine, `--export-telemetry`, and `jadpo traces`, `jadpo metrics` and `jadpo logs` ([Telemetry](#telemetry)); the manifest protocol, `jadpo manifest send` giving a monitoring product each deployable's manifest and `jadpo manifest protocol` its conformance test ([The manifest protocol](#the-manifest-protocol)). Not built yet: spans of schedule runs and deliveries of their own, `jadpo.path` and `jadpo.path_key`, which come with path IDs on requests, the queue's size and its oldest delivery's age, which come with a tick's metrics, a request id from outside, and telemetry in the developer console. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the gate compares the paths each test's bodies took when it runs them interpreted and compiled, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). A route's, action's, schedule's or subscriber's most queries per request, where its `queries:` starts, in the query report. The per-request limits decide which traces `telemetry:` sends whole (`Trace.slow`), and every duration a threshold names is a bucket of its subject's duration histogram ([Telemetry](#telemetry)). Not built yet: starting values from production, and an agent's proposals through MCP. |
 

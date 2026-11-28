@@ -49,6 +49,8 @@ pub mod interactive;
 pub mod keys;
 pub mod launcher;
 mod local;
+mod manifest;
+pub mod manifest_protocol;
 pub mod migrate;
 mod new;
 mod package;

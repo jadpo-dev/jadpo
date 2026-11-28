@@ -106,6 +106,71 @@ pub fn manifest(graph: &Graph, stamp: &Stamp) -> Value {
     out
 }
 
+/// The manifest protocol's number (area 16, "The manifest protocol";
+/// chunk O3), which changes as [`FORMAT`] does: only when a field is
+/// removed or changes meaning.
+pub const PROTOCOL: i64 = 1;
+
+/// One deployable's build, as the manifest protocol sends it.
+#[derive(Clone, Copy, Debug)]
+pub struct Build<'a> {
+    pub deployable: &'a str,
+    /// `native` or `wasm`.
+    pub target: &'a str,
+    pub build: &'a str,
+    pub compiler: &'a str,
+}
+
+/// The manifest a monitoring product decodes one build's telemetry
+/// against (area 16, "The manifest protocol"): the build's stamp and each
+/// node the deployable reaches that has a place in the source, in key
+/// order, with its key (what `jadpo.identity` carries), kind, name, domain,
+/// file and lines (what `jadpo.source` points into). Nothing else: no
+/// description, digest or edge, so a product holds no more of the app than
+/// decoding needs, and every part of it is decided by the build id.
+pub fn build_manifest(
+    graph: &Graph,
+    build: &Build<'_>,
+    reached: &std::collections::BTreeSet<Key>,
+) -> Value {
+    let mut nodes: Vec<&Node> = reached
+        .iter()
+        .filter_map(|key| graph.get(key))
+        .filter(|node| node.place.is_some())
+        .collect();
+    nodes.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
+    let mut out = Value::object();
+    out.set("protocol", PROTOCOL);
+    out.set("build", build.build);
+    out.set("deployable", build.deployable);
+    out.set("target", build.target);
+    out.set("compiler", build.compiler);
+    out.set(
+        "nodes",
+        Value::Array(
+            nodes
+                .into_iter()
+                .map(|node| {
+                    let mut entry = Value::object();
+                    entry.set("id", node.key.as_str());
+                    entry.set("kind", node.kind.word());
+                    entry.set("name", node.name.as_str());
+                    entry.set_some("domain", node.domain.as_deref());
+                    if let Some(place) = &node.place {
+                        entry.set("file", place.file.as_str());
+                        entry.set(
+                            "lines",
+                            vec![Value::from(place.lines.0), Value::from(place.lines.1)],
+                        );
+                    }
+                    entry
+                })
+                .collect(),
+        ),
+    );
+    out
+}
+
 /// One node as the manifest writes it.
 pub fn node_json(graph: &Graph, id: NodeId) -> Value {
     let node = graph.node(id);

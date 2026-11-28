@@ -3088,6 +3088,22 @@ duration a threshold names is a histogram bucket (`RuntimePlan::
 buckets`). A start with nowhere to send fails
 (`deployable::start`).
 
+**The manifest protocol** (area 16, "The manifest protocol"; chunk O3).
+`jadpo_graph::manifest::build_manifest` is the build manifest's view for
+one deployable, the nodes `Reached::callables` holds that have a place,
+without descriptions, digests or edges. `jadpo manifest send` makes each
+deployable's program as `jadpo build` does (`stamp::program`) for its
+build id, reads the endpoint and credential with `telemetry::
+destination_by_variable`, which reads only those two settings, and
+`PUT`s it through the HQ client (`hq::request_retrying`), which takes
+plain `http://` to any host for a telemetry endpoint, as the runtime
+does. `manifest_protocol` holds what a manifest must be
+(`check_manifest`), the sample build and the conformance test `jadpo
+manifest protocol` runs, request by request against a live endpoint;
+the CLI's tests run both against a product double
+(`tests/support/fake_product.rs`), one switch for each way a product can
+differ.
+
 **The request guarantees,** in the same component. A body
 over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops
 holding a body there and marks the request `too_large`. Health

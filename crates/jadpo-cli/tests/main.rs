@@ -113,6 +113,7 @@ mod lookup_by_email;
 mod lsp;
 mod magic_links;
 mod manifest;
+mod manifest_protocol;
 mod marked_logs;
 mod migrate;
 mod new;

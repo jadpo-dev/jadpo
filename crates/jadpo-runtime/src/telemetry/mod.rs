@@ -374,6 +374,37 @@ pub fn destination(
     values: Option<&ConfigValues>,
     variable: &dyn Fn(&str) -> Option<String>,
 ) -> Result<(String, Vec<(String, String)>), Unsendable> {
+    let text_at = |at: u32| {
+        values
+            .and_then(|values| values.text_at(at))
+            .map(str::to_string)
+    };
+    destination_with(plan, config, &text_at, variable)
+}
+
+/// [`destination`] read as the deployed app would read it, from
+/// `variable` alone: each of the section's two settings from its own
+/// variable, else its `default:`. For a tool run where the app's other
+/// settings needn't be set, as `jadpo manifest send` is (area 16, "The
+/// manifest protocol").
+pub fn destination_by_variable(
+    plan: &TelemetryPlan,
+    config: &jadpo_std::config::ConfigPlan,
+    variable: &dyn Fn(&str) -> Option<String>,
+) -> Result<(String, Vec<(String, String)>), Unsendable> {
+    let text_at = |at: u32| {
+        let field = config.fields.get(at as usize)?;
+        variable(&field.variable).or_else(|| field.default.clone())
+    };
+    destination_with(plan, Some(config), &text_at, variable)
+}
+
+fn destination_with(
+    plan: &TelemetryPlan,
+    config: Option<&jadpo_std::config::ConfigPlan>,
+    text_at: &dyn Fn(u32) -> Option<String>,
+    variable: &dyn Fn(&str) -> Option<String>,
+) -> Result<(String, Vec<(String, String)>), Unsendable> {
     let named = |at: u32| -> String {
         config
             .and_then(|config| config.fields.get(at as usize))
@@ -381,12 +412,7 @@ pub fn destination(
             .unwrap_or_default()
     };
     let (endpoint, from) = match plan.endpoint {
-        Some(at) => (
-            values
-                .and_then(|values| values.text_at(at))
-                .map(str::to_string),
-            named(at),
-        ),
+        Some(at) => (text_at(at), named(at)),
         None => (
             variable(jadpo_std::telemetry::ENDPOINT_VARIABLE),
             jadpo_std::telemetry::ENDPOINT_VARIABLE.to_string(),
@@ -400,9 +426,8 @@ pub fn destination(
         return Err(Unsendable::EndpointInvalid { variable: from });
     }
     let headers = match &plan.credential {
-        Some(credential) => values
-            .and_then(|values| values.text_at(credential.value))
-            .map(|value| vec![(credential.header.clone(), value.to_string())])
+        Some(credential) => text_at(credential.value)
+            .map(|value| vec![(credential.header.clone(), value)])
             .unwrap_or_default(),
         None => match variable(jadpo_std::telemetry::HEADERS_VARIABLE) {
             Some(text) => headers_of(&text).ok_or(Unsendable::HeadersInvalid)?,

@@ -69,6 +69,17 @@ impl Address {
 
 /// HQ's address from what was written, or why it can't be used.
 pub fn address(written: &str) -> Result<Address, String> {
+    parsed(written, false)
+}
+
+/// A telemetry endpoint's address (area 16, "The manifest protocol"):
+/// reached as the deployed app reaches it, so plain `http://` is taken
+/// for any host, as a collector inside a private network is.
+pub fn endpoint_address(written: &str) -> Result<Address, String> {
+    parsed(written, true)
+}
+
+fn parsed(written: &str, plain_anywhere: bool) -> Result<Address, String> {
     let written = written.trim();
     let (secure, rest) = if let Some(rest) = written.strip_prefix("https://") {
         (true, rest)
@@ -110,7 +121,7 @@ pub fn address(written: &str) -> Result<Address, String> {
         host.to_lowercase().as_str(),
         "localhost" | "127.0.0.1" | "[::1]"
     );
-    if !secure && !loopback {
+    if !secure && !loopback && !plain_anywhere {
         return Err(format!(
             "`{written}` is plain `http://`, which Jadpo sends to only on this machine; HQ's address starts with `https://`."
         ));
@@ -139,10 +150,47 @@ pub enum Failure {
 }
 
 /// One answer.
-struct Answer {
-    status: u16,
+pub(crate) struct Answer {
+    pub(crate) status: u16,
     retry_after: Option<u64>,
-    body: String,
+    pub(crate) body: String,
+}
+
+/// Sends `method` to `path` with `headers` and `body`, and reads the whole
+/// answer, trying again as [`post`] does for a failed connection, a
+/// timeout, `429` and `500`, `502`, `503` and `504`. `Err` says why
+/// nothing answered.
+pub(crate) fn request_retrying(
+    address: &Address,
+    method: &str,
+    path: &str,
+    headers: &[(String, String)],
+    body: Option<&str>,
+) -> Result<Answer, String> {
+    let mut tries = 0;
+    loop {
+        let wait = match request(address, method, path, headers, body) {
+            Ok(answer) => {
+                let retryable = matches!(answer.status, 429 | 500 | 502 | 503 | 504);
+                if !retryable || tries == BACKOFF.len() {
+                    return Ok(answer);
+                }
+                match answer.retry_after {
+                    Some(seconds) if seconds > LONGEST_WAIT => return Ok(answer),
+                    Some(seconds) => Duration::from_secs(seconds),
+                    None => BACKOFF[tries],
+                }
+            }
+            Err(why) => {
+                if tries == BACKOFF.len() {
+                    return Err(why);
+                }
+                BACKOFF[tries]
+            }
+        };
+        tries += 1;
+        std::thread::sleep(wait);
+    }
 }
 
 /// Posts `body` to `path` and reads HQ's JSON answer, retrying what can
@@ -227,6 +275,19 @@ pub(crate) fn not_connected(error: &std::io::Error, waited: Duration) -> String 
 
 /// One try: connect, send, read the whole answer.
 fn once(address: &Address, path: &str, body: &str) -> Result<Answer, String> {
+    request(address, "POST", path, &[], Some(body))
+        .map_err(|why| why.replace("The answer isn't HTTP.", "Jadpo HQ's answer isn't HTTP."))
+}
+
+/// One request: `method` to `path`, with `headers` beside the protocol's
+/// own and `body` as JSON when there is one.
+pub(crate) fn request(
+    address: &Address,
+    method: &str,
+    path: &str,
+    headers: &[(String, String)],
+    body: Option<&str>,
+) -> Result<Answer, String> {
     let host = address.host.trim_start_matches('[').trim_end_matches(']');
     let targets = (host, address.port)
         .to_socket_addrs()
@@ -258,12 +319,25 @@ fn once(address: &Address, path: &str, body: &str) -> Result<Answer, String> {
     } else {
         format!(":{}", address.port)
     };
-    let request = format!(
-        "POST {}{path} HTTP/1.1\r\nHost: {}{port}\r\nContent-Type: application/json\r\nAccept: application/json\r\nUser-Agent: jadpo\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        address.prefix,
-        address.host,
-        body.len()
+    let mut request = format!(
+        "{method} {}{path} HTTP/1.1\r\nHost: {}{port}\r\nAccept: application/json\r\nUser-Agent: jadpo\r\n",
+        address.prefix, address.host,
     );
+    for (name, value) in headers {
+        if name.contains(['\r', '\n']) || value.contains(['\r', '\n']) {
+            return Err(format!(
+                "The header `{name}` holds a line break, so it isn't sent."
+            ));
+        }
+        request.push_str(&format!("{name}: {value}\r\n"));
+    }
+    match body {
+        Some(body) => request.push_str(&format!(
+            "Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )),
+        None => request.push_str("Connection: close\r\n\r\n"),
+    }
     let raw = if address.secure {
         let connector = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())
             .map_err(|error| error.to_string())?
@@ -276,7 +350,7 @@ fn once(address: &Address, path: &str, body: &str) -> Result<Answer, String> {
         exchange(stream, request.as_bytes())
     }
     .map_err(|error| format!("The exchange with `{}` broke off: {error}.", address.host))?;
-    parse(&raw).ok_or_else(|| "Jadpo HQ's answer isn't HTTP.".to_string())
+    parse(&raw).ok_or_else(|| "The answer isn't HTTP.".to_string())
 }
 
 fn exchange<S: Read + Write>(mut stream: S, request: &[u8]) -> std::io::Result<Vec<u8>> {

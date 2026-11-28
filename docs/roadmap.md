@@ -453,13 +453,7 @@ work below (Richard, 2026-11-08).
       header its provider's answers and webhooks carry a request ID in
       (Stripe's `Request-Id`, GitHub's `X-GitHub-Delivery`), kept on the
       call's span.
-    - [ ] **O3 The build manifest as an open protocol** `opus · high`
-      **needs a maintainer** before building: area 16, "What is sent";
-      area 18, "The manifest". A deploy uploads each build's manifest, but
-      the pages don't say where or in what form. Recommended: a published
-      endpoint and format, with a conformance test like the registry
-      protocol's, so any monitoring product decodes `jadpo.path`, source
-      locations and the build id the same way.
+    - [x] **O3 The build manifest as an open protocol**: area 16, "The manifest protocol" and its notes; area 14, "`jadpo manifest`"; area 18, "Production builds"; compiler-runtime §2.6, "The manifest protocol".
     - [ ] **O4 Who may read an app's telemetry** **needs a maintainer**:
       area 9; area 18, "The manifest". A service showing telemetry to
       readers with different permissions needs the app's roles and what

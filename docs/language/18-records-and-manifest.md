@@ -1025,9 +1025,14 @@ events already show `.jadpo` frames
 - **The manifest is rebuilt, not shipped.** Builds are deterministic
   ([Tools](14-tooling.md)), so `jadpo incident` builds the event's
   commit, checks that the build id matches, and caches the result.
-  Nothing is uploaded or archived. `jadpo` fetches and runs the exact
-  compiler version the stamp names, as `rustup` installs a pinned
-  toolchain, so an old build can always be rebuilt.
+  Nothing is archived. `jadpo` fetches and runs the exact compiler
+  version the stamp names, as `rustup` installs a pinned toolchain, so an
+  old build can always be rebuilt.
+- **A monitoring product is given it.** `jadpo manifest send`, run as you
+  deploy, gives the product your telemetry goes to the part of each
+  build's manifest that decodes it, through [the manifest
+  protocol](16-built-in-services.md#the-manifest-protocol). Nothing else
+  is uploaded.
 - **No endpoint.** The deployed app reveals nothing about its structure.
   This also works for a worker with no HTTP surface.
 - **Native and Wasm alike.** Nothing depends on debug information or

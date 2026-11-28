@@ -1959,6 +1959,7 @@ the files it keeps, and check a deploy before it happens.
 | `jadpo files` | Lists, reads and copies a store's files |
 | `jadpo batches` | Lists batch runs; `show`, `cancel` |
 | `jadpo runs unfinished --build <build id>` | Lists the multi-step runs a deploy would stop |
+| `jadpo manifest send` | Gives the monitoring product each build's manifest |
 
 ### `jadpo flags`
 
@@ -2044,6 +2045,43 @@ Each takes `--json` and the same filters, which choose requests:
 
 A filter it can't read is `cli.traces_arguments`, `cli.metrics_arguments` or
 `cli.logs_arguments`.
+
+### `jadpo manifest`
+
+`jadpo manifest send [<deployable>]` gives the monitoring product your
+telemetry goes to each deployable's manifest, or the one it names,
+through [the manifest protocol](16-built-in-services.md#the-manifest-protocol).
+Run it as you deploy, beside `jadpo build`. It checks the project as
+`jadpo build` does and stops at its errors. It reads the endpoint and
+credential as the deployed app does, from the environment and then
+`.env.local`, so no other setting needs to be set where it runs:
+
+```text
+✓ Sent 2 build manifests to https://api.honeycomb.io
+    api     b_9a1f03c6d2e4 · new
+    worker  b_77c0e1d2a3b4 · already held
+```
+
+A product keeps the first manifest it is sent for a build, so sending
+one again is safe and says `already held`. An app with no `telemetry:`
+section, an endpoint no variable gives, a product that can't be reached
+or one that refuses a manifest is `manifest.send_failed`. It exits 1 so
+the deploy stops there. The endpoint is named by its origin, and the
+credential never. A deployable the app doesn't declare is
+`cli.manifest_arguments`.
+
+`jadpo manifest protocol <endpoint>` is the protocol's conformance test,
+run by a monitoring product's CI against its own endpoint. It needs no
+project. With `OTEL_EXPORTER_OTLP_HEADERS` set, it sends that credential
+and checks that a request without it is refused. A product that conforms
+is one line:
+
+```text
+✓ Conforms to the manifest protocol  https://collector.example · 8 checks
+```
+
+One that differs is `manifest.protocol_mismatch`, with each difference
+under the request it is in.
 
 ### `jadpo email`
 
@@ -4349,6 +4387,8 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `lsp.read_failed` | `lsp` | Language-server input could not be read |
 | `lsp.root_missing` | `lsp` | Language server has no workspace root |
 | `lsp.write_failed` | `lsp` | Language-server response could not be written |
+| `manifest.protocol_mismatch` | `manifest protocol` | A monitoring product's endpoint answers the manifest protocol's requests differently from the protocol |
+| `manifest.send_failed` | `manifest send` | `jadpo manifest send` had nowhere to send a build's manifest, couldn't reach the endpoint, or was refused |
 | `migration.decision_artifact_exists` | `schema` | Migration decision file already exists |
 | `migration.decision_artifact_invalid` | `schema` | Migration decision file is invalid |
 | `migration.decision_artifact_read_failed` | `schema` | Migration decision file could not be read |
@@ -4493,6 +4533,7 @@ yet, or that other commands replace.
 | `cli.inspect_arguments` | `inspect` | A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share |
 | `cli.logs_arguments` | `logs` | A `jadpo logs` command is given something it doesn't take, or a filter or level it can't read |
 | `cli.lsp_arguments` | `lsp` | A `jadpo lsp` command is given an argument, which it doesn't take |
+| `cli.manifest_arguments` | `manifest` | A `jadpo manifest` command names no action, one it doesn't have, a deployable the app doesn't declare, or no address to check |
 | `cli.metrics_arguments` | `metrics` | A `jadpo metrics` command is given something it doesn't take, or a filter it can't read |
 | `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, a `--drop` of what isn't retired, or a `--drop` of the flags' tables while a flag is declared |
 | `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |

@@ -1956,6 +1956,53 @@ pub static COMMANDS: &[Command] = &[
         run: commands::privacy,
     },
     Command {
+        name: "manifest",
+        synonyms: &[],
+        group: "Production",
+        summary: "Give a monitoring product each build's manifest",
+        description: "The manifest protocol (area 16): `send`, run as a deploy happens, checks the \
+                      project and gives the monitoring product at the app's telemetry endpoint each \
+                      deployable's manifest, or the one deployable it names, which its telemetry's \
+                      `jadpo.build`, `jadpo.identity` and `jadpo.source` decode against. It reads the \
+                      endpoint and credential as the deployed app does, from the environment and \
+                      then `.env.local`, and no other setting. A product keeps a build's first \
+                      manifest, so sending again is safe. `protocol` is the conformance test a \
+                      monitoring product's CI runs against its own endpoint, with \
+                      OTEL_EXPORTER_OTLP_HEADERS as its credential; it needs no project.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: send or protocol",
+                required: true,
+                values: Values::Fixed(crate::manifest::ACTIONS),
+            },
+            Argument {
+                name: "target",
+                description: "send's deployable, or protocol's endpoint",
+                required: false,
+                values: Values::Id,
+            },
+        ],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "Give the monitoring product the builds being deployed",
+                command: "jadpo manifest send",
+            },
+            Example {
+                description: "Check that a product follows the protocol",
+                command: "jadpo manifest protocol https://collector.example",
+            },
+        ],
+        arguments_rule: &rule::CLI_MANIFEST_ARGUMENTS,
+        raises: &[
+            &rule::MANIFEST_SEND_FAILED,
+            &rule::MANIFEST_PROTOCOL_MISMATCH,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::manifest,
+    },
+    Command {
         name: "runs",
         synonyms: &[],
         group: "Production",

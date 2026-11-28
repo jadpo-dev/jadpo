@@ -202,6 +202,8 @@ rules! {
         "A `jadpo logs` command is given something it doesn't take, or a filter or level it can't read";
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
         "A `jadpo lsp` command is given an argument, which it doesn't take";
+    CLI_MANIFEST_ARGUMENTS: "cli.manifest_arguments", area 14, Error, Agent,
+        "A `jadpo manifest` command names no action, one it doesn't have, a deployable the app doesn't declare, or no address to check";
     CLI_METRICS_ARGUMENTS: "cli.metrics_arguments", area 14, Error, Agent,
         "A `jadpo metrics` command is given something it doesn't take, or a filter it can't read";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
@@ -700,6 +702,10 @@ rules! {
         "A declaration is in a folder that doesn't hold its kind";
     LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Declinable, Agent,
         "A function does the same as a library function that already exists";
+    MANIFEST_PROTOCOL_MISMATCH: "manifest.protocol_mismatch", area 14, Error, Agent,
+        "A monitoring product's endpoint answers the manifest protocol's requests differently from the protocol";
+    MANIFEST_SEND_FAILED: "manifest.send_failed", area 14, Error, Human,
+        "`jadpo manifest send` had nowhere to send a build's manifest, couldn't reach the endpoint, or was refused";
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
         "Applying the project's migrations to a database stopped at a step that failed";
     MIGRATION_BACKFILL_CAN_FAIL: "migration.backfill_can_fail", area 5, Error, Agent,
