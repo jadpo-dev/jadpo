@@ -6283,9 +6283,10 @@ be published, and the registry leaves it out of that capability's listing.
 > The suites of `ai`, `email` and `receiving` are built, the
 > capabilities whose mappings are read, and so is the run a release shows,
 > pinned to its digest; the registry's listing reads it from the
-> verifier's answer. The app's own integrations running the suite in
-> scheduled CI, and the contract run, aren't built yet. Another
-> capability's suite comes with its mapping.
+> verifier's answer. So is the app's own integrations' run of the suite
+> against the provider, which the contract run takes through `--live`
+> ([Tests and fakes](#tests-and-fakes)). Another capability's suite comes
+> with its mapping.
 
 ### In development
 
@@ -6625,7 +6626,67 @@ Grants are declared as fixtures.
 sandbox, in CI on a schedule. Every written operation that isn't
 confirmed by a recording must have a case in that run.
 
-> Grants as fixtures and the contract run aren't built yet.
+### Against the sandbox: the contract run
+
+A contract run's case is one of the app's tests that reaches a provider
+operation: through what it calls, the triggers it runs and the
+subscribers its events reach. Each call its `fakes:` scripts is still
+answered from the script; every other call goes through the connection
+to the provider's sandbox, as `jadpo dev` lets a call through. The
+connection's credential, environment and address are read as `jadpo
+dev` reads them, from the environment and then `.env.local`, and every
+other setting as any test reads it. A connection whose environment
+chooses `live`, or whose settings nothing sets, is refused before
+anything is sent
+([`test.contract_refused`](../errors/test.contract_refused.md)).
+
+An operation the app calls through its own integration, written from
+the provider's documentation and confirmed by no recording, that no case
+sends to the sandbox fails the run
+([`test.contract_uncovered`](../errors/test.contract_uncovered.md)); a
+case that scripts its answer doesn't count. The run also takes the
+conformance suite of each capability one of the app's own integrations
+fills, where the app's `ai:` or `email:` uses it, as `jadpo package
+conform --live` runs it ([Proving a package works](#proving-a-package-works)),
+held to the sandbox as the cases are.
+
+A passing run is one line:
+
+```text
+$ jadpo test --kind contract
+✓ 3 passed  3 contract cases · email conforms live in 2.4 s
+```
+
+One that leaves an operation unchecked names it:
+
+```text
+$ jadpo test --kind contract
+✗ error  `couriers.bookings.cancel` has no contract case
+  --> shared/providers/acme_couriers/v1/resources/bookings.jadpo:2:5
+   │
+ 2 │     cancel: {
+   │     ^^^^^^ no case sent it to the sandbox
+  reason  It was written from the provider's documentation and no recording confirms
+          it, so a contract run is what checks it against the provider, and none of
+          its cases sent it to the sandbox: no case reaches it, or each that does
+          scripts its answer.
+  next    Write a test that reaches `couriers.bookings.cancel` with no `fakes:` answer
+          for it, or confirm it with `jadpo package record couriers bookings.cancel`
+          (agent)
+  rule    test.contract_uncovered
+
+✗ contract run failed  3 contract cases · 1 operation with no case
+```
+
+A path, a line, `--name`, `--failed` or `--affected` runs the cases it
+picks alone, judging no operation and taking no suite. A case runs once,
+without the reruns with a crash at each step that `jadpo test` makes,
+since each would send its calls again, and `--watch` refuses the run.
+Jadpo writes no CI of its own:
+[Call an outside API](../guides/06-call-an-outside-api.md#check-it-against-the-sandbox-on-a-schedule)
+shows a scheduled job that runs it.
+
+> Grants as fixtures aren't built yet.
 
 ## What reviewers see
 <!-- topic: what-reviewers-see -->
@@ -8851,6 +8912,7 @@ package's name, as its types are.
 | Walking a list operation's pages with `batches.each` or a file helper's write ([Pages of results](#pages-of-results)) | Built, but for a `batches.each` whose `each:` action makes outside calls ([Jobs and events](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)). |
 | No transaction open during a call, and several changing calls in one action | Built. |
 | Fakes, recordings and provider calls faked in development | Built. |
+| The contract run, `jadpo test --kind contract` ([Tests and fakes](#tests-and-fakes)) | Built: the tests that reach a provider operation, each call their `fakes:` doesn't script sent through the connection to the provider's sandbox with the settings `jadpo dev` reads, a live or unset connection refused; an unconfirmed written operation no case sends failing the run; and each of the app's own integrations' suites taken through `--live`. |
 | The `email` capability with SMTP and Resend | Built. |
 | Package actions, subscribers, recipes and polls | Built. |
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
@@ -8863,7 +8925,7 @@ package's name, as its types are.
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built. |
 | A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the registry's check of a release | Built. |
 | [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
-| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Built in `jadpo`, for the registry to use: a verifier image for each pre-release, what `jadpo fix` would change in the verifier's answer, `GET log/signed-head` checked against the keys it holds, and `POST decode-failures`'s shape. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, signed heads from jadpo.dev and the key it signs with held in `jadpo`, and an app's reports from its scheduled contract runs, which wait for the contract run. Accounts are open to a short list of people for now; anyone can search and install. |
+| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Built in `jadpo`, for the registry to use: a verifier image for each pre-release, what `jadpo fix` would change in the verifier's answer, `GET log/signed-head` checked against the keys it holds, and `POST decode-failures`'s shape. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, signed heads from jadpo.dev and the key it signs with held in `jadpo`, and an app's reports from its scheduled contract runs, which wait for the app's opt-in. Accounts are open to a short list of people for now; anyone can search and install. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Built: the package's and the connection's `erasure:` are read and checked, a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance, and a generated subscriber calls each provider after the commit ([Erasure at providers](15-personal-data.md#erasure-at-providers)). |
@@ -9103,6 +9165,15 @@ public type SlotTaken = Failure {
 
 - [`test.recording_undecodable`](../errors/test.recording_undecodable.md)
 - [`test.round_trip_failed`](../errors/test.round_trip_failed.md)
+
+### Contract run errors
+
+> `jadpo test --kind contract` reports these once its cases have run
+> ([Tests and fakes](#tests-and-fakes)); it refuses a connection it can't
+> hold to the sandbox before anything is sent, as `test.contract_refused`,
+> which [Command errors](14-tooling.md#command-errors) lists.
+
+- [`test.contract_uncovered`](../errors/test.contract_uncovered.md)
 
 
 ### Publishing errors

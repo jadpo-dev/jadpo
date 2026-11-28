@@ -145,6 +145,11 @@ A test that calls actions to set up its data and then makes a request is a
 route test. A fifth kind, recording tests, has no `test` declaration; it
 is described at the end of this topic.
 
+`jadpo test --kind contract` picks no kind of its own: it runs the tests
+of any kind that reach a provider operation, with each call their
+`fakes:` doesn't script sent to the provider's sandbox
+([Tests and fakes](11-integrations.md#tests-and-fakes)).
+
 `jadpo test` also writes route tests of its own for every route, with
 nothing for you to write: one sends bad input, including one past each
 `min:`, `max:`, `min_length:` and `max_length:` of the input, and checks
@@ -2827,6 +2832,7 @@ cached read).
 | Clock | Built: a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Built: `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
 | Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` ([Email](16-built-in-services.md#email)): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. `.requests` lists what the code sent an operation, typed as its input, with secrets redacted, as the `ai` fake's `ai.<prompt>.requests` does. In a test, `fixture_file` keeps a file from the test's domain's `fixtures/files/` in the in-memory store as a stored `File`, and `fakes: { <store>: unavailable }` or `storage_full` makes the store fail every call, or every write, for the rest of the test ("Files"). Not built yet: the capability fakes but the store of files' and `ai`'s, grants and documents. |
+| Contract runs | Built: `jadpo test --kind contract` runs the tests that reach a provider operation, each call their `fakes:` doesn't script sent through the connection to the provider's sandbox, the connection's settings read as `jadpo dev` reads them ([Tests and fakes](11-integrations.md#tests-and-fakes)). |
 | Database | Built: `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Built: `Principal.user(user)` and `Principal.service(service)` in tests, fixtures and seeds; a call passing a caller runs as that caller, one passing none runs without policy. |
 | Placement | Built: a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |

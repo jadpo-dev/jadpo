@@ -50,6 +50,7 @@ mod compiled;
 mod config;
 mod conformance_runs;
 mod connections;
+mod contract_runs;
 mod conversions;
 mod crate_graph;
 mod declines;

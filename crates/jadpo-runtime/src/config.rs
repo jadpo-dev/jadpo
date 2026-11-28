@@ -283,6 +283,58 @@ pub fn load(
     }
 }
 
+/// Reads settings `fields` again as a deployment and `jadpo dev` read
+/// them, the variable `variables` gives and then the setting's
+/// `default:`, over `values` a test run read (area 13, "Kinds of test":
+/// a contract run's cases reach the provider's sandbox with the
+/// connection's own credential and environment; chunk K4c): each of them
+/// that is missing or invalid, which `values` then keeps as it was.
+pub fn read_again(
+    plan: &ConfigPlan,
+    validators: &[Validator],
+    values: &mut ConfigValues,
+    variables: &dyn Variables,
+    fields: &[u32],
+) -> Vec<StartProblem> {
+    let mut problems = Vec::new();
+    for &at in fields {
+        let (Some(field), Some(entry)) = (
+            plan.fields.get(at as usize),
+            values.entries.get_mut(at as usize),
+        ) else {
+            continue;
+        };
+        let (state, text, source) = value_of(
+            plan,
+            validators,
+            field,
+            variables,
+            Mode::Environment,
+            &|_: &mut [u8]| false,
+        );
+        match state {
+            State::Missing => problems.push(StartProblem {
+                field: field.name.clone(),
+                variable: field.variable.clone(),
+                secret: field.secret,
+                kind: ProblemKind::Missing,
+            }),
+            State::Invalid { rule, variable } => problems.push(StartProblem {
+                field: field.name.clone(),
+                variable,
+                secret: field.secret,
+                kind: ProblemKind::Invalid { rule },
+            }),
+            _ => {
+                entry.text = text;
+                entry.source = source;
+                entry.previous = None;
+            }
+        }
+    }
+    problems
+}
+
 fn resolve(
     plan: &ConfigPlan,
     validators: &[Validator],

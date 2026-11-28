@@ -156,7 +156,14 @@ fn bash_completes_commands_and_values() {
     assert_eq!(complete("jadpo ver", 1), ["version"]);
     assert_eq!(
         complete("jadpo test --kind ''", 3),
-        ["pure", "action", "route", "schedule", "recording"]
+        [
+            "pure",
+            "action",
+            "route",
+            "schedule",
+            "recording",
+            "contract"
+        ]
     );
     assert_eq!(complete("jadpo test --fa", 2), ["--failed"]);
     assert_eq!(complete("jadpo completions ''", 2), ["zsh", "bash", "fish"]);

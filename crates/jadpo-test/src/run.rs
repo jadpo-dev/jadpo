@@ -7,6 +7,7 @@
 //! whichever thread finished first, so a run reads the same however its
 //! tests were spread.
 
+use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -46,6 +47,24 @@ pub(crate) struct Keep {
     pub record: bool,
 }
 
+/// A contract run's settings (chunk K4c): every setting as a test run
+/// reads it, but its connections' own, read again from the environment,
+/// and their numbers, which a test's own `config:` doesn't change.
+pub(crate) struct Contracted {
+    pub values: jadpo_runtime::config::ConfigValues,
+    pub settings: Vec<u32>,
+}
+
+/// The settings a test run reads: each field's `test:` value, its
+/// default, and throwaway secrets made for this run (area 10).
+pub(crate) fn test_values(prepared: &Prepared) -> Option<jadpo_runtime::config::ConfigValues> {
+    prepared
+        .config(&NO_VARIABLES, Mode::Test, &|bytes: &mut [u8]| {
+            jadpo_host_native::NativeHost::new().random(bytes)
+        })
+        .ok()
+}
+
 /// What makes a thread's executor when tests run on one other than the
 /// interpreter (compiled code, chunk 8.1f), given the settings a test run
 /// reads.
@@ -62,23 +81,24 @@ pub(crate) fn run_all(
     generated: &generated::Table,
     databases: Option<&TestDatabases>,
     keep: Keep,
-    maker: Option<Maker<'_>>,
-) -> Vec<Done> {
+    (maker, contract): (Option<Maker<'_>>, Option<&Contracted>),
+) -> Vec<(Done, BTreeSet<String>)> {
     let sources = prepared.plan().files();
     // Every test reads the same settings: each field's `test:` value, its
-    // default, and throwaway secrets made for this run (area 10).
-    let settings = prepared
-        .config(&NO_VARIABLES, Mode::Test, &|bytes: &mut [u8]| {
-            jadpo_host_native::NativeHost::new().random(bytes)
-        })
-        .ok();
+    // default, and throwaway secrets made for this run (area 10); a
+    // contract run's connections, theirs from the environment.
+    let settings = match contract {
+        Some(contract) => Some(contract.values.clone()),
+        None => test_values(prepared),
+    };
+    let sandbox = contract.map(|contract| contract.settings.as_slice());
     if let Some(make) = maker {
         return spread(
             || Boxed(make(settings.as_ref())),
             tests,
             (rerun, generated),
             sources,
-            databases,
+            (databases, sandbox),
             keep,
         );
     }
@@ -93,7 +113,7 @@ pub(crate) fn run_all(
         tests,
         (rerun, generated),
         sources,
-        databases,
+        (databases, sandbox),
         keep,
     )
 }
@@ -163,18 +183,31 @@ fn spread<E: Executor>(
     tests: &[Test],
     (rerun, generated): (&Rerun, &generated::Table),
     sources: &(dyn Sources + Sync),
-    databases: Option<&TestDatabases>,
+    (databases, contract): (Option<&TestDatabases>, Option<&[u32]>),
     keep: Keep,
-) -> Vec<Done> {
+) -> Vec<(Done, BTreeSet<String>)> {
     let next = AtomicUsize::new(0);
     let work = || {
         let executor = make();
         // A thread whose tests may use a store drives them on the native
-        // host's runtime, where the driver's connections run.
-        let runtime = databases.and_then(|_| jadpo_host_native::Runtime::new().ok());
+        // host's runtime, where the driver's connections run, and so does
+        // one sending a contract run's calls to a sandbox.
+        let runtime = (databases.is_some() || contract.is_some())
+            .then(|| jadpo_host_native::Runtime::new().ok())
+            .flatten();
+        // A contract run's calls go out through the package driver, as
+        // `jadpo dev` sends them to a sandbox (chunk K4c).
+        let sandbox = contract.map(|settings| test_run::Sandbox {
+            driver: Rc::new(jadpo_host_native::JsonHttp::new(
+                jadpo_host_native::fetch::NativeFetch::new(),
+            )),
+            settings: settings.to_vec(),
+            sent: Rc::default(),
+        });
         let stores = Stores {
             databases,
             runtime: runtime.as_ref(),
+            sandbox: sandbox.as_ref(),
         };
         let mut done = Vec::new();
         loop {
@@ -182,14 +215,16 @@ fn spread<E: Executor>(
             let Some(test) = tests.get(index) else {
                 break;
             };
-            done.push((
-                index,
-                one(&executor, test, (rerun, generated), sources, &stores, keep),
-            ));
+            let ran = one(&executor, test, (rerun, generated), sources, &stores, keep);
+            let sent = sandbox
+                .as_ref()
+                .map(|sandbox| std::mem::take(&mut *sandbox.sent.borrow_mut()))
+                .unwrap_or_default();
+            done.push((index, (ran, sent)));
         }
         done
     };
-    let mut results: Vec<(usize, Done)> = if workers(tests.len()) <= 1 {
+    let mut results: Vec<(usize, (Done, BTreeSet<String>))> = if workers(tests.len()) <= 1 {
         work()
     } else {
         std::thread::scope(|scope| {
@@ -226,6 +261,9 @@ fn spread<E: Executor>(
 struct Stores<'a> {
     databases: Option<&'a TestDatabases>,
     runtime: Option<&'a jadpo_host_native::Runtime>,
+    /// Where a contract run's case sends its unscripted provider calls
+    /// (chunk K4c); `None` in every other run.
+    sandbox: Option<&'a test_run::Sandbox>,
 }
 
 /// Runs one test, keeping its record when `keep` asks for one.
@@ -359,9 +397,12 @@ fn tested<E: Executor>(
             callable,
             exchanges: &[],
             erasing: None,
+            sandbox: stores.sandbox,
         };
         let first = stored.run(None, kept);
-        if first.failure.is_some() {
+        // A contract run's case runs once: its crashes are `jadpo test`'s
+        // to check, and each would send its calls to the sandbox again.
+        if first.failure.is_some() || stores.sandbox.is_some() {
             return first.failure;
         }
         // A test that reaches an action with several changing calls runs
@@ -403,9 +444,15 @@ fn tested<E: Executor>(
         exchanges: &[],
         erasing: None,
         timeline: rerun.keep_trace,
+        sandbox: stores.sandbox,
     };
-    let ran = block_on(test_run::once(executor, &host, once))
-        .unwrap_or_else(|_| test_run::stalled(places, record.as_deref()));
+    // A contract run's calls to the sandbox go out on the native host's
+    // runtime.
+    let ran = match (stores.sandbox, stores.runtime) {
+        (Some(_), Some(runtime)) => runtime.block_on(test_run::once(executor, &host, once)),
+        _ => block_on(test_run::once(executor, &host, once))
+            .unwrap_or_else(|_| test_run::stalled(places, record.as_deref())),
+    };
     if let (Some(record), Some(kept)) = (&record, kept) {
         kept.entries = record.entries();
     }
@@ -481,6 +528,8 @@ struct Stored<'s, E> {
     /// The person entity the test generated for it erases, in place of
     /// running `callable` (chunk W2b).
     erasing: Option<&'s str>,
+    /// Where a contract run's case sends its unscripted provider calls.
+    sandbox: Option<&'s test_run::Sandbox>,
 }
 
 /// How one run of a test with a database went.
@@ -520,6 +569,7 @@ impl<E: Executor> Stored<'_, E> {
                 exchanges: self.exchanges,
                 erasing: self.erasing,
                 timeline: self.rerun.keep_trace && crash.is_none(),
+                sandbox: self.sandbox,
             },
         ));
         let failure = match &ran.outcome {
@@ -606,6 +656,7 @@ fn generated_test<E: Executor>(
                 callable: u32::MAX,
                 exchanges: &exchanges,
                 erasing: None,
+                sandbox: None,
             };
             let ran = stored.run(None, kept);
             if ran.failure.is_some() {
@@ -624,6 +675,7 @@ fn generated_test<E: Executor>(
                 exchanges: &exchanges,
                 erasing: None,
                 timeline: rerun.keep_trace,
+                sandbox: None,
             };
             let ran = block_on(test_run::once(executor, &host, once))
                 .unwrap_or_else(|_| test_run::stalled(places, record.as_deref()));
@@ -679,6 +731,7 @@ fn erasure_test<E: Executor>(
         callable: u32::MAX,
         exchanges: &[],
         erasing: Some(&erasure.person),
+        sandbox: None,
     };
     stored.run(None, kept).failure
 }
@@ -767,12 +820,12 @@ mod tests {
             &tests,
             (&rerun, &generated),
             &sources,
-            None,
+            (None, None),
             Keep::default(),
         )
         .iter()
         .enumerate()
-        .filter(|(_, (failure, _))| failure.is_some())
+        .filter(|(_, ((failure, _), _))| failure.is_some())
         .map(|(n, _)| n)
         .collect();
         let expected: Vec<usize> = (0..40).filter(|n: &usize| n.is_multiple_of(3)).collect();

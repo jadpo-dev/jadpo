@@ -250,6 +250,19 @@ failure's report and turn watching on and off
 `--keep-failed` keeps a failed test's database and its trace, and names
 both in the report; `jadpo trace <id>` shows the trace.
 
+`jadpo test --kind contract` runs the tests that reach a provider
+operation against the provider's sandbox, as a scheduled job runs it:
+each call their `fakes:` doesn't script goes through the connection,
+with the credential, environment and address `jadpo dev` reads, and
+every call to a live API is refused
+([`test.contract_refused`](../errors/test.contract_refused.md)). It fails
+when no case sends an operation the app calls that was written from the
+provider's documentation and that no recording confirms
+([`test.contract_uncovered`](../errors/test.contract_uncovered.md)), and
+it takes each of the app's own integrations' conformance suites through
+`jadpo package conform --live` ([Tests and fakes](11-integrations.md#tests-and-fakes)).
+It doesn't watch.
+
 When the tests need a database and none can be had, no test runs and the
 one error is [`test.database_unavailable`](../errors/test.database_unavailable.md),
 marked `(human)` ([The test database](13-testing.md#the-test-database)).
@@ -4329,8 +4342,8 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `acceptance.missing` | `check`, `build` | A change could break someone else or widen who can do what, and no acceptance this change adds says a person agreed to it |
 | `acceptance.no_reason` | `check`, `build` | An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists |
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
-| `conform.failed` | `package conform` | A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run |
-| `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, `ai:` or `email:` doesn't go through it, or the capability is `receiving`, which has no live run |
+| `conform.failed` | `package conform`, `test` | A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run |
+| `conform.refused` | `package conform`, `test` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, `ai:` or `email:` doesn't go through it, or the capability is `receiving`, which has no live run |
 | `protocol.mismatch` | `package protocol` | A registry's OpenAPI document differs from the registry protocol |
 | `protocol.unreadable` | `package protocol` | The document given to `jadpo package protocol` couldn't be read as OpenAPI's JSON |
 | `recording.failed` | `package record`, `ai record` | A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made |
@@ -4437,6 +4450,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `publish.type_unreviewed` | `package check`, `package verify` | A provider package's public type isn't in its `reviewed:` list ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `suggest.record_invalid` | `suggest` | A suggestions record `jadpo suggest` reads, `ignored_suggestions.jadpo_record` or `taught_suggestions.jadpo_record`, isn't as Jadpo writes it |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached, or refused what `jadpo suggest share` sent, so the entries wait to be shared again |
+| `test.contract_refused` | `test` | A contract run sent nothing to the provider's sandbox, because a connection it goes through has nothing set, or nothing valid, for its credential or address, or its environment chooses `live` |
 | `test.failed` | `test`, `package check` | A test failed under `jadpo test`, or among a package's own tests under `jadpo package check` |
 | `test.no_tests` | `test` | A `jadpo test` command found no test to run: the project has none, or none matches the path, line, name, kind or `--failed` it gives |
 | `test.runtime_start_failed` | `test` | The tests couldn't start, because the machine couldn't give `jadpo test` the thread with a large stack they run on, usually for lack of memory |

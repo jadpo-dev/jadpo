@@ -16,9 +16,15 @@ use crate::interactive::InteractiveArgs;
 use crate::run::{Call, Reply, Session, either, quoted};
 use crate::watch::WatchArgs;
 
+/// The `--kind` that runs a contract run (chunk K4c): a selection of
+/// the tests of every kind that reach a provider, not a kind of its own.
+const CONTRACT: &str = "contract";
+
 pub fn test(call: &Call) -> Reply {
+    let contract = call.value("--kind") == Some(CONTRACT);
     let kind = match call.value("--kind") {
         None => None,
+        Some(CONTRACT) => None,
         Some(word) => match TestKind::from_word(word) {
             Some(kind) => Some(kind),
             None => return Reply::failed(unknown_kind(word)),
@@ -62,10 +68,38 @@ pub fn test(call: &Call) -> Reply {
         record: false,
         full: call.flag("--full"),
         since: None,
+        contract: None,
     };
     if call.flag("--interactive") {
         return interactive(call, options);
     }
+    if contract && call.flag("--watch") {
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::CLI_TEST_ARGUMENTS,
+                "`--kind contract` doesn't watch",
+            )
+            .reason("A contract run sends its cases' calls to the provider's sandbox, so it runs once, as a scheduled job runs it, rather than on every save.")
+            .next("Leave out `--watch`, or run `jadpo test --watch` for the tests that send nothing"),
+        );
+    }
+    let contract_root = if contract {
+        let Some(root) = project_root(&options) else {
+            return project_not_found("test");
+        };
+        // The connections' settings, read as `jadpo dev` reads them.
+        match crate::config::Layered::new(&root, &call.environment) {
+            Ok(layered) => {
+                options.contract = Some(Arc::new(jadpo_test::contract::Contract {
+                    variables: Box::new(layered),
+                }));
+            }
+            Err(problem) => return Reply::failed(*problem),
+        }
+        Some(root)
+    } else {
+        None
+    };
     if call.flag("--affected") {
         // A mistake in what to run is said before the base is looked for.
         if let Some(ran) = jadpo_test::watch::validate(&options) {
@@ -92,7 +126,188 @@ pub fn test(call: &Call) -> Reply {
             }))),
         };
     }
-    reply(jadpo_test::run(options))
+    let ran = jadpo_test::run(options);
+    match contract_root {
+        Some(root) => contract_reply(ran, call, &root),
+        None => reply(ran),
+    }
+}
+
+/// A contract run's reply (area 11, "Tests and fakes"; chunk K4c): its
+/// cases' reports as `jadpo test` shows them, each operation no case sent
+/// to the sandbox, then each suite of the app's own integrations taken
+/// through `jadpo package conform --live`, and one footer for it all.
+fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
+    let Ran::Done(run) = ran else {
+        return reply(ran);
+    };
+    let Some(found) = run.contract.clone() else {
+        return reply(Ran::Done(run));
+    };
+    let (failed, passed, cases) = (run.failed(), run.passed(), run.results.len());
+    let started = std::time::Instant::now();
+    let elapsed = run.elapsed;
+    let root_shown = run.root.clone();
+    let (screen, data, mut diagnostics, mut sources) = view(Ran::Done(run));
+    // The run's own footer gives way to the contract run's.
+    let mut blocks = screen.into_blocks();
+    if let Some(at) = blocks
+        .iter()
+        .rposition(|block| matches!(block, Block::Summary { .. }))
+    {
+        blocks.truncate(at);
+    }
+    let mut screen = Screen::new();
+    for block in blocks {
+        screen.push(block);
+    }
+    let uncovered: Vec<Diagnostic> = found
+        .uncovered
+        .iter()
+        .map(jadpo_test::contract::Uncovered::diagnostic)
+        .collect();
+    for diagnostic in &uncovered {
+        screen.push(Block::diagnostic_from(
+            diagnostic,
+            &found.sources,
+            root_shown.as_deref(),
+        ));
+    }
+    sources.extend(found.sources.clone());
+    diagnostics.extend(uncovered);
+    // Each suite, through the app's own connection.
+    let mut suites = Vec::new();
+    for suite in &found.suites {
+        let asked = Call {
+            arguments: vec![
+                "conform".to_string(),
+                suite.package.clone(),
+                suite.capability.clone(),
+            ],
+            flags: vec!["--live"],
+            values: Vec::new(),
+            cwd: Some(root.to_path_buf()),
+            environment: call.environment.clone(),
+        };
+        let (data, problems, frames) = match crate::package_conform::conform(&asked) {
+            Reply::Report {
+                data,
+                diagnostics,
+                sources,
+                ..
+            } => (data, diagnostics, sources),
+            Reply::Failed(problem) => (Json::Null, vec![*problem], BTreeMap::new()),
+            _ => (Json::Null, Vec::new(), BTreeMap::new()),
+        };
+        let conformed = crate::package_conform::conformed_from(suite.capability.clone(), &data);
+        let conforms = conformed.conforms && problems.is_empty();
+        for problem in &problems {
+            screen.push(Block::diagnostic_from(problem, &frames, None));
+        }
+        sources.extend(frames);
+        diagnostics.extend(problems);
+        suites.push((suite, conformed, conforms));
+    }
+    // The footer: the cases, the operations no case sent, each suite.
+    let mut facts = Vec::new();
+    if failed > 0 && passed > 0 {
+        facts.push(Fact::plain(format!("{passed} passed")));
+    }
+    facts.push(Fact::plain(count(cases, "contract case", "contract cases")));
+    if !found.uncovered.is_empty() {
+        facts.push(Fact::problem(count(
+            found.uncovered.len(),
+            "operation with no case",
+            "operations with no case",
+        )));
+    }
+    for (suite, _, conforms) in &suites {
+        facts.push(if *conforms {
+            Fact::plain(format!("{} conforms live", suite.capability))
+        } else {
+            Fact::problem(format!("{} doesn't conform live", suite.capability))
+        });
+    }
+    let took = elapsed + started.elapsed();
+    if took >= std::time::Duration::from_millis(100)
+        && let Some(last) = facts.last_mut()
+    {
+        last.text
+            .push_str(&format!(" in {:.1} s", took.as_secs_f64()));
+    }
+    let problems = !found.uncovered.is_empty() || suites.iter().any(|(_, _, ok)| !ok);
+    let footer = if failed > 0 {
+        Block::summary(Outcome::Failure, format!("{failed} failed"), facts)
+            .with_plain_headline("test failed")
+    } else if problems {
+        Block::summary(Outcome::Failure, "contract run failed", facts)
+            .with_plain_headline("test failed")
+    } else if cases == 0 {
+        Block::summary(Outcome::Success, "contract run passed", facts).with_plain_headline("tested")
+    } else {
+        Block::summary(Outcome::Success, format!("{passed} passed"), facts)
+            .with_plain_headline("tested")
+    };
+    screen.push(footer);
+    let contract = Json::object([
+        ("cases", cases.into()),
+        ("whole", found.whole.into()),
+        (
+            "uncovered",
+            Json::array(found.uncovered.iter().map(|operation| {
+                Json::object([
+                    ("call", Json::from(operation.call.as_str())),
+                    (
+                        "file",
+                        operation
+                            .at
+                            .as_ref()
+                            .map_or(Json::Null, |(file, _, _)| Json::from(file.as_str())),
+                    ),
+                ])
+            })),
+        ),
+        (
+            "suites",
+            Json::array(suites.iter().map(|(suite, conformed, conforms)| {
+                let mut json = conformed.json();
+                if let Json::Object(entries) = &mut json {
+                    entries.retain(|(key, _)| key != "digest" && key != "against");
+                    for (key, value) in entries.iter_mut() {
+                        if key == "conforms" {
+                            *value = (*conforms).into();
+                        }
+                    }
+                    entries.insert(
+                        0,
+                        ("package".to_string(), Json::from(suite.package.as_str())),
+                    );
+                    entries.insert(
+                        1,
+                        (
+                            "connection".to_string(),
+                            Json::from(suite.connection.as_str()),
+                        ),
+                    );
+                    entries.push(("against".to_string(), Json::from("live")));
+                }
+                json
+            })),
+        ),
+    ]);
+    let data = match data {
+        Json::Object(mut entries) => {
+            entries.push(("contract".to_string(), contract));
+            Json::Object(entries)
+        }
+        _ => Json::object([("contract", contract)]),
+    };
+    Reply::Report {
+        screen,
+        data,
+        diagnostics,
+        sources,
+    }
 }
 
 /// What a request to run tests ended in, as a reply.
@@ -263,7 +478,7 @@ fn interactive(call: &Call, options: Options) -> Reply {
     let given: Vec<&str> = [
         ("a path", options.target.is_some()),
         ("`--name`", options.name.is_some()),
-        ("`--kind`", options.kind.is_some()),
+        ("`--kind`", call.value("--kind").is_some()),
         ("`--failed`", options.failed),
         ("`--affected`", call.flag("--affected")),
     ]
@@ -303,7 +518,8 @@ fn interactive(call: &Call, options: Options) -> Reply {
 }
 
 fn unknown_kind(word: &str) -> Diagnostic {
-    let words: Vec<&str> = TestKind::ALL.iter().map(|kind| kind.word()).collect();
+    let mut words: Vec<&str> = TestKind::ALL.iter().map(|kind| kind.word()).collect();
+    words.push(CONTRACT);
     let all = either(&quoted(&words));
     let diagnostic = Diagnostic::new(
         &rule::CLI_TEST_ARGUMENTS,

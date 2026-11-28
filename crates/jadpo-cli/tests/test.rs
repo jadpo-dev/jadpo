@@ -1090,7 +1090,7 @@ fn command_line_mistakes_name_the_fix() {
         kind.stderr,
         "\
 error: `pur` isn't a kind of test
-  reason: A test is `pure`, `action`, `route`, `schedule` or `recording`. Did you mean `pure`?
+  reason: A test is `pure`, `action`, `route`, `schedule`, `recording` or `contract`. Did you mean `pure`?
   next: Use `--kind pure` (agent)
   rule: cli.test_arguments
   help: https://jadpo.dev/docs/errors/cli.test_arguments

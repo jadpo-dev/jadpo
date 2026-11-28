@@ -1318,6 +1318,10 @@ rules! {
         "The application's `telemetry:` section holds something it doesn't take, or a value it can't use";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
+    TEST_CONTRACT_REFUSED: "test.contract_refused", area 14, Error, Human,
+        "A contract run sent nothing to the provider's sandbox, because a connection it goes through has nothing set, or nothing valid, for its credential or address, or its environment chooses `live`";
+    TEST_CONTRACT_UNCOVERED: "test.contract_uncovered", area 11, Error, Agent,
+        "No case of a contract run sent the provider's sandbox an operation the app calls that was written from the provider's documentation and that no recording confirms";
     TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 14, Error, Human,
         "The tests that need a database couldn't run, because PostgreSQL for the tests couldn't be started or reached";
     TEST_FAILED: "test.failed", area 14, Error, Agent,

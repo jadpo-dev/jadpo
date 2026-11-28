@@ -303,6 +303,51 @@ and you need no key: a call gets its recording, or else a made-up value
 of its output type. List operations in `development: { sandbox: [...] }`
 on the connection to send them to the service's sandbox instead.
 
+## Check it against the sandbox on a schedule
+
+A fake answers as your types say the service answers, so it can't show
+the day the service changes. `jadpo test --kind contract` runs the same
+tests against the sandbox: each test that reaches `shelf` sends every
+call its `fakes:` doesn't script through the connection, with the key
+and environment `jadpo dev` reads, and the scripted calls stay scripted.
+So "a published book's details come back" would need its `fakes:`
+removed to reach the sandbox. A connection whose environment is `live`
+is refused, and so is one whose key nothing sets.
+
+`books.retrieve` was written from Open Shelf's documentation and no
+recording confirms it yet, so the run also fails if no test sends it to
+the sandbox. A recording, or a test that calls it unscripted, settles
+that.
+
+Jadpo writes no CI of its own. Run the contract run on a schedule in
+the CI you already have, with the sandbox key as a secret. In GitHub
+Actions, `.github/workflows/contract.yml`:
+
+```yaml
+name: Contract run
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jadpo
+        run: npm install -g @jadpo/jadpo
+      - name: Run the tests against the sandbox
+        run: jadpo test --kind contract
+        env:
+          OPEN_SHELF_API_KEY: ${{ secrets.OPEN_SHELF_SANDBOX_KEY }}
+          OPEN_SHELF_ENVIRONMENT: sandbox
+```
+
+A failed run is a failed job, so the service's change reaches you as a
+failing check rather than as your users' errors. An app with tables
+needs PostgreSQL in the job too, as its other test jobs do
+([The test database](../language/13-testing.md#the-test-database)).
+
 ## When the service publishes an OpenAPI document
 
 `jadpo package import openapi <file> --as OpenShelf.v1` writes the
@@ -317,6 +362,7 @@ reviewed in `provider.jadpo`.
 [Connecting in app.jadpo](../language/11-integrations.md#connecting-in-appjadpo),
 [Calling](../language/11-integrations.md#calling),
 [Tests and fakes](../language/11-integrations.md#tests-and-fakes),
+[Against the sandbox: the contract run](../language/11-integrations.md#against-the-sandbox-the-contract-run),
 [Provider calls in development](../language/11-integrations.md#provider-calls-in-development)
 and [Several changing calls through a package](../language/11-integrations.md#several-changing-calls-through-a-package).
 To call the service from a route, see [Build an API](01-build-an-api.md);

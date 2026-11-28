@@ -466,6 +466,7 @@ async fn ran(programs: &[MakeProgram], asked: &Asked) -> Result<Answered, String
         record: record.clone(),
         exchanges: &exchanges,
         erasing: asked.erasing.as_deref(),
+        sandbox: None,
     };
     // A test without a database runs on a host with no store, as natively.
     let (ran, rows) = if asked.order.is_some() {

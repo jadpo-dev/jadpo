@@ -102,6 +102,11 @@ pub struct Operation {
     pub large_output: bool,
     /// Its failures as the checker knows them.
     pub failures: Vec<String>,
+    /// `source: PackageSource.written`: written from the provider's
+    /// documentation rather than imported from a description it publishes
+    /// (area 11, "Provenance and confirmation"), so a contract run needs a
+    /// case for it while no recording confirms it (chunk K4c).
+    pub written: bool,
     /// Where it is declared.
     pub file: String,
 }
@@ -505,6 +510,7 @@ impl Reader<'_> {
         let mut idempotent = false;
         let mut large_output = false;
         let mut failures = Vec::new();
+        let mut written = false;
         for (key, inner) in tree::members(Some(block.clone())) {
             let word = name_text(&key).unwrap_or_default();
             let key_span = self.span(key.syntax());
@@ -540,7 +546,11 @@ impl Reader<'_> {
                         .flag(&constant, value_span, "large_output", out)
                         .unwrap_or(false);
                 }
-                "source" | "docs" | "scope" => {}
+                "source" => {
+                    written = matches!(&constant, Const::Path(parts)
+                        if parts.len() == 2 && parts[0] == "PackageSource" && parts[1] == "written");
+                }
+                "docs" | "scope" => {}
                 other => {
                     let near = nearest(other, OPERATION_KEYS.iter().copied());
                     let mut problem = self
@@ -668,6 +678,7 @@ impl Reader<'_> {
             idempotent,
             large_output,
             failures,
+            written,
             file: String::new(),
         })
     }
