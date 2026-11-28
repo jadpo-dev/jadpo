@@ -97,7 +97,9 @@ fn key(host: &dyn crate::Host) -> Vec<u8> {
             for chunk in key.chunks_mut(8) {
                 let mut state = std::collections::hash_map::RandomState::new().build_hasher();
                 state.write_usize(chunk.as_ptr() as usize);
-                chunk.copy_from_slice(&state.finish().to_le_bytes()[..chunk.len()]);
+                for (byte, drawn) in chunk.iter_mut().zip(state.finish().to_le_bytes()) {
+                    *byte = drawn;
+                }
             }
         }
         key
