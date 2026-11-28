@@ -516,7 +516,9 @@ pub(crate) async fn attempt_delivery(
         let name = events
             .and_then(|events| events.plan.subscriber(&subscriber))
             .map_or(subscriber.as_str(), |plan| plan.name.as_str());
-        let event = event.split_once(' ').map_or(event.as_str(), |(_, name)| name);
+        let event = event
+            .split_once(' ')
+            .map_or(event.as_str(), |(_, name)| name);
         let ms = started.zip(ctx.host().monotonic_ms());
         log.attempt_ended(&crate::call_log::DeliveryAttempt {
             delivery: id,

@@ -152,7 +152,7 @@ impl Flags {
 /// calls, steps and fault, and its flags. `None` when its host kept none.
 pub(crate) fn request_document(
     answered: &jadpo_runtime::serve::Answered<'_>,
-    unindexed: &BTreeSet<String>,
+    known: &Known,
     at_ms: i64,
     steps: Json,
 ) -> Option<(Value, Flags)> {
@@ -161,13 +161,7 @@ pub(crate) fn request_document(
     let places = answered.program.places();
     let mut document = jadpo_runtime::timeline::document(answered.spans, timeline, places);
     let route = response.route.as_deref();
-    let route_place = route.and_then(|route| {
-        let label = format!("route {route}");
-        (0..places.len() as u32)
-            .filter_map(|at| places.callable(at))
-            .find(|place| place.label == label)
-            .map(|place| format!("{}:{}", place.file, place.line))
-    });
+    let route_place = route.and_then(|route| known.routes.get(route).cloned());
     let trace = response
         .trace
         .map(|trace| jadpo_runtime::telemetry::otlp::hex(&trace.trace_id));
@@ -190,7 +184,14 @@ pub(crate) fn request_document(
             "frames": fault.stack(places),
         })
     });
-    let flags = Flags::of(&document, unindexed);
+    name_reads(
+        &mut document,
+        &|file| known.texts.get(file).cloned(),
+        route
+            .and_then(|route| known.runs.get(route))
+            .map(String::as_str),
+    );
+    let flags = Flags::of(&document, &known.unindexed);
     if let Some(object) = document.as_object_mut() {
         let id = response.header("x-request-id").unwrap_or_default();
         for (key, value) in [
@@ -248,14 +249,109 @@ fn from_term(json: &Json) -> Value {
     }
 }
 
-/// The query names no index serves, an include's counting for its query,
-/// from the project's statements (area 14, "The `build/` folder").
-pub(crate) fn unindexed(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> BTreeSet<String> {
-    jadpo_check::data::report::reads(db, project)
-        .into_iter()
-        .filter(|read| read.index.is_none())
-        .map(|read| read.query)
-        .collect()
+/// What a request's timeline needs of the version being served: where
+/// each route is declared, and the queries no index serves.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Known {
+    /// `file:line` by route, `POST /todos`.
+    pub routes: std::collections::BTreeMap<String, String>,
+    pub unindexed: BTreeSet<String>,
+    /// Each route's `run:` as written, by route.
+    pub runs: std::collections::BTreeMap<String, String>,
+    /// The project's sources, which name each read at its site.
+    pub texts: std::collections::BTreeMap<String, String>,
+}
+
+/// Names each read span of `document` as the code calls it, from the
+/// source at its site (`find_todo`, `Todo.get`), or for a read the runtime
+/// makes on a route's behalf, from the route's `run:`. A read runs inside
+/// the action that calls it, so its span's callable doesn't name it.
+pub(crate) fn name_reads(
+    document: &mut Value,
+    texts: &dyn Fn(&str) -> Option<String>,
+    run: Option<&str>,
+) {
+    let Some(spans) = document.get_mut("spans").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for span in spans {
+        if span["kind"] != "read" {
+            continue;
+        }
+        let named = match span["site"].as_object() {
+            Some(site) => site["file"].as_str().and_then(|file| {
+                let text = texts(file)?;
+                let start = usize::try_from(site["start"].as_u64()?).ok()?;
+                let end = usize::try_from(site["end"].as_u64()?).ok()?;
+                called(text.get(start..end)?)
+            }),
+            None => run.and_then(called),
+        };
+        if let Some(name) = named {
+            span["name"] = Value::from(name);
+        }
+    }
+}
+
+/// What a call written as `text` calls: `find_todo` from `attempt
+/// find_todo(todo_id)`.
+fn called(text: &str) -> Option<String> {
+    let text = text.trim();
+    let text = text.strip_prefix("attempt ").unwrap_or(text).trim_start();
+    let name: String = text
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
+        .collect();
+    (!name.is_empty()).then_some(name)
+}
+
+impl Known {
+    pub(crate) fn of(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Known {
+        // An include's statement counts for its query (area 14, "The
+        // `build/` folder").
+        let unindexed = jadpo_check::data::report::reads(db, project)
+            .into_iter()
+            .filter(|read| read.index.is_none())
+            .map(|read| read.query)
+            .collect();
+        let texts = jadpo_db::source_texts(db, project);
+        let mut routes = std::collections::BTreeMap::new();
+        let mut runs = std::collections::BTreeMap::new();
+        for name in jadpo_check::routes::group_names(db, project) {
+            let Some(read) = jadpo_check::routes::group_read(
+                db,
+                project,
+                jadpo_check::lookups::Name::new(db, name.clone()),
+            ) else {
+                continue;
+            };
+            for (label, span) in &read.spans {
+                let line = texts.get(&span.path).map_or(1, |text| {
+                    let end = (span.start as usize).min(text.len());
+                    text.as_bytes()[..end]
+                        .iter()
+                        .filter(|b| **b == b'\n')
+                        .count()
+                        + 1
+                });
+                routes.insert(label.clone(), format!("{}:{line}", span.path));
+            }
+            for (label, span) in &read.run_spans {
+                if let Some(run) = texts
+                    .get(&span.path)
+                    .and_then(|text| text.get(span.start as usize..span.end as usize))
+                {
+                    runs.insert(label.clone(), run.to_string());
+                }
+            }
+        }
+        Known {
+            routes,
+            unindexed,
+            runs,
+            texts,
+        }
+    }
 }
 
 // --- reading ------------------------------------------------------------------
@@ -293,10 +389,18 @@ pub fn trace(call: &Call) -> Reply {
         ));
     };
     let full = call.flag("--full");
-    let document = match find(&root, id) {
+    let mut document = match find(&root, id) {
         Ok(document) => document,
         Err(diagnostic) => return Reply::failed(*diagnostic),
     };
+    // A test's trace names its reads from the sources on disk.
+    if document.get("test").is_some() {
+        name_reads(
+            &mut document,
+            &|file| std::fs::read_to_string(root.join(file)).ok(),
+            None,
+        );
+    }
     let request = document["requestId"].as_str().unwrap_or_default();
     let calls: Vec<crate::dev_calls::Entry> = if request.is_empty() {
         Vec::new()
@@ -448,14 +552,27 @@ fn short(id: &str) -> String {
     }
 }
 
-/// A statement as a line shows it: its selected columns as `…`.
+/// A statement on one line, its runs of white space each one space.
+fn one_line(sql: &str) -> String {
+    sql.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A statement as a line shows it: on one line, its selected columns as
+/// `…`.
 fn statement(sql: &str) -> String {
+    let sql = one_line(sql);
     if let Some(rest) = sql.strip_prefix("SELECT ")
         && let Some(at) = rest.find(" FROM ")
     {
         return format!("SELECT …{}", &rest[at..]);
     }
-    sql.to_string()
+    sql
+}
+
+/// An event's name as a line shows it: `TodoAdded` for
+/// `planning.TodoAdded`.
+fn event_name(name: &str) -> &str {
+    name.rsplit('.').next().unwrap_or(name)
 }
 
 fn plural(count: u64, one: &str, many: &str) -> String {
@@ -549,7 +666,7 @@ impl Shown<'_> {
                     for one in span["statements"].as_array().into_iter().flatten() {
                         let sql = one["sql"].as_str().unwrap_or_default();
                         let sql = if self.full {
-                            sql.to_string()
+                            one_line(sql)
                         } else {
                             statement(sql)
                         };
@@ -694,7 +811,7 @@ impl Shown<'_> {
             }
             line.push(muted(format!(
                 "  on {}",
-                delivery["event"].as_str().unwrap_or_default()
+                event_name(delivery["event"].as_str().unwrap_or_default())
             )));
             out.push(line);
         }
@@ -772,6 +889,7 @@ impl Shown<'_> {
             .into_iter()
             .flatten()
             .filter_map(Value::as_str)
+            .map(event_name)
             .collect();
         if emitted.is_empty() {
             format!("{written}; no events emitted")
@@ -795,7 +913,9 @@ fn depth(spans: &[Value], at: usize) -> usize {
     let mut parent = spans[at]["parent"].as_u64();
     while let Some(up) = parent {
         depth += 1;
-        parent = spans.get(up as usize).and_then(|span| span["parent"].as_u64());
+        parent = spans
+            .get(up as usize)
+            .and_then(|span| span["parent"].as_u64());
         if depth > spans.len() {
             break;
         }
@@ -925,14 +1045,23 @@ POST /todos/0192…/done  409 todo_already_done  41 ms  as user 0192…a7
         assert_eq!(flagged.words(), "no index");
         let statements = document["spans"][1]["statements"].clone();
         document["spans"][1]["statements"] = json!([statements[0], statements[0], statements[0]]);
-        assert_eq!(Flags::of(&document, &unindexed).words(), "3 queries · no index");
+        assert_eq!(
+            Flags::of(&document, &unindexed).words(),
+            "3 queries · no index"
+        );
     }
 
     #[test]
     fn a_hash_and_an_id_are_shortened() {
         assert_eq!(shown_param("hmac-sha256:3f2a9c1e00aa"), "#3f2a9c1e");
-        assert_eq!(shown_param("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1da7"), "0192…a7");
+        assert_eq!(
+            shown_param("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1da7"),
+            "0192…a7"
+        );
         assert_eq!(shown_param("7"), "7");
-        assert_eq!(statement("SELECT \"a\", \"b\" FROM \"t\""), "SELECT … FROM \"t\"");
+        assert_eq!(
+            statement("SELECT \"a\", \"b\" FROM \"t\""),
+            "SELECT … FROM \"t\""
+        );
     }
 }

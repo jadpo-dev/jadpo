@@ -66,6 +66,13 @@ impl Hasher {
         }
     }
 
+    /// This hasher, or one with `key` when it has none of its own.
+    pub(crate) fn or_key(self, key: Vec<u8>) -> Hasher {
+        Hasher {
+            key: self.key.or(Some(key)),
+        }
+    }
+
     /// `bytes`' keyed hash; `None` for a host with no key to give.
     pub(crate) fn hash(&self, bytes: &[u8]) -> Option<String> {
         let key = self.key.as_ref()?;

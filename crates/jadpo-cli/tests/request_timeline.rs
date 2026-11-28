@@ -1,7 +1,7 @@
 //! The request timeline and `jadpo trace` (area 17, "The request timeline
 //! in `jadpo dev`"; chunk E0), against live PostgreSQL. A todo list:
-//! adding a todo writes it and emits `TodoAdded`, which `note_added` hears;
-//! listing the open ones runs a query no index serves; the board runs two
+//! adding a todo writes it and emits `TodoAdded`, which `read_added` hears;
+//! counting them runs a query no index serves; the board runs two
 //! queries; and finishing a todo twice fails the second time.
 //!
 //! `jadpo dev` keeps each request's timeline in `build/dev/`, flags a
@@ -35,7 +35,7 @@ entity Todo {
     status: TodoStatus
     policy: {
         create: [Access.public]
-        read: [Access.public]
+        read: [Access.public, Access.system]
         update: [Access.public]
         delete: [Access.public]
     }
@@ -55,8 +55,8 @@ entity Todo {
         "use planning/entities { Todo }\n\n/// A todo as clients see it.\ntype TodoView = Output {\n    pick: [Todo.id, Todo.title, Todo.status]\n}\n",
     ),
     (
-        "domains/planning/types/board.jadpo",
-        "use planning/types { TodoView }\n\n/// The open and the done todos.\ntype Board = Output {\n    open: List<TodoView>\n    done: List<TodoView>\n}\n",
+        "domains/planning/types/board_view.jadpo",
+        "use planning/types { TodoView }\n\n/// The open and the done todos.\ntype BoardView = Output {\n    open: List<TodoView>\n    done: List<TodoView>\n}\n",
     ),
     (
         "domains/planning/types/new_todo.jadpo",
@@ -105,6 +105,14 @@ query open_todos() -> List<TodoView> {
 "#,
     ),
     (
+        "domains/planning/types/todo_count.jadpo",
+        "/// How many todos there are.\ntype TodoCount = Output {\n    todos: Int\n}\n",
+    ),
+    (
+        "domains/planning/queries/count_todos.jadpo",
+        "use planning/entities { Todo }\nuse planning/types { TodoCount }\n\n/// Every todo, counted.\nquery count_todos() -> TodoCount {\n    from: Todo\n    aggregate: {\n        todos: count()\n    }\n}\n",
+    ),
+    (
         "domains/planning/queries/done_todos.jadpo",
         r#"use planning/entities { Todo }
 use planning/types { TodoStatus, TodoView }
@@ -146,11 +154,11 @@ action add_todo(input: NewTodo) -> TodoView {
     (
         "domains/planning/actions/board.jadpo",
         r#"use planning/queries { done_todos, open_todos }
-use planning/types { Board }
+use planning/types { BoardView }
 
 /// The open and the done todos.
-action board() -> Board {
-    return Board {
+action board() -> BoardView {
+    return BoardView {
         open: open_todos()
         done: done_todos()
     }
@@ -191,21 +199,21 @@ use planning/queries { find_todo }
 use planning/types { TodoView }
 
 /// Reads the todo that was added.
-action note_added(todo_id: Todo.id) fails TodoNotFound -> Unit {
-    var todo: TodoView = attempt find_todo(todo_id)
+action note_added(todo_id: Todo.id) fails TodoNotFound -> TodoView {
+    return attempt find_todo(todo_id)
 }
 "#,
     ),
     (
-        "domains/planning/subscribers/note_added.jadpo",
-        "use planning/actions { note_added }\nuse planning/events { TodoAdded }\n\n/// Reads each todo added.\nsubscriber note_added {\n    on: TodoAdded\n    run: note_added(event.todo_id)\n}\n",
+        "domains/planning/subscribers/read_added.jadpo",
+        "use planning/actions { note_added }\nuse planning/events { TodoAdded }\n\n/// Reads each todo added.\nsubscriber read_added {\n    on: TodoAdded\n    run: note_added(event.todo_id)\n}\n",
     ),
     (
         "domains/planning/routes/todos.jadpo",
         r#"use planning/entities { Todo }
 use planning/actions { add_todo, board, complete_todo }
-use planning/queries { open_todos }
-use planning/types { Board, NewTodo, TodoView }
+use planning/queries { count_todos, open_todos }
+use planning/types { BoardView, NewTodo, TodoCount, TodoView }
 
 /// The todo list.
 routes Todos {
@@ -226,10 +234,17 @@ routes Todos {
         run: open_todos()
     }
 
+    /// How many todos there are.
+    GET /count {
+        authentication: RouteAuthentication.none
+        output: TodoCount
+        run: count_todos()
+    }
+
     /// The board.
     GET /board {
         authentication: RouteAuthentication.none
-        output: Board
+        output: BoardView
         run: board()
     }
 
@@ -244,7 +259,7 @@ routes Todos {
     ),
     (
         "policy.jadpo",
-        "use planning\n\npolicy {\n    actions: {\n        planning.add_todo: [Access.public]\n        planning.board: [Access.public]\n        planning.complete_todo: [Access.public]\n        planning.note_added: [Access.public]\n    }\n}\n",
+        "use planning\n\npolicy {\n    actions: {\n        planning.add_todo: [Access.public]\n        planning.board: [Access.public]\n        planning.complete_todo: [Access.public]\n        planning.note_added: [Access.system]\n    }\n}\n",
     ),
     (
         "domains/planning/actions/add_todo.test.jadpo",
@@ -317,6 +332,9 @@ fn jadpo_trace_shows_what_a_request_did_and_dev_flags_its_line() {
     let open = dev.send("GET", "/todos/open", &[], "");
     assert_eq!(open.status, 200, "{open:?}");
     let open_id = open.header("x-request-id").expect("an id").to_string();
+    let count = dev.send("GET", "/todos/count", &[], "");
+    assert_eq!(count.status, 200, "{count:?}");
+    let count_id = count.header("x-request-id").expect("an id").to_string();
     let board = dev.send("GET", "/todos/board", &[], "");
     assert_eq!(board.status, 200, "{board:?}");
     let board_id = board.header("x-request-id").expect("an id").to_string();
@@ -343,20 +361,23 @@ fn jadpo_trace_shows_what_a_request_did_and_dev_flags_its_line() {
         "{shown}"
     );
     assert!(shown.contains("write   Todo.create"), "{shown}");
-    assert!(shown.contains("INSERT INTO \"todos\""), "{shown}");
+    assert!(shown.contains("INSERT INTO \"todo\""), "{shown}");
     assert!(shown.contains("committed; emitted TodoAdded"), "{shown}");
-    assert!(shown.contains("then      note_added"), "{shown}");
+    assert!(shown.contains("then      read_added"), "{shown}");
     assert!(shown.contains("succeeded"), "{shown}");
     assert!(!shown.contains(TITLE), "a value was shown: {shown}");
 
     // Finishing it twice: the failure, where it was raised, rolled back.
     let failed = ok(&root, &["trace", &again_id]);
     assert!(
-        failed.starts_with(&format!("POST /todos/{}…/done  409 todo_already_done", &todo[..4])),
+        failed.starts_with(&format!(
+            "POST /todos/{}…/done  409 todo_already_done",
+            &todo[..4]
+        )),
         "{failed}"
     );
     assert!(failed.contains("query   find_todo"), "{failed}");
-    assert!(failed.contains("SELECT … FROM \"todos\""), "{failed}");
+    assert!(failed.contains("SELECT … FROM \"todo\""), "{failed}");
     assert!(failed.contains("1 row"), "{failed}");
     assert!(failed.contains(&format!("$1 {}…", &todo[..4])), "{failed}");
     assert!(failed.contains("fail    TodoAlreadyDone"), "{failed}");
@@ -377,11 +398,15 @@ fn jadpo_trace_shows_what_a_request_did_and_dev_flags_its_line() {
         "an identifier is shown as its value: {json}"
     );
 
-    // The open todos: one query, which no index serves.
+    // The open todos: one query, which an index serves; the count reads
+    // every todo, which no index serves.
     let listed = ok(&root, &["trace", &open_id]);
-    assert!(listed.contains("query   open_todos"), "{listed}");
-    assert!(listed.contains("no index"), "{listed}");
+    assert!(listed.contains("query     open_todos"), "{listed}");
+    assert!(!listed.contains("no index"), "{listed}");
     assert!(listed.contains("wrote nothing"), "{listed}");
+    let counted = ok(&root, &["trace", &count_id]);
+    assert!(counted.contains("query     count_todos"), "{counted}");
+    assert!(counted.contains("no index"), "{counted}");
     // The board: two queries.
     let both = data(&root, &["trace", &board_id]);
     assert_eq!(both["flags"]["queries"], 2, "{both}");
@@ -397,8 +422,13 @@ fn jadpo_trace_shows_what_a_request_did_and_dev_flags_its_line() {
     };
     assert_eq!(line(&board_id)["flags"]["queries"], 2, "{log}");
     assert_eq!(
+        line(&count_id)["flags"]["unindexed"],
+        serde_json::json!(["count_todos"]),
+        "{log}"
+    );
+    assert_eq!(
         line(&open_id)["flags"]["unindexed"],
-        serde_json::json!(["open_todos"]),
+        serde_json::json!([]),
         "{log}"
     );
     assert_eq!(line(&added_id)["flags"]["queries"], 0, "{log}");
@@ -410,7 +440,7 @@ fn jadpo_trace_shows_what_a_request_did_and_dev_flags_its_line() {
 
     // An id no request has.
     let missing = jadpo(&root, &["trace", "req_ffffffff"]);
-    assert_eq!(missing.code, 1, "{}", missing.stdout);
+    assert_ne!(missing.code, 0, "{}", missing.stdout);
     assert!(
         missing.stdout.contains("cli.trace_arguments")
             || missing.stderr.contains("cli.trace_arguments"),

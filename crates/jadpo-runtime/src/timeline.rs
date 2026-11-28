@@ -24,8 +24,8 @@ use std::rc::Rc;
 use serde_json::{Value as Json, json};
 
 use crate::logging::Hasher;
-use crate::{Frame, Places};
 use crate::spans::{Ended, Kind, Spans};
+use crate::{Frame, Places};
 use crate::{LocalFuture, Row, SqlValue, StoreError, Transaction};
 
 /// The version of the timeline document ([`document`]).
@@ -84,6 +84,27 @@ struct Kept {
     hasher: Hasher,
 }
 
+/// The key a timeline's hashes are made with when the host's log has
+/// none to give: the process's own, so two values compare across its
+/// requests.
+static KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+
+fn key(host: &dyn crate::Host) -> Vec<u8> {
+    KEY.get_or_init(|| {
+        let mut key = [0u8; 32];
+        if !host.random(&mut key) {
+            use std::hash::{BuildHasher, Hasher as _};
+            for chunk in key.chunks_mut(8) {
+                let mut state = std::collections::hash_map::RandomState::new().build_hasher();
+                state.write_usize(chunk.as_ptr() as usize);
+                chunk.copy_from_slice(&state.finish().to_le_bytes()[..chunk.len()]);
+            }
+        }
+        key
+    })
+    .to_vec()
+}
+
 impl std::fmt::Debug for Watch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Watch").finish_non_exhaustive()
@@ -95,7 +116,7 @@ impl Watch {
         Watch(Rc::new(Kept {
             current: Cell::new(None),
             timeline: RefCell::new(Timeline::default()),
-            hasher: Hasher::of(host),
+            hasher: Hasher::of(host).or_key(key(host)),
         }))
     }
 
@@ -360,9 +381,7 @@ pub fn document(spans: &Spans, timeline: &Timeline, places: &Places) -> Json {
                 Json::from(format!("{}:{}", place.file, place.line))
             })
     };
-    let statement = |sql: &str, params: &[String], rows: Option<u64>| {
-        json!({ "sql": sql, "params": params, "rows": rows })
-    };
+    let statement = |sql: &str, params: &[String], rows: Option<u64>| json!({ "sql": sql, "params": params, "rows": rows });
     let mut kept: BTreeMap<u32, Vec<Json>> = BTreeMap::new();
     let mut outside = Vec::new();
     let mut transactions = Vec::new();
@@ -427,10 +446,17 @@ pub fn document(spans: &Spans, timeline: &Timeline, places: &Places) -> Json {
                 Ended::Failed(code) => ("failed", Some(code.clone())),
                 Ended::Fault(classification) => ("fault", Some(classification.to_string())),
             };
+            // Where in its file the operation is written, so a reader with
+            // the source names a read as the code calls it.
+            let site = span
+                .frame()
+                .and_then(|frame| places.site(frame))
+                .map(|(file, site)| json!({ "file": file, "start": site.start, "end": site.end }));
             json!({
                 "kind": kind,
                 "name": name,
                 "place": place(span.frame()),
+                "site": site,
                 "parent": span.parent,
                 "ms": span.ms(),
                 "rows": span.rows,

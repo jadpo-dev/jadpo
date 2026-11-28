@@ -288,18 +288,29 @@ timed steps of a trace, that Jadpo already records
 ```text
 $ jadpo dev
 listening on http://localhost:3000
-req_0b1e  POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms
-req_0b1f  GET /todos                   200   9 ms   3 queries
+req_0b1e  POST /todos/0192…/done                 409 todo_already_done   6 ms
+req_0b1f  GET /todos/board                       200   9 ms   2 queries
 
 $ jadpo trace req_0b1e
-POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192…a7
-  route    domains/planning/routes/todos.jadpo:31
-  action   complete_todo                   domains/planning/actions/complete_todo.jadpo:4
-    query  Todo.get           3 ms  1 row  SELECT … FROM todos WHERE id = $1 AND deleted_at IS NULL
-    write  Todo.update        2 ms  0 rows (expected revision 7, found 8)
-    fail   TodoMutationConflict           complete_todo.jadpo:9
-  rolled back; no events emitted
+POST /todos/0192…/done  409 todo_already_done  6 ms  as user 0192…a7
+  route     domains/planning/routes/todos.jadpo:33
+  action    complete_todo             6 ms  domains/planning/actions/complete_todo.jadpo:7
+    query   find_todo                 5 ms  1 row
+            SELECT … FROM "todo" WHERE "id" = $1
+            $1 0192…f1
+    fail    TodoAlreadyDone         domains/planning/actions/complete_todo.jadpo:10
+  wrote nothing; no events emitted
 ```
+
+The line gives the route, the caller, and each action, query and write
+nested as it ran, with its time, its rows and each statement it sent, its
+parameters under it. A write that committed and the events it emitted
+end it, with a `then` line for each subscriber the events ran and how it
+went (`then  read_added  succeeded  20 ms  on TodoAdded`). Statements and
+values are cut to fit the screen: `--full` shows them whole, and
+`--json` gives the timeline's document. In a terminal, `2 queries` on the
+request's line is `▲ 2 queries` in the warning colour, and the failure
+and its place are in the failure colour.
 
 ### What the SQL shows
 

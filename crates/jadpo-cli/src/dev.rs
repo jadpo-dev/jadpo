@@ -283,7 +283,7 @@ struct Shared {
     /// The queries no index serves in the version being served, which a
     /// request's line is flagged for running (area 17, "What gets
     /// flagged").
-    unindexed: Mutex<std::collections::BTreeSet<String>>,
+    known: Mutex<Arc<crate::trace::Known>>,
 }
 
 /// A worker's view of the program: the version it last served, rebuilt
@@ -347,16 +347,18 @@ impl Observer for Lines {
     fn answered(&self, answered: &Answered<'_>) {
         let (request, response) = (answered.request, answered.response);
         // Its timeline, kept for `jadpo trace` (chunk E0).
-        let unindexed = match self.shared.unindexed.lock() {
-            Ok(unindexed) => unindexed.clone(),
-            Err(poisoned) => poisoned.into_inner().clone(),
+        let known = match self.shared.known.lock() {
+            Ok(known) => Arc::clone(&known),
+            Err(poisoned) => Arc::clone(&poisoned.into_inner()),
         };
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX));
+            .map_or(0, |since| {
+                i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+            });
         let flags = match crate::trace::request_document(
             answered,
-            &unindexed,
+            &known,
             now,
             steps_json(&response.steps),
         ) {
@@ -1090,7 +1092,7 @@ pub fn serve_unwatched_to(
         secured: secured.clone(),
         log: Mutex::new(sender),
         timelines: crate::trace::DevTimelines::new(&root),
-        unindexed: Mutex::new(first.unindexed.clone()),
+        known: Mutex::new(Arc::clone(&first.known)),
     });
     let make_shared = Arc::clone(&shared);
     // Every store of files on this machine's disk, under `.jadpo/files/`
@@ -1405,8 +1407,8 @@ pub fn serve_unwatched_to(
                 if let Ok(mut slot) = shared.current.lock() {
                     *slot = (Arc::clone(&ready.prepared), Arc::clone(&ready.config));
                 }
-                if let Ok(mut slot) = shared.unindexed.lock() {
-                    slot.clone_from(&ready.unindexed);
+                if let Ok(mut slot) = shared.known.lock() {
+                    slot.clone_from(&ready.known);
                 }
                 if let Some(issuer) = &issuer {
                     crate::dev_token::remember(&root, &ready.prepared, &ready.config, issuer);
@@ -1590,8 +1592,8 @@ fn dev_telemetry(
 /// A version of the project ready to serve.
 pub(crate) struct Ready {
     pub(crate) prepared: Arc<Prepared>,
-    /// The queries no index serves (chunk E0).
-    pub(crate) unindexed: std::collections::BTreeSet<String>,
+    /// Where its routes are and the queries no index serves (chunk E0).
+    pub(crate) known: Arc<crate::trace::Known>,
     /// Each store's migrations.
     pub(crate) steps: BTreeMap<String, Vec<jadpo_std::Migration>>,
     /// The stores its entities live in.
@@ -1675,7 +1677,6 @@ pub(crate) fn prepare_allowing(
         jadpo_db::show_in_checkouts(&loaded.links, &mut blocking, &mut sources);
         return Err((blocking, sources));
     }
-    let unindexed = crate::trace::unindexed(db, project);
     let set = jadpo_check::data::migrations::migrations(db, project);
     let steps = jadpo_check::data::migrations::store_steps(set);
     let model = jadpo_check::data::data_model(db, project);
@@ -1690,6 +1691,7 @@ pub(crate) fn prepare_allowing(
     // With the latest migration's backfills worked out in Jadpo, which
     // applying its migrations runs (chunk 5.6b2).
     let prepared = Prepared::checked_with_backfills(db, project);
+    let known = Arc::new(crate::trace::Known::of(db, project));
     let routes = prepared.plan().routes().routes.len();
     let (config, configured, unset) = if run {
         let model = jadpo_check::config::config(db, project);
@@ -1709,7 +1711,7 @@ pub(crate) fn prepare_allowing(
     };
     Ok(Ready {
         prepared,
-        unindexed,
+        known,
         steps,
         stores,
         routes,

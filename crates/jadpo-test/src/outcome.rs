@@ -510,7 +510,10 @@ pub(crate) fn fakes_used(
         delivery: None,
         crash: None,
         rerun: rerun.command(&location.path, location.line),
-        kept: failed.as_ref().map(|failed| failed.kept.clone()).unwrap_or_default(),
+        kept: failed
+            .as_ref()
+            .map(|failed| failed.kept.clone())
+            .unwrap_or_default(),
         trace: failed.and_then(|failed| failed.trace),
         location,
         detail: Detail::Fake(Box::new(FakeInfo {
@@ -852,7 +855,7 @@ fn ended(
                 crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
-        trace: None,
+                trace: None,
                 location,
                 detail: Detail::Assertion(Box::new(assertion_failure(places, sources, assertion))),
             }
@@ -865,7 +868,7 @@ fn ended(
                 crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
-        trace: None,
+                trace: None,
                 location,
                 detail: Detail::Failure(Box::new(failure_info(places, sources, failure))),
             }
@@ -878,7 +881,7 @@ fn ended(
                 crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
-        trace: None,
+                trace: None,
                 location,
                 detail: Detail::Fault(Box::new(fault_info(places, sources, fault))),
             }

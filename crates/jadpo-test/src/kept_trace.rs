@@ -35,7 +35,12 @@ pub(crate) fn keep(
 }
 
 /// Writes `document` as test `name`'s trace, failed at `location`: its id.
-fn kept(project: &Path, name: &str, location: &str, mut document: serde_json::Value) -> Option<String> {
+fn kept(
+    project: &Path,
+    name: &str,
+    location: &str,
+    mut document: serde_json::Value,
+) -> Option<String> {
     let id = format!("t-{}", hex(&random()));
     if let Some(object) = document.as_object_mut() {
         object.insert(
@@ -76,7 +81,9 @@ fn random() -> [u8; 4] {
         .map_or(0, |since| since.as_nanos() as u64);
     let mut state = nanos
         ^ u64::from(std::process::id()).rotate_left(32)
-        ^ COUNT.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        ^ COUNT
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15);
     state = (state ^ (state >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     state = (state ^ (state >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     state ^= state >> 31;
