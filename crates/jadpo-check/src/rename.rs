@@ -455,7 +455,15 @@ pub fn plan(db: &dyn Db, project: Project, key: &Key, new: &str) -> Result<Plan,
         && project.layout(db) == jadpo_db::Layout::Project
     {
         let location = jadpo_db::locate(&place.file, project.layout(db));
-        if !location.test && location.stem == to_snake(&own) {
+        // Only the declaration the file is named after moves it: a type
+        // beside an action of the same name, `ChangeLine` beside
+        // `change_line`, stays where it is.
+        let primary = file_at(db, project, &place.file).is_some_and(|file| {
+            jadpo_db::primary(&location, &jadpo_db::item_tree(db, file).items).is_some_and(|item| {
+                item.name == own && crate::graph::kind_of(&item.kind) == Some(kind)
+            })
+        });
+        if !location.test && primary && location.stem == to_snake(&own) {
             let folder = place
                 .file
                 .rsplit_once('/')
@@ -780,16 +788,14 @@ fn references(db: &dyn Db, project: Project, keys: &[Key]) -> BTreeMap<String, V
     let mut out: BTreeMap<String, Vec<Edit>> = BTreeMap::new();
     for key in keys {
         for reference in node_references(db, project, key) {
-            if reference.path.starts_with("database/") {
-                continue;
-            }
             let Some(file) = file_at(db, project, &reference.path) else {
                 continue;
             };
-            if jadpo_db::location(db, project, file)
-                .ownership
-                .package()
-                .is_some()
+            // A migration's folder is history; a seed in `database/seeds/`
+            // is code like any other.
+            let location = jadpo_db::location(db, project, file);
+            if location.place == jadpo_db::Place::Migration
+                || location.ownership.package().is_some()
             {
                 continue;
             }

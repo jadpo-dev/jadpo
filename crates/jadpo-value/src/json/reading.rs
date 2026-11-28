@@ -228,7 +228,18 @@ impl<'c> Reading<'c> {
         item: Item<'_>,
         at: &At<'_>,
     ) -> Option<Value> {
-        match super::scalar(builtin, item) {
+        // What a client sent is read in the form Jadpo writes it; text a
+        // query string or a header gave is text either way.
+        let ints = match (self.codecs.codec(CodecId(codec)), item) {
+            (_, Item::Text(_) | Item::Texts(_)) => super::IntForm::Either,
+            (Some(jadpo_std::http::Codec::Scalar { int_as_number, .. }), _) => {
+                super::IntForm::Written {
+                    as_number: *int_as_number,
+                }
+            }
+            _ => super::IntForm::Either,
+        };
+        match super::scalar(builtin, item, ints) {
             Some(Ok(value)) => self.check(validator, value, at),
             Some(Err(rule)) => {
                 self.problem(at, rule);
@@ -323,6 +334,10 @@ impl<'c> Reading<'c> {
             self.numbers = item.numbers();
         }
         let path = Path::of(at.parts(), self.numbers.clone());
+        let path = match item {
+            Item::Text(_) | Item::Texts(_) => path,
+            _ => path.sent(),
+        };
         self.codecs
             .read(CodecId(codec), &item.to_json(), &path, &mut self.problems)
     }
