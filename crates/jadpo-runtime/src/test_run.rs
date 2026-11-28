@@ -132,6 +132,10 @@ pub struct Sandbox {
     pub driver: Rc<dyn Capability>,
     pub settings: Vec<u32>,
     pub sent: Rc<std::cell::RefCell<std::collections::BTreeSet<String>>>,
+    /// Where each answer from the sandbox its call couldn't decode is
+    /// kept, when the app reports them to the registry (chunk R10b);
+    /// `None` keeps none.
+    pub undecodable: Option<Rc<std::cell::RefCell<Vec<crate::fakes::Undecodable>>>>,
 }
 
 impl std::fmt::Debug for Sandbox {
@@ -209,11 +213,17 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     // A contract run's case sends what its `fakes:` doesn't script to the
     // sandbox (chunk K4c).
     let answering: Rc<dyn Capability> = match once.sandbox {
-        Some(sandbox) => Rc::new(crate::fakes::ToSandbox::new(
-            Rc::clone(&fake),
-            Rc::clone(&sandbox.driver),
-            Rc::clone(&sandbox.sent),
-        )),
+        Some(sandbox) => {
+            let to = crate::fakes::ToSandbox::new(
+                Rc::clone(&fake),
+                Rc::clone(&sandbox.driver),
+                Rc::clone(&sandbox.sent),
+            );
+            Rc::new(match &sandbox.undecodable {
+                Some(kept) => to.keeping(Rc::clone(kept)),
+                None => to,
+            })
+        }
         None => Rc::clone(&fake) as Rc<dyn Capability>,
     };
     let faked = plan

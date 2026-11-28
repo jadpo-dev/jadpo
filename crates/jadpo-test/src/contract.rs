@@ -22,6 +22,12 @@
 //! confirmed by no recording, that no case sent to the sandbox fails the
 //! run (`test.contract_uncovered`). That is judged only when every case
 //! ran: a path, line, name, `--failed` or `--affected` leaves cases out.
+//!
+//! An app whose `packages:` says `report_decode_failures: true` (area 11,
+//! "What a release shows"; chunk R10b) also keeps each answer from the
+//! sandbox that an installed package's operation couldn't decode, cut to
+//! its shape ([`jadpo_registry::report::shape_of`]) as its case ends, for
+//! `jadpo test` to send to the registry. Without it nothing is kept.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -66,6 +72,42 @@ pub struct ContractRun {
     /// The files the uncovered operations are declared in, for their code
     /// frames.
     pub sources: BTreeMap<String, String>,
+    /// Each answer an installed package couldn't decode, by its shape,
+    /// once per package, operation and shape, in that order; empty unless
+    /// the app reports them.
+    pub undecodable: Vec<Undecoded>,
+}
+
+/// An answer from the provider's sandbox that an installed package's
+/// operation couldn't decode, by its shape alone (chunk R10b).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Undecoded {
+    /// As the lock names it: `AcmeCouriers.v1`.
+    pub package: String,
+    /// As the package writes it: `bookings.create`.
+    pub operation: String,
+    pub shape: Vec<jadpo_registry::protocol::ShapeMember>,
+}
+
+/// An undecodable answer cut to its shape as its case ends, by the
+/// connection it came through.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Shaped {
+    pub connection: String,
+    pub operation: String,
+    pub shape: Vec<jadpo_registry::protocol::ShapeMember>,
+}
+
+impl Shaped {
+    /// `kept`'s shape; `None` for an answer that isn't JSON, which has none.
+    pub(crate) fn of(kept: &jadpo_runtime::fakes::Undecodable) -> Option<Shaped> {
+        let answer: serde_json::Value = serde_json::from_str(&kept.answer).ok()?;
+        Some(Shaped {
+            connection: kept.connection.clone(),
+            operation: kept.operation.clone(),
+            shape: jadpo_registry::report::shape_of(&answer),
+        })
+    }
 }
 
 /// An operation no case of a contract run sent to the sandbox.
@@ -127,6 +169,9 @@ pub(crate) struct Scope {
     /// integration.
     pub needed: Vec<Uncovered>,
     pub sources: BTreeMap<String, String>,
+    /// When the app reports undecodable answers, each connection to an
+    /// installed package and that package's name; empty otherwise.
+    pub reported: BTreeMap<String, String>,
 }
 
 /// The cases among `tests`, the suites, and the operations a case must
@@ -253,12 +298,46 @@ pub(crate) fn scope(loaded: &jadpo_db::Loaded, prepared: &Prepared, tests: &[Tes
         }
     }
     needed.sort_by(|a, b| a.call.cmp(&b.call));
+
+    // The connections whose undecodable answers are reported: each to an
+    // installed package, only when the app opts in.
+    let mut reported = BTreeMap::new();
+    if jadpo_check::own_sources::reports_decode_failures(db, project) {
+        for home in homes.values().filter(|home| home.installed) {
+            let package = home.versioned();
+            for (_, name, connection) in plan.package_connections() {
+                if connection.package == package && !answered_otherwise(name) {
+                    reported.insert(name.to_string(), package.clone());
+                }
+            }
+        }
+    }
     Scope {
         cases,
         suites,
         needed,
         sources,
+        reported,
     }
+}
+
+/// Each of `shaped` through a connection `reported` names, by its
+/// package, once per package, operation and shape.
+pub(crate) fn undecoded(
+    reported: &BTreeMap<String, String>,
+    shaped: impl IntoIterator<Item = Shaped>,
+) -> Vec<Undecoded> {
+    let found: BTreeSet<Undecoded> = shaped
+        .into_iter()
+        .filter_map(|shaped| {
+            Some(Undecoded {
+                package: reported.get(&shaped.connection)?.clone(),
+                operation: shaped.operation,
+                shape: shaped.shape,
+            })
+        })
+        .collect();
+    found.into_iter().collect()
 }
 
 /// Every node a test reaches as it runs: what it and each callable it

@@ -1062,6 +1062,14 @@ async fn made(
             Ok(Given::Value(value)) => Done::Value(value),
             Ok(Given::Wire(text)) => {
                 let done = decode(ctx, providers, op, &name, &text, site);
+                // An answer it couldn't read is told to the driver that
+                // answered, which a contract run's sandbox keeps (chunk
+                // R10b).
+                if matches!(done, Done::Fault(FaultKind::Provider(_)))
+                    && let Some(driver) = ctx.host().capability(connection)
+                {
+                    driver.undecodable(&made, &text);
+                }
                 sent = Some(text);
                 done
             }

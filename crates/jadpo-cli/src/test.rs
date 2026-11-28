@@ -137,6 +137,9 @@ pub fn test(call: &Call) -> Reply {
 /// cases' reports as `jadpo test` shows them, each operation no case sent
 /// to the sandbox, then each suite of the app's own integrations taken
 /// through `jadpo package conform --live`, and one footer for it all.
+/// An app that reports undecodable answers has each one from a package
+/// installed from the registry sent there by its shape first (chunk
+/// R10b), the count of those sent among the footer's facts.
 fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
     let Ran::Done(run) = ran else {
         return reply(ran);
@@ -208,7 +211,22 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
         diagnostics.extend(problems);
         suites.push((suite, conformed, conforms));
     }
-    // The footer: the cases, the operations no case sent, each suite.
+    // Each answer a package from the registry couldn't decode, told to the
+    // registry by its shape alone (area 11, "What a release shows").
+    let reports = report_undecodable(&found.undecodable, call, root);
+    if let Some(why) = &reports.unsent {
+        let left = reports.registered - reports.sent.len();
+        screen.push(Block::Alerts(vec![format!(
+            "The registry wasn't told of {}: {why}",
+            count(
+                left,
+                "answer a package couldn't decode",
+                "answers a package couldn't decode"
+            )
+        )]));
+    }
+    // The footer: the cases, the operations no case sent, each suite, the
+    // reports sent.
     let mut facts = Vec::new();
     if failed > 0 && passed > 0 {
         facts.push(Fact::plain(format!("{passed} passed")));
@@ -227,6 +245,13 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
         } else {
             Fact::problem(format!("{} doesn't conform live", suite.capability))
         });
+    }
+    if !reports.sent.is_empty() {
+        facts.push(Fact::plain(count(
+            reports.sent.len(),
+            "decode failure reported",
+            "decode failures reported",
+        )));
     }
     let took = elapsed + started.elapsed();
     if took >= std::time::Duration::from_millis(100)
@@ -294,6 +319,17 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
                 json
             })),
         ),
+        (
+            "reported",
+            Json::array(reports.sent.iter().map(|sent| {
+                Json::object([
+                    ("package", Json::from(sent.package.as_str())),
+                    ("version", Json::from(sent.version.as_str())),
+                    ("operation", Json::from(sent.operation.as_str())),
+                    ("id", Json::from(sent.id.as_str())),
+                ])
+            })),
+        ),
     ]);
     let data = match data {
         Json::Object(mut entries) => {
@@ -308,6 +344,91 @@ fn contract_reply(ran: Ran, call: &Call, root: &std::path::Path) -> Reply {
         diagnostics,
         sources,
     }
+}
+
+/// The reports a contract run sent the registry (chunk R10b).
+#[derive(Default)]
+struct Reports {
+    /// Each one the registry kept, in the order sent.
+    sent: Vec<Reported>,
+    /// How many of the run's undecodable answers came from a package
+    /// installed from the registry, which is all that is reported.
+    registered: usize,
+    /// Why the rest weren't sent, when they weren't.
+    unsent: Option<String>,
+}
+
+struct Reported {
+    /// `@acme/couriers`.
+    package: String,
+    version: String,
+    operation: String,
+    /// The registry's id for the report.
+    id: String,
+}
+
+/// Sends `POST decode-failures` for each of `undecodable` from a package
+/// the lock installed from the registry: its scoped name, version and
+/// operation, and the answer's shape, never a value of it. A package from
+/// anywhere else has no page at the registry to report to, and is left out.
+/// The first request that fails stops the rest, and says why.
+fn report_undecodable(
+    undecodable: &[jadpo_test::contract::Undecoded],
+    call: &Call,
+    root: &std::path::Path,
+) -> Reports {
+    use jadpo_registry::names::{ScopedName, Version};
+    use jadpo_registry::protocol::{DecodeFailure, ReceivedReport, Request};
+
+    let mut reports = Reports::default();
+    if undecodable.is_empty() {
+        return reports;
+    }
+    let lines = crate::install::read_lock(root).unwrap_or_default();
+    let registered: BTreeMap<&str, (ScopedName, Version)> = lines
+        .iter()
+        .filter_map(|line| match &line.source {
+            jadpo_db::Source::Registry { version, name, .. } => Some((
+                line.package.as_str(),
+                (ScopedName::parse(name).ok()?, Version::parse(version).ok()?),
+            )),
+            _ => None,
+        })
+        .collect();
+    let client = crate::registry::Client::of(&call.environment);
+    for failed in undecodable {
+        let Some((package, version)) = registered.get(failed.package.as_str()) else {
+            continue;
+        };
+        reports.registered += 1;
+        if reports.unsent.is_some() {
+            continue;
+        }
+        let report = DecodeFailure {
+            package: package.clone(),
+            version: version.clone(),
+            operation: failed.operation.clone(),
+            shape: failed.shape.clone(),
+        };
+        match client.ask_if_served::<ReceivedReport>(&Request::DecodeFailure(report)) {
+            Ok(Some(received)) => reports.sent.push(Reported {
+                package: package.to_string(),
+                version: version.to_string(),
+                operation: failed.operation.clone(),
+                id: received.id,
+            }),
+            Ok(None) => {
+                reports.unsent = Some("it doesn't take these reports yet".to_string());
+            }
+            Err(crate::registry::Asked::Failure(code, _)) => {
+                reports.unsent = Some(format!("it answered `{code}`"));
+            }
+            Err(crate::registry::Asked::Unreachable(_)) => {
+                reports.unsent = Some("it couldn't be reached".to_string());
+            }
+        }
+    }
+    reports
 }
 
 /// What a request to run tests ended in, as a reply.

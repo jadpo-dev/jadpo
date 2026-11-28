@@ -684,7 +684,13 @@ pub(crate) fn choose_and_run(
         names.extend(scope.suites.iter().map(|suite| suite.connection.clone()));
         let mut values = run::test_values(prepared).unwrap_or_default();
         match contract::settings(prepared, &names, &mut values, contract) {
-            Ok(settings) => contracted = Some(run::Contracted { values, settings }),
+            Ok(settings) => {
+                contracted = Some(run::Contracted {
+                    values,
+                    settings,
+                    reports: !scope.reported.is_empty(),
+                });
+            }
             Err(refusals) => {
                 return Ran::Refused {
                     diagnostics: refusals,
@@ -748,11 +754,13 @@ pub(crate) fn choose_and_run(
     );
     drop(databases);
     let mut sent = std::collections::BTreeSet::new();
+    let mut shaped = Vec::new();
     let results: Vec<TestResult> = ordered
         .into_iter()
         .zip(failures)
         .map(|(test, ((failure, record), to_sandbox))| {
-            sent.extend(to_sandbox);
+            sent.extend(to_sandbox.sent);
+            shaped.extend(to_sandbox.undecodable);
             TestResult {
                 test,
                 failure,
@@ -769,6 +777,7 @@ pub(crate) fn choose_and_run(
         uncovered: contract::uncovered(scope.needed, &sent),
         suites: scope.suites,
         sources: scope.sources,
+        undecodable: contract::undecoded(&scope.reported, shaped),
     });
     let mut total = BTreeMap::new();
     for test in tests {

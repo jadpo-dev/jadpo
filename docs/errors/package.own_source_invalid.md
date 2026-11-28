@@ -117,7 +117,7 @@ error: `own_source` isn't something `packages:` holds
   |
 3 |         own_source: ["github.com/acme/"]
   |         ^^^^^^^^^^ not a setting
-  reason: `packages:` holds only `own_sources:`, your company's git locations.
+  reason: `packages:` holds `own_sources:`, your company's git locations, and `report_decode_failures:`, whether contract runs tell the registry of an answer a package can't decode.
   next: Use `own_sources` instead of `own_source` (agent)
   fix:
     3 - own_source: ["github.com/acme/"]

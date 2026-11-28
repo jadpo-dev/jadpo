@@ -13,6 +13,12 @@
 //! (other than ssh's `git`) is refused, and a port is part of the server.
 //! A host has no case, as DNS has none; a path keeps its case, since many
 //! servers tell `Acme` from `acme`.
+//!
+//! `packages:` also holds `report_decode_failures:` (area 11, "What a
+//! release shows"; chunk R10b): whether `jadpo test --kind contract` tells
+//! the registry of an answer a package from it can no longer decode, by the
+//! answer's shape alone. It is `true` or `false`, and anything else, or
+//! nothing, is off, so nothing leaves an app that didn't ask.
 
 use jadpo_db::{Db, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
@@ -21,17 +27,21 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 use crate::config::singletons;
 use crate::tree::{self, node_span};
 
-/// The one setting `packages:` holds.
+/// The settings `packages:` holds.
 const OWN_SOURCES: &str = "own_sources";
+const REPORTS: &str = "report_decode_failures";
 
 /// How `packages:` is written, for an error's next step.
 const SHAPE: &str = "`packages: { own_sources: [\"github.com/acme/\"] }`";
 
-/// The section, read: the entries that are sound, and the problems with
-/// the rest. An entry refused covers nothing.
+/// The section, read: the entries that are sound, whether contract runs
+/// report undecodable answers, and the problems with the rest. An entry
+/// refused covers nothing, and a setting refused reports nothing.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct OwnSources {
     pub entries: Vec<String>,
+    /// `report_decode_failures: true`.
+    pub report_decode_failures: bool,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -67,6 +77,13 @@ pub fn problems(db: &dyn Db, project: Project) -> &[Diagnostic] {
     &own_sources(db, project).problems
 }
 
+/// Whether the app's contract runs tell the registry of an answer a
+/// package from it can no longer decode: only when `packages:` says
+/// `report_decode_failures: true`.
+pub fn reports_decode_failures(db: &dyn Db, project: Project) -> bool {
+    own_sources(db, project).report_decode_failures
+}
+
 fn read_section(path: &str, at: &Span, member: &ast::Member, out: &mut OwnSources) {
     let Some(block) = member.block() else {
         out.problems.push(
@@ -77,9 +94,25 @@ fn read_section(path: &str, at: &Span, member: &ast::Member, out: &mut OwnSource
         return;
     };
     let mut seen: Option<Span> = None;
+    let mut reports: Option<Span> = None;
     for (key, member) in tree::members(Some(block)) {
         let written = tree::name_text(&key).unwrap_or_default();
         let key_at = node_span(path, key.syntax());
+        if written == REPORTS {
+            if let Some(first) = &reports {
+                out.problems.push(
+                    reports_invalid("`report_decode_failures:` is declared twice", key_at, "declared again")
+                        .also(first.clone(), "first declared here")
+                        .reason("Whether the app's contract runs tell the registry of an answer a package can't decode is said once, so a reviewer reads one answer.")
+                        .next("Keep one `report_decode_failures:` and remove the other"),
+                );
+                out.report_decode_failures = false;
+                continue;
+            }
+            reports = Some(key_at.clone());
+            read_reports(path, &key_at, &member, out);
+            continue;
+        }
         if written != OWN_SOURCES {
             out.problems.push(unknown(&written, key_at));
             continue;
@@ -96,6 +129,25 @@ fn read_section(path: &str, at: &Span, member: &ast::Member, out: &mut OwnSource
         seen = Some(key_at.clone());
         read_list(path, &key_at, &member, out);
     }
+}
+
+/// `report_decode_failures:`: `true` or `false`, and off for anything else.
+fn read_reports(path: &str, key_at: &Span, member: &ast::Member, out: &mut OwnSources) {
+    let value = member.value();
+    if let Some(value) = &value
+        && let crate::types::Const::Bool(on) = crate::types::Const::from_expr(value)
+    {
+        out.report_decode_failures = on;
+        return;
+    }
+    let at = value
+        .as_ref()
+        .map_or_else(|| key_at.clone(), |v| node_span(path, v.syntax()));
+    out.problems.push(
+        reports_invalid("`report_decode_failures:` isn't `true` or `false`", at, "not true or false")
+            .reason("`report_decode_failures:` says whether the app's contract runs tell the registry of an answer a package from it can no longer decode, sending the answer's shape and never a value. Left out, it is `false` and nothing is sent.")
+            .next("Write `report_decode_failures: true`, or remove it to send nothing"),
+    );
 }
 
 fn read_list(path: &str, key_at: &Span, member: &ast::Member, out: &mut OwnSources) {
@@ -142,16 +194,23 @@ fn invalid(message: impl Into<String>, at: Span, label: &str) -> Diagnostic {
     Diagnostic::new(&rule::PACKAGE_OWN_SOURCE_INVALID, message).at(at, label)
 }
 
-/// A setting `packages:` doesn't hold, with the edit to `own_sources` when
-/// it is a near miss: a list misspelt would otherwise look kept.
+fn reports_invalid(message: impl Into<String>, at: Span, label: &str) -> Diagnostic {
+    Diagnostic::new(&rule::PACKAGE_DECODE_REPORTS_INVALID, message).at(at, label)
+}
+
+/// A setting `packages:` doesn't hold, with the edit to the one it is a
+/// near miss of, under that setting's rule: a list misspelt would otherwise
+/// look kept, and a report meant to be on look sent.
 fn unknown(written: &str, at: Span) -> Diagnostic {
-    let problem = invalid(
-        format!("`{written}` isn't something `packages:` holds"),
-        at.clone(),
-        "not a setting",
-    )
-    .reason("`packages:` holds only `own_sources:`, your company's git locations.");
-    match nearest(written, [OWN_SOURCES]) {
+    let near = nearest(written, [OWN_SOURCES, REPORTS]);
+    let message = format!("`{written}` isn't something `packages:` holds");
+    let problem = if near == Some(REPORTS) {
+        reports_invalid(message, at.clone(), "not a setting")
+    } else {
+        invalid(message, at.clone(), "not a setting")
+    }
+    .reason("`packages:` holds `own_sources:`, your company's git locations, and `report_decode_failures:`, whether contract runs tell the registry of an answer a package can't decode.");
+    match near {
         Some(near) => problem
             .next(format!("Use `{near}` instead of `{written}`"))
             .edit(at, near),

@@ -196,12 +196,7 @@ The application itself is built in the jadpo.dev repository against
 [the registry protocol](language/11-integrations.md#the-registry-protocol);
 these chunks are what is left on either side.
 
-- [ ] **R10b What an app's contract run sends** `opus · high`: area
-  11, "What a release shows" and "The registry protocol". The app's opt-in,
-  and `jadpo test --kind contract` reporting an answer a package can no longer
-  decode to `POST decode-failures` with `jadpo_registry::report::shape_of`.
-  Done when a contract run against a local registry sends the shape and no
-  value, and the setting that opts in is on its area page.
+- [x] **R10b What an app's contract run sends**: [Reporting what a package can't decode](language/11-integrations.md#reporting-what-a-package-cant-decode), [`package.decode_reports_invalid`](errors/package.decode_reports_invalid.md) and the decision in [the notes](language/notes/11-integrations.md).
 - [ ] **R11 What the registry application has left** **needs a maintainer**
   to start the jadpo.dev session, after R10: area 14, "Suggestions" and "The
   suggestions report"; `docs/registry/tasks.md`. `POST fingerprints/query`

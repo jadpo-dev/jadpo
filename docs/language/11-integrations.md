@@ -1501,7 +1501,9 @@ the sandbox for each one (see "Tests and fakes").
 
   An entry itself is refused unless it is a lower-case host and a path
   ending in `/`, `package.own_source_invalid`: `github.com/` alone would
-  let in every repository on the host.
+  let in every repository on the host. `packages:` holds one other
+  setting, `report_decode_failures:`
+  ([Reporting what a package can't decode](#reporting-what-a-package-cant-decode)).
 - **Prose is unverified wherever it comes from**, such as `///`
   descriptions and `GUIDE.md`. Nothing safety-relevant relies on it.
 
@@ -2043,7 +2045,9 @@ The verifier works out a release's **facts** from the compiled graph:
   publisher and Jadpo; suspected malware goes to Jadpo. An app may opt in
   to telling the registry when its scheduled contract run gets a
   response a package can no longer decode, sending the shape that failed
-  and never the values ([`POST decode-failures`](#the-registry-protocol)).
+  and never the values ([`POST decode-failures`](#the-registry-protocol)),
+  with `report_decode_failures: true` in `application { }`'s `packages:`
+  ([Reporting what a package can't decode](#reporting-what-a-package-cant-decode)).
   Issues stay in the package's repository.
 
 ### The changelog
@@ -2154,8 +2158,8 @@ would change.
 
 The registry at jadpo.dev does what this topic describes, apart from these:
 compatibility runs against Jadpo's pre-releases, telling a publisher what
-`jadpo fix` would change, signing its log's heads, and an app's reports from
-its scheduled contract runs. Accounts are open to a short list of people for now; anyone can search
+`jadpo fix` would change, signing its log's heads, and keeping and showing
+the reports an app's contract runs send. Accounts are open to a short list of people for now; anyone can search
 and install.
 
 ## The registry protocol
@@ -6678,6 +6682,46 @@ $ jadpo test --kind contract
 ✗ contract run failed  3 contract cases · 1 operation with no case
 ```
 
+#### Reporting what a package can't decode
+
+An app can tell a package's publisher, through the registry, that the
+provider now sends an answer the package can't decode. It opts in with
+`report_decode_failures: true` in `application { }`'s `packages:`; left
+out, or `false`, a contract run sends nothing at all:
+
+```jadpo check project=contract-reports file=app.jadpo
+application {
+    packages: {
+        report_decode_failures: true
+    }
+}
+```
+
+Then each answer from the sandbox that an operation of a package
+installed from the registry couldn't decode is sent to
+[`POST decode-failures`](#the-registry-protocol) once the cases have
+run: the package's scoped name, its version, the operation, and the
+answer's shape, each place in it and the kind of value there. No value
+is sent: a member name that isn't a field's name, such as a customer's
+id keying a map, goes as `*`, and an answer that isn't JSON has no shape
+and sends nothing. The shape is taken as the case ends, so nothing else
+of the answer is kept. A package from git or a folder, or the app's own
+integration, has no page at the registry, and sends nothing. The same
+package, operation and shape is sent once a run. The footer counts what
+the registry kept:
+
+```text
+$ jadpo test --kind contract
+...
+✗ 1 failed  1 contract case · 1 decode failure reported
+```
+
+A registry that can't be told, or doesn't take these reports yet, is one
+`alert` line, and the run's result stands. `report_decode_failures:`
+holding anything but `true` or `false`, or written twice, is
+[`package.decode_reports_invalid`](../errors/package.decode_reports_invalid.md),
+and sends nothing.
+
 A path, a line, `--name`, `--failed` or `--affected` runs the cases it
 picks alone, judging no operation and taking no suite. A case runs once,
 without the reruns with a crash at each step that `jadpo test` makes,
@@ -8912,7 +8956,7 @@ package's name, as its types are.
 | Walking a list operation's pages with `batches.each` or a file helper's write ([Pages of results](#pages-of-results)) | Built, but for a `batches.each` whose `each:` action makes outside calls ([Jobs and events](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)). |
 | No transaction open during a call, and several changing calls in one action | Built. |
 | Fakes, recordings and provider calls faked in development | Built. |
-| The contract run, `jadpo test --kind contract` ([Tests and fakes](#tests-and-fakes)) | Built: the tests that reach a provider operation, each call their `fakes:` doesn't script sent through the connection to the provider's sandbox with the settings `jadpo dev` reads, a live or unset connection refused; an unconfirmed written operation no case sends failing the run; and each of the app's own integrations' suites taken through `--live`. |
+| The contract run, `jadpo test --kind contract` ([Tests and fakes](#tests-and-fakes)) | Built: the tests that reach a provider operation, each call their `fakes:` doesn't script sent through the connection to the provider's sandbox with the settings `jadpo dev` reads, a live or unset connection refused; an unconfirmed written operation no case sends failing the run; each of the app's own integrations' suites taken through `--live`; and, with `report_decode_failures: true`, each answer a package from the registry can't decode sent to `POST decode-failures` by its shape. |
 | The `email` capability with SMTP and Resend | Built. |
 | Package actions, subscribers, recipes and polls | Built. |
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
@@ -8925,7 +8969,7 @@ package's name, as its types are.
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built. |
 | A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the registry's check of a release | Built. |
 | [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
-| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Built in `jadpo`, for the registry to use: a verifier image for each pre-release, what `jadpo fix` would change in the verifier's answer, `GET log/signed-head` checked against the keys it holds, and `POST decode-failures`'s shape. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, signed heads from jadpo.dev and the key it signs with held in `jadpo`, and an app's reports from its scheduled contract runs, which wait for the app's opt-in. Accounts are open to a short list of people for now; anyone can search and install. |
+| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Built in `jadpo`, for the registry to use: a verifier image for each pre-release, what `jadpo fix` would change in the verifier's answer, `GET log/signed-head` checked against the keys it holds, and an app's contract run sending `POST decode-failures` the shape of an answer a package can't decode, when the app opts in with `report_decode_failures: true`. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, signed heads from jadpo.dev and the key it signs with held in `jadpo`, and keeping and showing an app's reports from its contract runs. Accounts are open to a short list of people for now; anyone can search and install. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Built: the package's and the connection's `erasure:` are read and checked, a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance, and a generated subscriber calls each provider after the commit ([Erasure at providers](15-personal-data.md#erasure-at-providers)). |
@@ -9132,6 +9176,7 @@ public type SlotTaken = Failure {
 - [`package.digest_mismatch`](../errors/package.digest_mismatch.md)
 - [`package.licence_not_allowed`](../errors/package.licence_not_allowed.md)
 - [`package.own_source_invalid`](../errors/package.own_source_invalid.md)
+- [`package.decode_reports_invalid`](../errors/package.decode_reports_invalid.md)
 - [`package.version_needed`](../errors/package.version_needed.md)
 - [`package.version_unneeded`](../errors/package.version_unneeded.md)
 - [`package.operation_invalid`](../errors/package.operation_invalid.md)

@@ -53,6 +53,19 @@ pub(crate) struct Keep {
 pub(crate) struct Contracted {
     pub values: jadpo_runtime::config::ConfigValues,
     pub settings: Vec<u32>,
+    /// Whether the app reports an answer from the sandbox its call
+    /// couldn't decode (chunk R10b): only then is one kept, and only for
+    /// its shape.
+    pub reports: bool,
+}
+
+/// What a contract run's case did at the sandbox (chunks K4c and R10b):
+/// the name of each call it sent there, and the shape of each answer from
+/// it that its call couldn't decode, kept only when the app reports them.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Sandboxed {
+    pub sent: BTreeSet<String>,
+    pub undecodable: Vec<crate::contract::Shaped>,
 }
 
 /// The settings a test run reads: each field's `test:` value, its
@@ -82,7 +95,7 @@ pub(crate) fn run_all(
     databases: Option<&TestDatabases>,
     keep: Keep,
     (maker, contract): (Option<Maker<'_>>, Option<&Contracted>),
-) -> Vec<(Done, BTreeSet<String>)> {
+) -> Vec<(Done, Sandboxed)> {
     let sources = prepared.plan().files();
     // Every test reads the same settings: each field's `test:` value, its
     // default, and throwaway secrets made for this run (area 10); a
@@ -91,7 +104,7 @@ pub(crate) fn run_all(
         Some(contract) => Some(contract.values.clone()),
         None => test_values(prepared),
     };
-    let sandbox = contract.map(|contract| contract.settings.as_slice());
+    let sandbox = contract.map(|contract| (contract.settings.as_slice(), contract.reports));
     if let Some(make) = maker {
         return spread(
             || Boxed(make(settings.as_ref())),
@@ -183,9 +196,9 @@ fn spread<E: Executor>(
     tests: &[Test],
     (rerun, generated): (&Rerun, &generated::Table),
     sources: &(dyn Sources + Sync),
-    (databases, contract): (Option<&TestDatabases>, Option<&[u32]>),
+    (databases, contract): (Option<&TestDatabases>, Option<(&[u32], bool)>),
     keep: Keep,
-) -> Vec<(Done, BTreeSet<String>)> {
+) -> Vec<(Done, Sandboxed)> {
     let next = AtomicUsize::new(0);
     let work = || {
         let executor = make();
@@ -197,12 +210,14 @@ fn spread<E: Executor>(
             .flatten();
         // A contract run's calls go out through the package driver, as
         // `jadpo dev` sends them to a sandbox (chunk K4c).
-        let sandbox = contract.map(|settings| test_run::Sandbox {
+        let sandbox = contract.map(|(settings, reports)| test_run::Sandbox {
             driver: Rc::new(jadpo_host_native::JsonHttp::new(
                 jadpo_host_native::fetch::NativeFetch::new(),
             )),
             settings: settings.to_vec(),
             sent: Rc::default(),
+            // Nothing is kept unless the app reports it (chunk R10b).
+            undecodable: reports.then(Rc::default),
         });
         let stores = Stores {
             databases,
@@ -216,15 +231,29 @@ fn spread<E: Executor>(
                 break;
             };
             let ran = one(&executor, test, (rerun, generated), sources, &stores, keep);
-            let sent = sandbox
+            // Each undecodable answer is cut to its shape here, before it
+            // leaves the thread, so no value outlives its case.
+            let sandboxed = sandbox
                 .as_ref()
-                .map(|sandbox| std::mem::take(&mut *sandbox.sent.borrow_mut()))
+                .map(|sandbox| Sandboxed {
+                    sent: std::mem::take(&mut *sandbox.sent.borrow_mut()),
+                    undecodable: sandbox
+                        .undecodable
+                        .as_ref()
+                        .map(|kept| {
+                            std::mem::take(&mut *kept.borrow_mut())
+                                .iter()
+                                .filter_map(crate::contract::Shaped::of)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                })
                 .unwrap_or_default();
-            done.push((index, (ran, sent)));
+            done.push((index, (ran, sandboxed)));
         }
         done
     };
-    let mut results: Vec<(usize, (Done, BTreeSet<String>))> = if workers(tests.len()) <= 1 {
+    let mut results: Vec<(usize, (Done, Sandboxed))> = if workers(tests.len()) <= 1 {
         work()
     } else {
         std::thread::scope(|scope| {

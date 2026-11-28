@@ -2044,6 +2044,7 @@ dependencies = [
  "jadpo-host-native",
  "jadpo-host-workers",
  "jadpo-interp",
+ "jadpo-registry",
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-term",

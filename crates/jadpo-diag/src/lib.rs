@@ -736,6 +736,8 @@ rules! {
         "A package's action does something package code may not";
     PACKAGE_ADVISORY: "package.advisory", area 14, Error, Human,
         "An advisory is against a declaration of an installed package that the app reaches";
+    PACKAGE_DECODE_REPORTS_INVALID: "package.decode_reports_invalid", area 11, Error, Agent,
+        "Application's `packages:` sets `report_decode_failures:` to something other than `true` or `false`";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
         "The files of an installed package in `packages/` have been changed, added or removed since it was installed";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,

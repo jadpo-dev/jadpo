@@ -278,3 +278,81 @@ fn the_list_is_kept_in_the_access_record() {
         "{record}"
     );
 }
+
+const REPORTS_RULE: &str = "package.decode_reports_invalid";
+
+/// Whether a contract run tells the registry of an answer a package can no
+/// longer decode (area 11, "What a release shows"; chunk R10b): off unless
+/// `packages:` turns it on, so nothing leaves an app that didn't ask.
+#[test]
+fn reports_of_undecodable_answers_are_off_unless_the_app_turns_them_on() {
+    for (app, on) in [
+        ("application {}\n".to_string(), false),
+        (section("own_sources: []"), false),
+        (section("report_decode_failures: false"), false),
+        (section("report_decode_failures: true"), true),
+        (
+            section("own_sources: [\"github.com/acme/\"]\n        report_decode_failures: true"),
+            true,
+        ),
+    ] {
+        let db = Database::default();
+        let project = support::project(&db, Layout::Loose, &[("app.jadpo", &app)]);
+        let found = jadpo_check::check(&db, project);
+        assert!(found.is_empty(), "{app}: {found:?}");
+        assert_eq!(
+            jadpo_check::own_sources::reports_decode_failures(&db, project),
+            on,
+            "{app}"
+        );
+    }
+}
+
+/// Anything but `true` or `false`, written once, is refused, and sends
+/// nothing: a setting that reads as on but isn't would be as wrong as one
+/// that reads as off but is.
+#[test]
+fn reporting_is_true_or_false_written_once() {
+    for body in [
+        "report_decode_failures: \"yes\"",
+        "report_decode_failures: 1",
+        "report_decode_failures: [true]",
+        "report_decode_failures: Reports.on",
+        "report_decode_failures: true\n        report_decode_failures: true",
+    ] {
+        let db = Database::default();
+        let text = section(body);
+        let project = support::project(&db, Layout::Loose, &[("app.jadpo", &text)]);
+        let found = jadpo_check::check(&db, project);
+        assert!(
+            found.len() == 1 && found[0].rule.id == REPORTS_RULE,
+            "{body}: {found:?}"
+        );
+        if !body.contains('\n') {
+            assert_eq!(
+                found[0].message, "`report_decode_failures:` isn't `true` or `false`",
+                "{body}"
+            );
+            assert!(
+                !jadpo_check::own_sources::reports_decode_failures(&db, project),
+                "{body}"
+            );
+        }
+    }
+}
+
+/// A near miss of the setting is respelt under its own rule, so a report
+/// meant to be on is never silently off.
+#[test]
+fn a_misspelt_reporting_setting_is_respelt() {
+    let db = Database::default();
+    let text = section("report_decode_failure: true");
+    let project = support::project(&db, Layout::Loose, &[("app.jadpo", &text)]);
+    let found = jadpo_check::check(&db, project);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].rule.id, REPORTS_RULE);
+    assert_eq!(
+        found[0].next.as_ref().map(|next| next.text.as_str()),
+        Some("Use `report_decode_failures` instead of `report_decode_failure`")
+    );
+}

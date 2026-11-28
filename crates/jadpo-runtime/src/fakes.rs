@@ -142,6 +142,21 @@ pub struct ToSandbox {
     fake: std::rc::Rc<ProviderFake>,
     sandbox: std::rc::Rc<dyn Capability>,
     sent: std::rc::Rc<RefCell<std::collections::BTreeSet<String>>>,
+    /// Where the sandbox's answers a call couldn't decode are kept, when
+    /// the app reports them (chunk R10b); `None` keeps none.
+    undecodable: Option<std::rc::Rc<RefCell<Vec<Undecodable>>>>,
+}
+
+/// An answer from the provider's sandbox that its call's operation
+/// couldn't decode (area 11, "What a release shows"; chunk R10b), kept in
+/// memory only until the run takes its shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Undecodable {
+    pub connection: String,
+    /// `bookings.create`.
+    pub operation: String,
+    /// The answer as it was sent.
+    pub answer: std::rc::Rc<str>,
 }
 
 impl ToSandbox {
@@ -154,7 +169,15 @@ impl ToSandbox {
             fake,
             sandbox,
             sent,
+            undecodable: None,
         }
+    }
+
+    /// Keeping in `kept` each answer from the sandbox its call couldn't
+    /// decode.
+    pub fn keeping(mut self, kept: std::rc::Rc<RefCell<Vec<Undecodable>>>) -> ToSandbox {
+        self.undecodable = Some(kept);
+        self
     }
 }
 
@@ -193,6 +216,20 @@ impl Capability for ToSandbox {
 
     fn requests(&self, connection: &str, operation: &str) -> Vec<jadpo_value::Value> {
         self.fake.requests(connection, operation)
+    }
+
+    /// Kept only for a call that went to the sandbox: a scripted answer is
+    /// the test's, not the provider's.
+    fn undecodable(&self, call: &Call, answer: &std::rc::Rc<str>) {
+        if let Some(kept) = &self.undecodable
+            && !self.fake.scripts(&call.name())
+        {
+            kept.borrow_mut().push(Undecodable {
+                connection: call.connection.clone(),
+                operation: call.operation.clone(),
+                answer: std::rc::Rc::clone(answer),
+            });
+        }
     }
 }
 

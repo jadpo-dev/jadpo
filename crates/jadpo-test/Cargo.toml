@@ -25,6 +25,9 @@ jadpo-host-native = { workspace = true, features = ["testing"] }
 # answers (chunk 8.2e): route tests run inside workerd.
 jadpo-host-workers = { workspace = true, features = ["testing"] }
 jadpo-interp.workspace = true
+# The shape a contract run reports of an answer a package can no longer
+# decode, and the protocol's member type (chunk R10b).
+jadpo-registry.workspace = true
 # The fakes, recordings, crash points and the plan's dev and test
 # section (chunk 8.1e), which `jadpo test` and `jadpo dev` run with.
 jadpo-runtime = { workspace = true, features = ["testing"] }

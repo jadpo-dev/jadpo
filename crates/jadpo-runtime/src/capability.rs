@@ -389,6 +389,14 @@ pub trait Capability {
         let _ = (connection, operation);
         Vec::new()
     }
+
+    /// Told that its answer to `call`, `answer` as it was sent, is one the
+    /// call's operation couldn't decode (area 11, "What a release shows";
+    /// chunk R10b): a contract run's sandbox keeps it, for its shape to be
+    /// reported when the app opts in. Every other driver ignores it.
+    fn undecodable(&self, call: &Call, answer: &Rc<str>) {
+        let _ = (call, answer);
+    }
 }
 
 /// What a store gives of its own addresses (area 16, "The S3 driver"): each
