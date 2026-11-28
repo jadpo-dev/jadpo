@@ -182,6 +182,43 @@ impl Registry {
         born.to_string()
     }
 
+    /// The name `key`'s declaration has now, a member's too: its own
+    /// line's, or else, for a member, its host's name now before its own (a
+    /// field or variant follows its type or entity, a library's function or
+    /// constant its library), or else [`Registry::now_of`]. `field
+    /// Todo.title` is `Task.title` once `entity Task` was born `Todo`. A
+    /// typed body refers to declarations by key, so a check that looks a
+    /// declaration up by the name it is written with reads this.
+    pub fn now_name(&self, key: &Key) -> String {
+        let born = key.name();
+        let now = self.now_of(key);
+        if now != born {
+            return now;
+        }
+        let parts: Vec<&str> = born.split('.').collect();
+        let (hosts, at): (&[Kind], usize) = match key.kind() {
+            Some(Kind::Field | Kind::Variant) => (
+                &[Kind::Type, Kind::Entity],
+                parts
+                    .iter()
+                    .position(|part| part.starts_with(|c: char| c.is_ascii_uppercase()))
+                    .unwrap_or(0),
+            ),
+            Some(Kind::Function | Kind::Constant) if parts.len() == 2 => (&[Kind::Library], 0),
+            _ => return now,
+        };
+        if at + 1 >= parts.len() {
+            return now;
+        }
+        let host = parts[..=at].join(".");
+        let rest = parts[at + 1..].join(".");
+        hosts
+            .iter()
+            .map(|&kind| self.now_of(&Key::new(kind, &host)))
+            .find(|host_now| *host_now != host)
+            .map_or(now, |host_now| format!("{host_now}.{rest}"))
+    }
+
     /// The key of the `kind` called `now`.
     pub fn key(&self, kind: Kind, now: &str, parent: Option<(&str, &str)>) -> Key {
         Key::new(kind, &self.born(kind, now, parent))

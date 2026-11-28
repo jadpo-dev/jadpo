@@ -437,7 +437,8 @@ type Probed = (u16, Option<String>, Duration);
 /// Each walk of [`probes::WALKS`] and each spin of [`probes::SPINS`] sent
 /// by `send` (a method, a path and a body, giving the status and the
 /// body), each answered as it should be: a walk within the limits with
-/// its depth, one past them `internal_fault`; a spin at its one-second
+/// its depth, one past them `internal_fault`; an `Int` sent as text
+/// ([`probes::INTS_AS_TEXT`]) 422 with `type` at its field; a spin at its one-second
 /// deadline with `deadline_exceeded`, well before its work would end.
 /// What each answered, in order.
 fn probed(send: impl Fn(&str, &str, &str) -> (u16, String)) -> Vec<Probed> {
@@ -462,6 +463,23 @@ fn probed(send: impl Fn(&str, &str, &str) -> (u16, String)) -> Vec<Probed> {
             }
         }
         answered.push((status, code(&body), started.elapsed()));
+    }
+    // An `Int` is read in the form Jadpo writes it (area 2, "Numbers in
+    // JSON"): its text is refused as the wrong type, a route's input and
+    // a list's item alike.
+    for (path, body, field) in probes::INTS_AS_TEXT {
+        let started = std::time::Instant::now();
+        let (status, answer) = send("POST", path, body);
+        assert_eq!(status, 422, "{path} {body}: {answer}");
+        let problems =
+            serde_json::from_str::<Value>(&answer).expect("JSON")["error"]["details"]["problems"]
+                .clone();
+        assert_eq!(
+            problems,
+            serde_json::json!([{ "field": field, "rule": "type" }]),
+            "{path} {body}"
+        );
+        answered.push((status, code(&answer), started.elapsed()));
     }
     for path in probes::SPINS {
         let started = std::time::Instant::now();

@@ -64,14 +64,69 @@ route's input or a count a query worked out. The one exception is a type
 whose declared `min:` or `max:` goes past JavaScript's safe integers,
 2^53 - 1 either side of zero: it is sent as a string, `"9007199254740993"`,
 so a JavaScript client, which reads every JSON number as a double, reads it
-exactly. Reading takes either form. A `Decimal` is always a string,
-`"12.50"`, since a double can't hold one exactly.
+exactly. A `Decimal` is always a string, `"12.50"`, since a double can't
+hold one exactly.
 
 Jadpo writes an `Int` exactly however large it is, so a bare `Int` that
 goes past 2^53 - 1 reaches a client whole and a JavaScript client rounds
 it. A field that can hold numbers that large declares its range, and is
 then a string. OpenAPI gives an `Int` that is a number as `integer`, with
 `format: int64` when a side has no bound.
+
+An `Int` is read in the form Jadpo writes it. In a request's body and in
+`json.read`'s text, an `Int` is accepted only as a JSON number, and one of
+the large types only as a string. The other form, `{"open": "3"}`, is
+refused as the wrong type, `type`, as any wrongly typed value is: a
+route's input gets a 422 naming the field, and `json.read` gives
+`mismatch`. So what a route accepts matches what its OpenAPI publishes.
+A query string, a path and a header carry only text, so an `Int` there
+is its digits, `?limit=3`. JSON Jadpo kept itself, such as a JSON-held
+column, reads back in either form.
+
+```jadpo check project=int-forms
+/// How many of one cake a till's line orders.
+type CakeCount = Int {
+    min: 1
+    max: 500
+}
+
+/// A till's takings in pence, past what a JavaScript number holds
+/// exactly, so it is sent as a string.
+type TakingsPence = Int {
+    min: 0
+    max: 9000000000000000000
+}
+
+/// One line of an order, as a till sends it.
+type TillLine = Input {
+    cakes: CakeCount
+    takings: TakingsPence
+}
+
+type TillText = Text {}
+
+type NotALine = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A line a till sent as JSON.
+function till_line(sent: TillText) fails NotALine -> TillLine {
+    return attempt json.read(sent, as: TillLine) {
+        malformed: NotALine
+        mismatch: NotALine
+    }
+}
+```
+
+```jadpo check project=int-forms file=main.test.jadpo
+test "an Int is read in the form Jadpo writes it" {
+    var line: TillLine = attempt till_line("{\"cakes\": 24, \"takings\": \"9007199254740993\"}")
+    assert line.cakes == 24
+    assert line.takings == 9007199254740993
+    assert till_line("{\"cakes\": \"24\", \"takings\": \"9007199254740993\"}") fails NotALine
+    assert till_line("{\"cakes\": 24, \"takings\": 9007199254740993}") fails NotALine
+}
+```
 
 Text that arrives from outside, such as a request body, is put into Unicode's
 NFC form as it is read, before its rules are checked. NFC writes each

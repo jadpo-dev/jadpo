@@ -142,8 +142,11 @@ without the hidden results; the language can't be hidden.
   bytes, the room a Unix socket path leaves; past that they fall back to
   `/tmp/claude-<uid>`, which the sandbox refuses, and every command comes
   back failed. A run folder is far longer than that, hence the folder
-  outside it. The isolation probe checks that a command that should pass
-  comes back clean. That sandbox
+  outside it. The wrappers' log and snapshots move into that folder for
+  the session, since the run's `tmp` isn't writable to it, and back when
+  it ends. The isolation probe checks that a command that should pass
+  comes back clean, and that the log holds the probe's own `jadpo
+  version`. That sandbox
   covers commands only; `--restricted` keeps the file tools to the copy
   and the docs. Codex runs with its own
   `CODEX_HOME` for the run, holding only a mode-0600 copy of the login

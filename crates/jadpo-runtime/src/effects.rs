@@ -425,18 +425,16 @@ fn json(
     let codecs = effects.json.codecs;
     match (op, values) {
         (Op::JsonWrite, [value]) => Ok(Value::text(&codecs.write_value(codec, value))),
-        (Op::JsonRead, [text, _]) => {
-            codecs
-                .read_value(codec, text)
-                .map_err(|unread| match unread {
-                    Unread::Malformed => Refused::Broke {
-                        rule: RuleKey::Malformed,
-                        written: format!("`{}`", RuleKey::Malformed.word()),
-                        problem: None,
-                    },
-                    Unread::Mismatch(problem) => mismatch(&problem),
-                })
-        }
+        (Op::JsonRead, [text, _]) => codecs
+            .read_sent(codec, text)
+            .map_err(|unread| match unread {
+                Unread::Malformed => Refused::Broke {
+                    rule: RuleKey::Malformed,
+                    written: format!("`{}`", RuleKey::Malformed.word()),
+                    problem: None,
+                },
+                Unread::Mismatch(problem) => mismatch(&problem),
+            }),
         _ => Err(defect("a JSON call without its values")),
     }
 }

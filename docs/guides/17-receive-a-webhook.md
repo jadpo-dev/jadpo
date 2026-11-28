@@ -325,7 +325,7 @@ curl http://localhost:3000/payments
 ```
 
 ```text
-[{"reference":"pay_42","pence":"1250","taken_at":"2026-11-04T11:26:15Z"}]
+[{"reference":"pay_42","pence":1250,"taken_at":"2026-11-04T11:26:15Z"}]
 ```
 
 Send the same request again and it answers `204` too, but the event has the same
