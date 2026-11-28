@@ -250,6 +250,14 @@ pub const WALKS: &[(&str, u32, Result<(), &str>)] = &[
     ("/probe/reach-mapped", 401, Err("internal_fault")),
 ];
 
+/// Bodies that send an `Int` as text, each refused as `type` at its
+/// field: a route's input field and a list's item (area 2, "Numbers in
+/// JSON").
+pub const INTS_AS_TEXT: &[(&str, &str, &str)] = &[
+    ("/probe/reach", r#"{"depth":"24"}"#, "depth"),
+    ("/probe/spin", r#"{"rounds":[1,"2"]}"#, "rounds.1"),
+];
+
 /// A walk's request body.
 pub fn walk(depth: u32) -> String {
     format!(r#"{{"depth":{depth}}}"#)

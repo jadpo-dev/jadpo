@@ -130,12 +130,28 @@ pub use wire::instant_from_wire;
 /// Where in the input a value is: field names, list positions and
 /// [`MAP_ENTRY`] for a map's entry, as a problem shows it; with where it
 /// stands in the document itself and the document's numbers as written,
-/// when it was read from text (chunk 5.8c).
+/// when it was read from text (chunk 5.8c); and whether a client sent it,
+/// so an `Int` in it is read only in the form Jadpo writes it ([`IntForm`]).
 #[derive(Clone, Debug, Default)]
 pub struct Path {
     shown: Vec<String>,
     at: Vec<String>,
     numbers: Option<Rc<Numbers>>,
+    sent: bool,
+}
+
+/// How an `Int` may be written where it is read (area 2, "Numbers in
+/// JSON"; chunk 10.15c).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IntForm {
+    /// A number or its text: text a query string, a path or a header
+    /// gave, and JSON Jadpo kept itself, which an earlier release may have
+    /// written as text.
+    Either,
+    /// Only as Jadpo writes it, in what a client sent (a request's body,
+    /// `json.read`'s text): a number, or a string for an `Int` whose
+    /// declared range goes past 2^53 - 1. The other form breaks `type`.
+    Written { as_number: bool },
 }
 
 /// What names a map's entry in a problem's path, in place of its key
@@ -174,6 +190,25 @@ impl Path {
             shown: vec![name.to_string()],
             at: vec![name.to_string()],
             numbers: None,
+            sent: false,
+        }
+    }
+
+    /// The same place in what a client sent: a request's body or
+    /// `json.read`'s text, where an `Int` is read only in the form Jadpo
+    /// writes it ([`IntForm::Written`]).
+    pub fn sent(mut self) -> Path {
+        self.sent = true;
+        self
+    }
+
+    /// How an `Int` here is read, for one Jadpo writes as a number when
+    /// `as_number`.
+    pub fn int_form(&self, as_number: bool) -> IntForm {
+        if self.sent {
+            IntForm::Written { as_number }
+        } else {
+            IntForm::Either
         }
     }
 
@@ -192,6 +227,7 @@ impl Path {
             shown: parts.clone(),
             at: parts,
             numbers,
+            sent: false,
         }
     }
 }
@@ -234,10 +270,15 @@ pub fn presence(
 /// A scalar of `builtin` from `item`, as the contract sends one: a
 /// standard type's canonical text by its entry (chunk 5.5w3), or a
 /// representation's text, `true` or `false`, or a whole number; the rule
-/// broken when it isn't one. `None` for a standard type sent as an object
-/// of its members, which [`Codecs::read`] reads member by member. The one
-/// reader of scalars both the codec walk and compiled code's readers call.
-pub fn scalar(builtin: Builtin, item: Item<'_>) -> Option<Result<Value, &'static str>> {
+/// broken when it isn't one. An `Int` is a number or its text as `ints`
+/// allows. `None` for a standard type sent as an object of its members,
+/// which [`Codecs::read`] reads member by member. The one reader of
+/// scalars both the codec walk and compiled code's readers call.
+pub fn scalar(
+    builtin: Builtin,
+    item: Item<'_>,
+    ints: IntForm,
+) -> Option<Result<Value, &'static str>> {
     use jadpo_std::standard::{Holds, Json};
     match jadpo_std::standard::of_builtin(builtin) {
         Some(entry) => match (entry.json, entry.holds) {
@@ -250,19 +291,23 @@ pub fn scalar(builtin: Builtin, item: Item<'_>) -> Option<Result<Value, &'static
             }),
             _ => Some(Err("type")),
         },
-        None => Some(match item.kind() {
-            Kind::String => match item.text() {
-                Some(text) => crate::standard::scalar_text(builtin, &text),
-                None => Err("type"),
-            },
-            Kind::Bool if builtin.representation() == Builtin::Bool => {
-                item.as_bool().map(Value::Bool).ok_or("type")
-            }
-            Kind::Number if builtin.representation() == Builtin::Int => {
-                item.as_i64().map(Value::Int).ok_or("type")
-            }
-            _ => Err("type"),
-        }),
+        None => {
+            let int = builtin.representation() == Builtin::Int;
+            Some(match item.kind() {
+                Kind::String if int && ints == IntForm::Written { as_number: true } => Err("type"),
+                Kind::String => match item.text() {
+                    Some(text) => crate::standard::scalar_text(builtin, &text),
+                    None => Err("type"),
+                },
+                Kind::Bool if builtin.representation() == Builtin::Bool => {
+                    item.as_bool().map(Value::Bool).ok_or("type")
+                }
+                Kind::Number if int && ints != IntForm::Written { as_number: false } => {
+                    item.as_i64().map(Value::Int).ok_or("type")
+                }
+                _ => Err("type"),
+            })
+        }
     }
 }
 
@@ -346,9 +391,12 @@ impl Codecs<'_> {
                 None
             }
             Codec::Scalar {
-                builtin, validator, ..
+                builtin,
+                validator,
+                int_as_number,
             } => {
-                let value = match scalar(*builtin, Item::Json(json)) {
+                let ints = path.int_form(*int_as_number);
+                let value = match scalar(*builtin, Item::Json(json), ints) {
                     Some(value) => value,
                     // A standard type sent as an object of its members,
                     // each problem at its member (chunk 5.5w3).
@@ -1167,12 +1215,25 @@ impl Codecs<'_> {
 
     /// `json.read` (area 19, "Data formats"): the value of codec `id`'s
     /// type the JSON document `text` holds, read with an `Input`'s rules
-    /// as a request's body is. `text` is `Text`, or `Bytes` in UTF-8.
+    /// as a request's body is, an `Int` only in the form Jadpo writes it
+    /// ([`IntForm::Written`]). `text` is `Text`, or `Bytes` in UTF-8.
     /// Text that isn't one JSON document, or bytes that aren't UTF-8, are
     /// `malformed`; a document that isn't the type is `mismatch`, with
     /// the first problem found, its field's path and the rule, never the
     /// value.
+    pub fn read_sent(&self, id: CodecId, text: &Value) -> Result<Value, Unread> {
+        self.read_document(id, text, true)
+    }
+
+    /// [`Codecs::read_sent`] of JSON Jadpo kept or made itself (a
+    /// JSON-held column, a saved run, a made value), an `Int` in either
+    /// form ([`IntForm::Either`]), since an earlier release may have
+    /// written one as text.
     pub fn read_value(&self, id: CodecId, text: &Value) -> Result<Value, Unread> {
+        self.read_document(id, text, false)
+    }
+
+    fn read_document(&self, id: CodecId, text: &Value, sent: bool) -> Result<Value, Unread> {
         let text = match text {
             Value::Text(text) => &**text,
             Value::Bytes(bytes) => std::str::from_utf8(bytes).map_err(|_| Unread::Malformed)?,
@@ -1181,12 +1242,9 @@ impl Codecs<'_> {
         // A member named twice makes a document unreadable (chunk 5.8c).
         let (json, numbers) = parse(text.as_bytes()).ok_or(Unread::Malformed)?;
         let mut problems = Vec::new();
-        let value = self.read(
-            id,
-            &json,
-            &Path::default().numbered(&numbers),
-            &mut problems,
-        );
+        let mut path = Path::default().numbered(&numbers);
+        path.sent = sent;
+        let value = self.read(id, &json, &path, &mut problems);
         match (value, problems.into_iter().next()) {
             (Some(value), None) => Ok(value),
             (_, Some(problem)) => Err(Unread::Mismatch(problem)),
@@ -1214,6 +1272,7 @@ impl Codecs<'_> {
             shown: Vec::new(),
             at: vec![member.to_string()],
             numbers: Some(Rc::new(numbers)),
+            sent: false,
         };
         let mut problems = Vec::new();
         let value = self.read(id, inner, &path, &mut problems);

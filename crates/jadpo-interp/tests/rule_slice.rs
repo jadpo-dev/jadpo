@@ -253,7 +253,7 @@ fn json_that_breaks_a_standard_type_s_rule_names_it() {
         ),
         (
             "PasswordPolicy",
-            r#"{"min_length":"80","max_length":"64","check_breached":true}"#.into(),
+            r#"{"min_length":80,"max_length":64,"check_breached":true}"#.into(),
             "",
             "min_not_above_max",
         ),

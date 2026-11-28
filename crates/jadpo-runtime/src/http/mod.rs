@@ -55,6 +55,8 @@ mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
+#[cfg(test)]
+mod int_forms;
 #[cfg(feature = "testing")]
 pub mod local_issuer;
 pub mod magic_links;
@@ -984,14 +986,18 @@ fn walked_input(
             object.remove(field);
         }
         if let Some(value) = request.header(header) {
-            object.insert(field.clone(), serde_json::Value::String(value.to_string()));
+            object.insert(field.clone(), header_json(app, plan.codec, field, value));
         }
     }
+    // A body's `Int` is read in the form Jadpo writes it; a query
+    // string's values are text (area 2, "Numbers in JSON").
+    let path = Path::default().numbered(&numbers);
+    let path = if plan.query { path } else { path.sent() };
     let before = problems.len();
     let value = app.codecs.read(
         plan.codec,
         &serde_json::Value::Object(object),
-        &Path::default().numbered(&numbers),
+        &path,
         problems,
     );
     Ok(if problems.len() > before { None } else { value })
@@ -2140,6 +2146,42 @@ fn cursor_field(route: &RoutePlan) -> String {
 
 /// The names of an input's fields whose type is a list or a set, which
 /// the query string gives as a repeated key.
+/// Header `text` as the JSON input codec `codec`'s field `field` reads in
+/// a body: an `Int` written as a number as Jadpo writes it, so a header,
+/// which is text, reads among a body's members as the typed entry reads
+/// it; anything else its text.
+fn header_json(app: &App<'_>, codec: CodecId, field: &str, text: &str) -> serde_json::Value {
+    let as_text = || serde_json::Value::String(text.to_string());
+    let Some(Codec::Object { shape, fields, .. }) = app.codecs.codecs.get(codec.0 as usize) else {
+        return as_text();
+    };
+    let Some(shape) = app.codecs.shapes.get(shape.0 as usize) else {
+        return as_text();
+    };
+    let Some(mut id) = (0..fields.len())
+        .find(|slot| shape.field(*slot).is_some_and(|(name, _)| name == field))
+        .and_then(|slot| fields.get(slot).copied())
+    else {
+        return as_text();
+    };
+    if let Some(Codec::Nullable(inner)) = app.codecs.codecs.get(id.0 as usize) {
+        id = *inner;
+    }
+    match app.codecs.codecs.get(id.0 as usize) {
+        Some(Codec::Scalar {
+            builtin,
+            validator,
+            int_as_number: true,
+        }) if builtin.representation() == jadpo_std::Builtin::Int => {
+            match app.codecs.text_scalar(*builtin, *validator, text) {
+                Ok(Value::Int(n)) => serde_json::Value::from(n),
+                _ => as_text(),
+            }
+        }
+        _ => as_text(),
+    }
+}
+
 fn list_fields(app: &App<'_>, codec: CodecId) -> Vec<String> {
     let Some(Codec::Object { shape, fields, .. }) = app.codecs.codecs.get(codec.0 as usize) else {
         return Vec::new();

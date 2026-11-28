@@ -1386,11 +1386,11 @@ pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
     examples: Examples {
         valid: &[
             (
-                r#"{"min_length":"15","max_length":"64","check_breached":true}"#,
+                r#"{"min_length":15,"max_length":64,"check_breached":true}"#,
                 "15–64",
             ),
             (
-                r#"{"min_length":"8","max_length":"256","check_breached":false}"#,
+                r#"{"min_length":8,"max_length":256,"check_breached":false}"#,
                 "8–256",
             ),
         ],
@@ -1399,11 +1399,11 @@ pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
         // composition rule it doesn't have, no breach check said, and not
         // an object.
         malformed: &[
-            r#"{"min_length":"6","max_length":"64","check_breached":true}"#,
-            r#"{"min_length":"8","max_length":"32","check_breached":true}"#,
-            r#"{"min_length":"100","max_length":"64","check_breached":true}"#,
-            r#"{"min_length":"8","max_length":"64","check_breached":true,"require_digit":true}"#,
-            r#"{"min_length":"8","max_length":"64"}"#,
+            r#"{"min_length":6,"max_length":64,"check_breached":true}"#,
+            r#"{"min_length":8,"max_length":32,"check_breached":true}"#,
+            r#"{"min_length":100,"max_length":64,"check_breached":true}"#,
+            r#"{"min_length":8,"max_length":64,"check_breached":true,"require_digit":true}"#,
+            r#"{"min_length":8,"max_length":64}"#,
             r#""15-64""#,
         ],
         of: None,
