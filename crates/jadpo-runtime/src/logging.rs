@@ -66,6 +66,13 @@ impl Hasher {
         }
     }
 
+    /// This hasher, or one with `key`'s when it has none of its own.
+    pub(crate) fn or_key(self, key: impl FnOnce() -> Vec<u8>) -> Hasher {
+        Hasher {
+            key: self.key.or_else(|| Some(key())),
+        }
+    }
+
     /// `bytes`' keyed hash; `None` for a host with no key to give.
     pub(crate) fn hash(&self, bytes: &[u8]) -> Option<String> {
         let key = self.key.as_ref()?;
@@ -275,6 +282,9 @@ fn failure_fields(failure: &Failure, hasher: &Hasher, ctx: &Ctx<'_>) -> Map<Stri
 /// Writes the `failure.rejected` event of `failure`, which ended what
 /// `ctx` ran.
 pub(crate) fn rejected(ctx: &Ctx<'_>, failure: &Failure, route: Option<&str>) {
+    if ctx.watching() {
+        ctx.timeline_raised(failure);
+    }
     let host = ctx.host();
     let hasher = Hasher::of(host);
     let mut fields = failure_fields(failure, &hasher, ctx);

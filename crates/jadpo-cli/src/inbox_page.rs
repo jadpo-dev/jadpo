@@ -295,10 +295,15 @@ fn detail(mail: &Mail, asked: &str) -> String {
         "type",
         format!("<span class=\"muted\">{}</span>", esc(&mail.email)),
     ));
+    // The trace that sent it, as the command that shows it (area 16,
+    // "The inbox page"; chunk E0).
     if let Some(trace) = &mail.trace {
+        let command = format!("jadpo trace {}", esc(trace));
         meta.push((
             "trace",
-            format!("<span class=\"muted\">{}</span>", esc(trace)),
+            format!(
+                "<code>{command}</code> <button type=\"button\" data-copy=\"{command}\">Copy command</button>"
+            ),
         ));
     }
     for (index, attachment) in mail.attachments.iter().enumerate() {

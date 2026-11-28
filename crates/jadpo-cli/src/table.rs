@@ -2098,6 +2098,46 @@ pub static COMMANDS: &[Command] = &[
         run: commands::calls,
     },
     Command {
+        name: "trace",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "Show what one request did",
+        description: "Shows one request's timeline from what `jadpo dev` keeps on this machine \
+                      (area 17): the route and the caller, each action, query and write with its \
+                      time, its rows and its SQL with placeholders, each provider call with what \
+                      was sent and what came back, each step's state, the failure and where it \
+                      was raised, and the outcome: committed or rolled back, the events emitted \
+                      and the subscribers they ran. It takes any start of a request's id or its \
+                      trace's id, or the id of a failed test's trace `jadpo test --keep-failed` \
+                      kept. A parameter is shown as a value, or text as its keyed hash; \
+                      `--full` shows each statement and value whole.",
+        arguments: &[Argument {
+            name: "id",
+            description: "The request's id, its trace's, or a kept test trace's",
+            required: true,
+            values: Values::Fixed(&[]),
+        }],
+        flags: &[Flag {
+            name: "--full",
+            value: None,
+            description: "Show each statement and value whole",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "See what a request did",
+                command: "jadpo trace req_0b1e",
+            },
+            Example {
+                description: "See a failed test's kept trace",
+                command: "jadpo trace t-7f3a9c1e",
+            },
+        ],
+        arguments_rule: &rule::CLI_TRACE_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::trace,
+    },
+    Command {
         name: "traces",
         synonyms: &[],
         group: "Look things up",

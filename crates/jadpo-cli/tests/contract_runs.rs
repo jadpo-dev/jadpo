@@ -156,6 +156,43 @@ fn desk(name: &str, sandbox: &str, cancels: bool) -> PathBuf {
     root
 }
 
+/// A case the sandbox fails keeps its trace with `--keep-failed`, as any
+/// failed test does, and `jadpo trace` shows the call it sent there
+/// (area 17; chunk E0).
+#[test]
+fn a_failed_contract_case_keeps_its_trace() {
+    let api = FakeProvider::start();
+    api.answer(200, "{\"id\":\"bk_other\"}");
+    let root = desk("sandbox-kept", &api.url, false);
+    write(&root, ".env.local", "COURIERS_API_KEY=sandbox_key_k4c\n");
+    let out = jadpo(
+        &root,
+        &["test", "--kind", "contract", "--keep-failed", "--seed", "1"],
+    );
+    assert_ne!(out.code, 0, "{}", said(&out));
+    let report = said(&out);
+    let id = report
+        .split("jadpo trace ")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .unwrap_or_else(|| panic!("no trace named: {report}"))
+        .to_string();
+    assert!(id.starts_with("t-"), "{report}");
+    let shown = jadpo(&root, &["trace", &id]);
+    assert_eq!(shown.code, 0, "{}", said(&shown));
+    assert!(
+        shown.stdout.starts_with("test \"a collection is booked\""),
+        "{}",
+        shown.stdout
+    );
+    assert!(
+        shown.stdout.contains("call      couriers.bookings.create")
+            || shown.stdout.contains("call    couriers.bookings.create"),
+        "{}",
+        shown.stdout
+    );
+}
+
 /// The unscripted call goes to the sandbox with the key `.env.local`
 /// gives; the scripted one stays scripted.
 #[test]

@@ -89,6 +89,7 @@ pub mod telemetry;
 mod test;
 mod toolchain;
 mod toolchains;
+pub mod trace;
 mod translations;
 mod type_page;
 mod type_reference;

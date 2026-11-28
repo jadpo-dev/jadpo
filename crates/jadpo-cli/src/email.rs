@@ -301,8 +301,9 @@ fn show(mail: &Mail, html: bool) -> Reply {
         ("to".to_string(), mail.to.clone()),
         ("at".to_string(), mail.at.clone()),
     ];
+    // The trace that sent it, as the command that shows it (chunk E0).
     if let Some(trace) = &mail.trace {
-        rows.push(("trace".to_string(), trace.clone()));
+        rows.push(("trace".to_string(), format!("jadpo trace {trace}")));
     }
     let parts: Vec<String> = [
         mail.html

@@ -491,6 +491,17 @@ pub(crate) async fn attempt_delivery(
 ) -> Option<(Outcome, &'static str)> {
     let from = ctx.steps_kept();
     let (id, subscriber) = (delivery.id, delivery.subscriber.clone());
+    // What a call log keeps of the attempt besides (chunk E0), boxed so an
+    // attempt without one keeps no room for it: its event, its trace, and
+    // where its spans begin, its time being its subscriber's action span's,
+    // so it reads no clock of its own (a test's moves each time it is read).
+    let logged = ctx.host().call_log().map(|_| {
+        Box::new((
+            delivery.event.clone(),
+            delivery.trace.map(|trace| trace.trace_id),
+            ctx.spans().len(),
+        ))
+    });
     // Each attempt counts its keyed calls from none under its own key,
     // with none of the models' answers whoever runs `ctx` was given, as
     // its retry in a context of its own does, a route waiting for it
@@ -504,19 +515,36 @@ pub(crate) async fn attempt_delivery(
     ctx.swap_call_key(call_key);
     ctx.swap_reused(reused);
     let steps = ctx.take_steps(from);
-    if let (Some((_, state)), false) = (&attempted, steps.is_empty())
+    if let Some((_, state)) = &attempted
         && let Some(log) = ctx.host().call_log()
+        && let Some(logged) = logged
     {
-        let name = executor
-            .plan()
-            .events()
+        let (event, trace, spans_from) = *logged;
+        let events = executor.plan().events();
+        let name = events
             .and_then(|events| events.plan.subscriber(&subscriber))
             .map_or(subscriber.as_str(), |plan| plan.name.as_str());
+        let event = event
+            .split_once(' ')
+            .map_or(event.as_str(), |(_, name)| name);
+        let ms = ctx
+            .spans()
+            .as_slice()
+            .get(spans_from..)
+            .and_then(|spans| {
+                spans
+                    .iter()
+                    .find(|span| span.kind == crate::spans::Kind::Action)
+            })
+            .and_then(crate::spans::Span::ms);
         log.attempt_ended(&crate::call_log::DeliveryAttempt {
             delivery: id,
             subscriber: name,
             state,
             steps: &steps,
+            event,
+            trace,
+            ms,
         });
     }
     attempted

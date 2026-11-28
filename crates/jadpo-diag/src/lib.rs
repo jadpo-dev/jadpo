@@ -242,6 +242,8 @@ rules! {
         "A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open";
     CLI_TOOLCHAIN_ARGUMENTS: "cli.toolchain_arguments", area 14, Error, Agent,
         "A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept";
+    CLI_TRACE_ARGUMENTS: "cli.trace_arguments", area 14, Error, Agent,
+        "A `jadpo trace` command is given no id, or one no kept timeline has, or the start of several requests' ids";
     CLI_TRACES_ARGUMENTS: "cli.traces_arguments", area 14, Error, Agent,
         "A `jadpo traces` command is given something it doesn't take, or a filter it can't read";
     CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,

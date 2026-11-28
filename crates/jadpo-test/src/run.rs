@@ -443,6 +443,7 @@ fn tested<E: Executor>(
         record: record.clone(),
         exchanges: &[],
         erasing: None,
+        timeline: rerun.keep_trace,
         sandbox: stores.sandbox,
     };
     // A contract run's calls to the sandbox go out on the native host's
@@ -461,7 +462,8 @@ fn tested<E: Executor>(
             places, sources, test, other, rerun, None,
         ))),
     };
-    outcome::fakes_used(places, sources, test, &ran.usage, failure, rerun)
+    let failure = outcome::fakes_used(places, sources, test, &ran.usage, failure, rerun);
+    crate::kept_trace::keep(rerun, test, failure, ran.timeline)
 }
 
 /// What a run with a crash gave (chunk 7.5d): how it failed, if it did,
@@ -566,6 +568,7 @@ impl<E: Executor> Stored<'_, E> {
                 record: record.clone(),
                 exchanges: self.exchanges,
                 erasing: self.erasing,
+                timeline: self.rerun.keep_trace && crash.is_none(),
                 sandbox: self.sandbox,
             },
         ));
@@ -595,11 +598,13 @@ impl<E: Executor> Stored<'_, E> {
             kept.rows = host.rows(self.runtime);
         }
         let databases = host.finish(failure.is_some());
+        let failure = failure.map(|mut failure| {
+            failure.kept = databases;
+            failure
+        });
+        let failure = crate::kept_trace::keep(self.rerun, test, failure, ran.timeline);
         Ran {
-            failure: failure.map(|mut failure| {
-                failure.kept = databases;
-                failure
-            }),
+            failure,
             reached: ran.reached,
             effects: ran.effects,
             crashed: ran.crashed,
@@ -669,6 +674,7 @@ fn generated_test<E: Executor>(
                 record: record.clone(),
                 exchanges: &exchanges,
                 erasing: None,
+                timeline: rerun.keep_trace,
                 sandbox: None,
             };
             let ran = block_on(test_run::once(executor, &host, once))
@@ -682,6 +688,7 @@ fn generated_test<E: Executor>(
                     places, sources, test, other, rerun, None,
                 ))),
             };
+            let failure = crate::kept_trace::keep(rerun, test, failure, ran.timeline);
             (failure, ran.answers)
         };
     if outcome.is_some() {
@@ -804,6 +811,7 @@ mod tests {
             root: None,
             seed: 1,
             project: std::path::PathBuf::new(),
+            keep_trace: false,
         };
         let sources: BTreeMap<String, String> = BTreeMap::new();
         let generated = crate::generated::Table::new();

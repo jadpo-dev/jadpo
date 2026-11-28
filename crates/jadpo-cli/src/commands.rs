@@ -44,6 +44,7 @@ pub use crate::suggestions::suggest;
 use crate::table::{self, SHELLS};
 pub use crate::telemetry::{logs, metrics, traces};
 pub use crate::test::test;
+pub use crate::trace::trace;
 pub use crate::translations::translations;
 
 pub fn help(call: &Call) -> Reply {

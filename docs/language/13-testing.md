@@ -2575,9 +2575,12 @@ as in production.
 
 ### Keeping a failed test's database: `--keep-failed`
 
-`--keep-failed` keeps a failed test's database, named in the report. Not
-built yet: its trace, with `jadpo trace` and the developer console to
-inspect exactly what it did.
+`--keep-failed` keeps a failed test's database and its trace, both named
+in the report: `trace  jadpo trace t-7f3a9c1e` shows exactly what the test
+did, as `jadpo trace` shows a request `jadpo dev` answered
+([The request timeline](17-debugging-and-review.md#the-request-timeline-in-jadpo-dev)).
+The newest 500 traces are kept, in `build/test/traces/`. Not built yet:
+the trace in the developer console.
 
 ## Events and caches in tests
 <!-- topic: caches-and-events -->
@@ -2838,7 +2841,7 @@ cached read).
 | Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked like tests and run with `jadpo seed` ([Seeds](05-data.md#seeds)). |
 | Data builders | Built: `make.Entity { ... }` in tests, fixtures and seeds creates a record through the entity's create, given any field the store doesn't generate, one a lifecycle owns included; a field left out starts at its lifecycle's `initial:` value when the lifecycle owns it, and otherwise is `none` when it may be absent, a record its reference's own builder makes, or a value of its type keeping its rules, a different one each time for a field a unique rule holds. A `File`, a key or text with a `pattern:` is given (`type.missing_field`); elsewhere `make` is `semantic.not_callable`. A fixture returns a named object holding what it made ("Data builders"). |
 | `assert emitted` | Built: `assert emitted Event { ... }` holds when an event of that type the test's committed steps or their deliveries emitted has the fields it gives; the report shows each emitted event of that type, and with one, a diff of the fields given. A batch's items run on their own runner, and the events they emit aren't listed. |
-| The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
+| The trace `--keep-failed` keeps, for `jadpo trace` | Partly built: a failed test run by the interpreter keeps its timeline in `build/test/traces/<id>.json`, the report's `trace` line and its JSON's `trace` naming it. Not built yet: a trace for a test run compiled or under workerd, or for a run with a crash. |
 | Interactive mode | Built: `jadpo test --interactive` opens the keyboard view on the alternate screen: each domain and file with its tests and their last results (the project's record keeps passes as well as failures), search as you type, `enter` on a file or test, `a`, `f`, `o` for a failure's report as `jadpo test` prints it, `w` to watch, on the same long-lived session as `--watch`. A build with errors shows them in the view. On quit, the last run's footer is left in the scrollback. It refuses `--json`, a missing terminal, and a path, `--name`, `--kind`, `--failed` or `--affected`, as `cli.test_arguments`. |
 | Generated tests | Built: for every route the application declares, `jadpo test` runs a test that it refuses bad input with `{ field, rule }`, one that each failure its OpenAPI document lists reaches the client in its envelope with its status, and one that its output sends no member its schema doesn't declare and each in the JSON form its schema gives, each at the route's lines and counted apart. Every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault; for each person entity no test erases, a test at the entity makes them and a record of each kind of theirs through builders the runner calls, erases them and holds their export to that. Each runs interpreted, natively compiled and inside workerd ("Tests generated for each route"). |
 | Caches in tests | Built: each cache a route's query keeps is the test's own, in memory, behaving as Redis does, empty at the start of each test and expiring by its clock, interpreted and compiled, natively and inside workerd ("Caches and events"). |

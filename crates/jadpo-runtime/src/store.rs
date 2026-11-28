@@ -76,6 +76,9 @@ pub async fn store(
     };
     let frame = ctx.span_frame(site);
     let begun = ctx.span_begin(kind, frame);
+    if ctx.watching() {
+        ctx.name_span(begun, op);
+    }
     let stored = stored(ctx, op, failures, json, args, site).await;
     let (rows, ended) = match &stored {
         Stored::Value(value) => (Some(rows(op, value)), crate::spans::Ended::Value),

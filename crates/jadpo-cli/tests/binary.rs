@@ -121,6 +121,7 @@ fn bash_completes_commands_and_values() {
             "impact",
             "ai",
             "calls",
+            "trace",
             "traces",
             "metrics",
             "logs",

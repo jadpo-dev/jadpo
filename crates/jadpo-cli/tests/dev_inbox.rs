@@ -259,6 +259,18 @@ fn a_mail_the_app_sends_in_dev_is_caught_listed_shown_opened_and_cleared() {
         "{shown}"
     );
     assert_eq!(shown["trace"].as_str().map(str::len), Some(32), "{shown}");
+    // The mail leads to the trace of the request that sent it (area 16,
+    // "The inbox page"; chunk E0).
+    let trace = shown["trace"].as_str().expect("a trace").to_string();
+    let traced = json(&root, &["trace", &trace]);
+    assert_eq!(traced["traceId"], trace.as_str(), "{traced}");
+    assert_eq!(traced["path"], "/members", "{traced}");
+    let page = dev.inbox("/mail/mail_1");
+    assert!(
+        page.body().contains(&format!("jadpo trace {trace}")),
+        "{}",
+        page.body()
+    );
     let installed =
         jadpo_host_native::spamassassin::find(std::env::var_os("PATH").as_deref()).is_some();
     let spam = &shown["health"]["spamassassin"];

@@ -291,6 +291,49 @@ work below (Richard, 2026-11-08).
    `jadpo trace` and the timelines (the trace `--keep-failed` keeps, each
    step's state, an email's link to its trace), `test new --from` and
    `--from-event`, `call`, mapped `.jadpo` stacks and `jadpo incident`.
+   - [x] **E0 The request timeline and `jadpo trace`**: area 17, "The request timeline in `jadpo dev`" and its "What is built", and its notes, "How the request timeline is kept and read"; area 13, "Keeping a failed test's database: `--keep-failed`"; area 16, "The inbox page".
+   - [ ] **E0b The other forms of `jadpo why`** `opus · high`: area 17,
+     "`jadpo why`: why the language decided something". `jadpo why <request
+     id>`, `<event id>` and `<delivery id>`, and `jadpo why <Entity> <id>
+     --as <user>`: policy (which grant lists were checked against which
+     facts), lifecycle, concealment, cache use (`--query`) and subscriber
+     runs, each ending at the `.jadpo` place that decided it, read from what
+     E0's timeline and `jadpo dev` keep and the local database, saying so
+     when it doesn't know. Done when each of the page's four examples
+     answers as shown on both executors' records, and an id nothing kept
+     is `cli.why_arguments` with the nearest.
+   - [ ] **E0c `test new --from` and `--from-event`** `opus · high` after
+     E0b: area 17, "Capturing a failing request as a test", "What the
+     captured test holds" and "From a production event"; area 13, "Shared
+     test data: fixtures". `jadpo dev`'s timeline keeping the full request
+     for this alone, in `build/dev/`; a route test written beside the
+     route, replaying it, the records it read as fixtures through the
+     entities' generated operations, personal fields replaced with
+     generated values, provider calls as `fakes:`, asserting what was
+     observed; `--from-event <file>` writing the same without fixtures.
+     Done when the page's captured test is written from a recorded
+     request and fails until its assertion is changed, and no personal
+     value reaches the test file.
+   - [ ] **E0d `jadpo call`** `opus · high` after E0c: area 17, "Running a
+     query or action: `jadpo call`", "Policy always applies" and "Writes,
+     on your machine only". One query or action against the local
+     database, `--input` JSON in and JSON out, `--as <user id>` through
+     the generated principal, no caller otherwise, `--rollback`, refused
+     against an environment marked production, each call recorded in the
+     timeline so `jadpo trace` shows it. Done when the page's two examples
+     run, a refused grant answers as through a route, and `--rollback`
+     leaves the database as it was.
+   - [ ] **E0e Mapped `.jadpo` stacks and `jadpo incident`** `opus · high`
+     after E0d: area 17, "Errors point at the `.jadpo` line" and
+     "Production incidents after the code has changed"; area 18,
+     "Production builds" and "Stable identity"; area 14's paragraph on
+     `jadpo incident`. The compiler's source map, every logged frame rewritten
+     to `.jadpo` on the native target and WebAssembly alike, runtime
+     frames as `runtime: <component>`; the commit in the build stamp;
+     `jadpo incident [file | -]` finding the events in log text, naming
+     the line then and now by stable identity, or saying it changed, was
+     removed or split. Done when the page's fault event and incident
+     screen come out of a compiled deployable on both targets.
    - [ ] **E1 Path IDs, coverage and replay** `opus · xhigh` after item 3's
      trace: area 16, "`path`" and "Setting and changing them"; area 17,
      "Replaying a production request". `path` and `path_key` on requests,

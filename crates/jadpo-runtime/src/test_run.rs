@@ -117,6 +117,9 @@ pub struct Once<'a> {
     /// records its plan makes and the erasure it runs, in place of running
     /// `callable`, which is then not a test's.
     pub erasing: Option<&'a str>,
+    /// Whether to keep its timeline, for `jadpo trace` once it fails
+    /// (`--keep-failed`; area 17, chunk E0).
+    pub timeline: bool,
     /// For a contract run's case (area 13, "Kinds of test"; chunk K4c),
     /// where its unscripted provider calls go; `None` for every other run,
     /// whose provider calls the package's fake answers.
@@ -188,6 +191,9 @@ pub struct Ran {
     /// What each of a generated test's requests was answered with, in the
     /// order they were sent; empty for every other test.
     pub answers: Vec<Answer>,
+    /// Its timeline as a document ([`crate::timeline::document`]), when
+    /// [`Once::timeline`] asked for one.
+    pub timeline: Option<Box<serde_json::Value>>,
 }
 
 /// Runs one test on `executor` over `host`, which holds its stores, as
@@ -247,6 +253,9 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     if once.record.is_some() {
         ctx.track_paths();
     }
+    if once.timeline {
+        ctx.keep_timeline();
+    }
     if let Some(order) = once.order {
         // What each step emits is delivered before the next statement
         // (chunk 6.11); each step reached is counted, or crashed at.
@@ -279,7 +288,9 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     }
     let mut usage = fake.usage();
     usage.extend(ai.usage());
+    let timeline = kept_timeline(&ctx, executor.places());
     Ran {
+        timeline,
         outcome,
         undelivered: ctx.undelivered().cloned(),
         reached: ctx.steps_reached().to_vec(),
@@ -288,6 +299,18 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         effects: fake.effects(),
         answers,
     }
+}
+
+/// The timeline `ctx` kept, as a document: out of line, so a test's run
+/// keeps no room for building one on its stack.
+#[inline(never)]
+fn kept_timeline(ctx: &Ctx<'_>, places: &Places) -> Option<Box<serde_json::Value>> {
+    let timeline = ctx.timeline()?;
+    Some(Box::new(crate::timeline::document(
+        ctx.spans(),
+        &timeline,
+        places,
+    )))
 }
 
 /// Sends a generated test's requests, each through the HTTP component in
@@ -795,6 +818,7 @@ pub fn stalled(places: &Places, record: Option<&Record>) -> Ran {
         usage: Vec::new(),
         effects: Vec::new(),
         answers: Vec::new(),
+        timeline: None,
     }
 }
 
@@ -1035,6 +1059,14 @@ impl<H: Host> Host for AtClock<H> {
 
     fn call_log(&self) -> Option<&dyn crate::call_log::CallLog> {
         self.host.call_log()
+    }
+
+    fn keeps_timelines(&self) -> bool {
+        self.host.keeps_timelines()
+    }
+
+    fn timeline_kept(&self, request_id: &str, timeline: Box<crate::timeline::Timeline>) {
+        self.host.timeline_kept(request_id, timeline);
     }
 
     fn record(&self) -> Option<&Record> {

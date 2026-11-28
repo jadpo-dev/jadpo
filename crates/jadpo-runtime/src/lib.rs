@@ -176,6 +176,7 @@ pub mod test_authenticator;
 pub mod test_run;
 #[cfg(feature = "testing")]
 pub mod test_steps;
+pub mod timeline;
 pub mod unfinished;
 pub mod webauthn;
 pub mod webhooks;

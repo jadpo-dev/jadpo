@@ -43,6 +43,9 @@ pub struct Capabilities<'p> {
     tape: Tape,
     /// Each call that left the process, or was refused, in order.
     calls: Vec<Logged>,
+    /// The timeline its transactions' statements are kept in, when one is
+    /// kept (area 17; chunk E0).
+    timeline: Option<crate::timeline::Watch>,
 }
 
 impl std::fmt::Debug for Capabilities<'_> {
@@ -72,6 +75,34 @@ impl<'p> Capabilities<'p> {
             spans: 0,
             tape: Tape::Off,
             calls: Vec::new(),
+            timeline: None,
+        }
+    }
+
+    /// The timeline being kept, if one is.
+    pub(crate) fn timeline(&self) -> Option<&crate::timeline::Watch> {
+        self.timeline.as_ref()
+    }
+
+    /// Whether a timeline is kept.
+    #[inline]
+    pub(crate) fn watching(&self) -> bool {
+        self.timeline.is_some()
+    }
+
+    pub(crate) fn set_timeline(&mut self, timeline: Option<crate::timeline::Watch>) {
+        self.timeline = timeline;
+    }
+
+    /// `transaction`, its statements kept in the timeline when one is.
+    #[inline(never)]
+    pub(crate) fn watched(
+        &self,
+        transaction: Box<dyn crate::Transaction>,
+    ) -> Box<dyn crate::Transaction> {
+        match &self.timeline {
+            Some(watch) => watch.watched(transaction),
+            None => transaction,
         }
     }
 

@@ -6566,8 +6566,8 @@ req_9588  POST /pickups                      409 pickup_slot_gone   1 ms   127.0
 How each part works is under
 [Fakes and the development call log](#fakes-and-the-development-call-log).
 
-> `jadpo trace` and the timelines aren't built yet. The call log keeps
-> the last 500 calls.
+> The call log keeps the last 500 calls, and `jadpo trace <request>`
+> shows each beside the request's queries.
 
 ## What a provider description costs your build
 <!-- topic: compile-time -->

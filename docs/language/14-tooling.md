@@ -247,7 +247,8 @@ move between tests, run a file, one test or all, rerun failures, read a
 failure's report and turn watching on and off
 ([Running tests](13-testing.md#running-tests)). It needs a terminal.
 
-`--keep-failed` keeps a failed test's database and names it in the report.
+`--keep-failed` keeps a failed test's database and its trace, and names
+both in the report; `jadpo trace <id>` shows the trace.
 
 `jadpo test --kind contract` runs the tests that reach a provider
 operation against the provider's sandbox, as a scheduled job runs it:
@@ -374,10 +375,14 @@ requests it has, its background work gives back what it holds, and it
 exits 0. A second signal ends it at once ([Running background
 work](12-jobs-and-events.md#running-background-work)).
 
+**Timelines.** Each request's timeline is kept in
+`build/dev/timelines.jsonl`, the last 500, for `jadpo trace`, and a request
+that ran more than one query, or a query no index serves, is flagged on
+its line ([The request timeline in
+`jadpo dev`](17-debugging-and-review.md#the-request-timeline-in-jadpo-dev)).
+
 Not built yet:
 
-- The trace `--keep-failed` keeps, which comes with
-  [Debugging](17-debugging-and-review.md).
 - `jadpo dev` starting the services the app's connections declare
   ([External services](11-integrations.md)).
 
@@ -1965,6 +1970,7 @@ the files it keeps, and check a deploy before it happens.
 |---|---|
 | `jadpo flags` | Lists feature flags; `set`, `reset`, `remove` |
 | `jadpo calls` | The development call log |
+| `jadpo trace` | What one request did, or a failed test's kept trace |
 | `jadpo traces` | The requests `jadpo dev` traced |
 | `jadpo metrics` | The metrics of those requests, added up |
 | `jadpo logs` | The events the app logged under `jadpo dev` |
@@ -2038,6 +2044,21 @@ Shows the provider calls `jadpo dev` made, faked or real. It takes
 
 An unknown action, call, operation or answer is `cli.calls_arguments`,
 with the nearest ([Debugging](17-debugging-and-review.md)).
+
+### `jadpo trace`
+
+Shows one request's timeline from what `jadpo dev` keeps on your machine
+([The request timeline in
+`jadpo dev`](17-debugging-and-review.md#the-request-timeline-in-jadpo-dev)):
+the route and the caller, each action, query and write with its time, rows
+and SQL, each provider call with what was sent and answered, each step's
+state, the failure and where it was raised, and the outcome, with the
+events emitted and the subscribers they ran. It takes any start of a
+request's id or of its trace's id, or the id of a failed test's trace
+`jadpo test --keep-failed` kept (`t-7f3a9c1e`). Statements and values are
+cut to fit; `--full` gives them whole, and `--json` gives the timeline's
+document. An id nothing kept, or the start of several requests' ids, is
+[`cli.trace_arguments`](../errors/cli.trace_arguments.md).
 
 ### `jadpo traces`, `jadpo metrics` and `jadpo logs`
 
@@ -2258,7 +2279,6 @@ naming the nearest rule.
 
 Not built yet: the debugging commands of [Debugging and
 review](17-debugging-and-review.md), which are proposed there:
-`jadpo trace <id>`,
 `jadpo watch`, `jadpo why` for anything but a schedule, `jadpo call`,
 `jadpo console`, `jadpo mcp`, `jadpo replay` and `jadpo test new --from`;
 `jadpo path` ([Path IDs](16-built-in-services.md#path-ids)); and

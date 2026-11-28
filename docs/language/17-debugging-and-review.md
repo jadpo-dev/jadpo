@@ -275,10 +275,12 @@ database. For production, it reads a log event you exported, as
 <!-- topic: the-request-timeline-in-jadpo-dev -->
 
 `jadpo dev` records every request it serves and prints one line for each,
-with its request id. Not built yet: `jadpo trace <request id>`, which shows
-that request's whole timeline: the route, the caller, the actions and queries with their SQL,
+with its request id. `jadpo trace <request id>` shows that request's whole
+timeline: the route, the caller, the actions and queries with their SQL,
 rows and timings, the writes, the events emitted, the subscribers run, the
-calls to outside services, and the outcome. It is like a development log
+calls to outside services, and the outcome. It takes any start of the
+request's id, or of its trace's id, which a caught mail names
+([The dev inbox](16-built-in-services.md#the-inbox-page)). It is like a development log
 that also gives each query's source line. It is built from the spans, the
 timed steps of a trace, that Jadpo already records
 ([Telemetry](16-built-in-services.md#telemetry)).
@@ -286,18 +288,29 @@ timed steps of a trace, that Jadpo already records
 ```text
 $ jadpo dev
 listening on http://localhost:3000
-req_0b1e  POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms
-req_0b1f  GET /todos                   200   9 ms   3 queries
+req_0b1e  POST /todos/0192…/done                 409 todo_already_done   6 ms
+req_0b1f  GET /todos/board                       200   9 ms   2 queries
 
 $ jadpo trace req_0b1e
-POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192…a7
-  route    domains/planning/routes/todos.jadpo:31
-  action   complete_todo                   domains/planning/actions/complete_todo.jadpo:4
-    query  Todo.get           3 ms  1 row  SELECT … FROM todos WHERE id = $1 AND deleted_at IS NULL
-    write  Todo.update        2 ms  0 rows (expected revision 7, found 8)
-    fail   TodoMutationConflict           complete_todo.jadpo:9
-  rolled back; no events emitted
+POST /todos/0192…/done  409 todo_already_done  6 ms  as user 0192…a7
+  route     domains/planning/routes/todos.jadpo:33
+  action    complete_todo             6 ms  domains/planning/actions/complete_todo.jadpo:7
+    query   find_todo                 5 ms  1 row
+            SELECT … FROM "todo" WHERE "id" = $1
+            $1 0192…f1
+    fail    TodoAlreadyDone         domains/planning/actions/complete_todo.jadpo:10
+  wrote nothing; no events emitted
 ```
+
+The line gives the route, the caller, and each action, query and write
+nested as it ran, with its time, its rows and each statement it sent, its
+parameters under it. A write that committed and the events it emitted
+end it, with a `then` line for each subscriber the events ran and how it
+went (`then  read_added  succeeded  20 ms  on TodoAdded`). Statements and
+values are cut to fit the screen: `--full` shows them whole, and
+`--json` gives the timeline's document. In a terminal, `2 queries` on the
+request's line is `▲ 2 queries` in the warning colour, and the failure
+and its place are in the failure colour.
 
 ### What the SQL shows
 
@@ -447,8 +460,8 @@ at a provider, for that owner
 ([OAuth grants](11-integrations.md#oauth-grants)). `jadpo dev` refuses it
 today, as it does any flag it doesn't have (`cli.unknown_flag`).
 
-> **Built**, except `jadpo dev grants add`, `jadpo trace`, `jadpo watch call` and the request
-> timelines. `jadpo dev` logs each provider call as it ends in
+> **Built**, except `jadpo dev grants add` and `jadpo watch call`. Each
+> call also appears in its request's `jadpo trace`. `jadpo dev` logs each provider call as it ends in
 > `build/dev/calls.jsonl`, and logs an answer from a recording as
 > `recording`. `jadpo calls` reads that file. Here is the plain list after
 > one booking answered with the generated default and one scripted to find
@@ -921,7 +934,8 @@ personal value in a report follows the rules for
 | Each step a request's action reached, as a trace line in `jadpo dev` | Built: each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own. |
 | `jadpo why <schedule>` | Built: it answers why a schedule didn't run ([Watching schedules](12-jobs-and-events.md#watching-schedules)). |
 | `jadpo approval` | Partly built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`, and the personal-data report's difference, a connection at a time. Not built yet: the rest of that difference, which comes with the rest of that report, and a package's service and a bot check, which come with those features. |
-| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet. |
+| The request timeline and `jadpo trace` | Partly built: `jadpo dev` keeps each request's timeline, the last 500 in `build/dev/timelines.jsonl`, and each attempt at a delivery it set off in `build/dev/deliveries.jsonl`; a request that ran more than one query, or a query no index serves, is flagged on its line (`▲ 2 queries · no index`); `jadpo trace <id>` shows the route, the caller, each action, query and write with its time, rows, SQL and parameters, each provider call with what was sent and answered and where the answer came from, each step's state, the failure and where it was raised, the outcome and the events emitted, and each subscriber run with its state, from any start of a request's or trace's id; `--full` and `--json`; `jadpo test --keep-failed` keeps a failed test's trace in `build/test/traces/`, named in its report; a caught mail names the `jadpo trace` command for the request that sent it. Not built yet: an enum's variant among a statement's parameters is hashed as text is, since a statement's parameters carry no type; a step shows the states its record keeps (answered, replayed, failed, in doubt, diverged, outcome unknown), not `recorded` or `sent` while it is under way; a write refused for a changed revision shows its code, not the revisions; a subscriber's run shows its state and time, not its own queries. |
+| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, `test new --from` and `call` | Not built yet. |
 | `jadpo dev grants add` | Not built yet. |
 | The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet. |
 | `jadpo traces`, `metrics` and `logs` | Partly built: what `jadpo dev` keeps of each request's telemetry, filtered and followed ([Traces, metrics and logs in development](#traces-metrics-and-logs-in-development)). Not built yet: `--path`, which comes with path IDs on requests. |

@@ -3061,6 +3061,31 @@ record's steps (`Ctx::steps_reached`, `Response::steps`) stay for what
 a span leaves out, a call's request and answer and a step's place in
 its record.
 
+**Request timelines** (area 17, "The request timeline in `jadpo dev`";
+chunk E0). `jadpo_runtime::timeline` keeps what a span leaves out, for a
+host that asks (`Host::keeps_timelines`, `jadpo dev`'s native host) or a
+test that keeps its trace (`Ctx::keep_timeline`, `--keep-failed`). Its
+`Watch` rides on the context's `Capabilities`, which wraps each
+transaction the boundary begins (`Capabilities::watched`), so every
+statement either executor runs is kept, under the innermost span open
+(`Spans::innermost`, set as each span begins and ends), with its SQL, its
+parameters shown by area 4's rule (`Hasher`), the rows it gave or
+changed, and each transaction's end; an outbox insert is kept as the
+events it writes. `store` names a read or write span not inside a query
+(`Todo.get`, `Todo.update`), and `logging::rejected` keeps the failure
+that ended the invocation with its frame. Each hook is a cold call out
+of line behind one check (`Capabilities::watching`), so a deployable's
+stack, which a WebAssembly module has little of, keeps no room for it.
+`serve_request` hands the timeline, with the caller, to its host
+(`Host::timeline_kept`, by request id), which `jadpo dev`'s gives the
+request's line; `timeline::document` makes the
+versioned document of spans and what was kept, which `jadpo dev` (with
+the request, its route's place, calls, steps, fault and flags) and
+`jadpo test` (`jadpo_test::kept_trace`, with the test) keep and `jadpo
+trace` reads. Every delivery attempt reaches the call log
+(`DeliveryAttempt`, with its event, trace and time), which `jadpo dev`
+keeps for the timeline of the request whose trace it carries.
+
 **Telemetry** (area 16, "Telemetry"; chunk O1). `jadpo_runtime::
 telemetry` sends what an invocation did over OTLP as JSON, built
 entirely from what the runtime already keeps: a span's parent is the

@@ -440,6 +440,24 @@ pub enum Block {
         heading: String,
         entries: Vec<Reach>,
     },
+    /// Lines laid out by the command itself, each of pieces that carry
+    /// their own look: what a timeline is (area 17's `jadpo trace`), whose
+    /// tree no other block draws.
+    Lines(Vec<Vec<Bit>>),
+}
+
+/// One piece of a [`Block::Lines`] line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Bit {
+    Text(String),
+    Bold(String),
+    Painted(Token, String),
+    /// A state's symbol and a space, in its colour; nothing in plain
+    /// output, where the word after it says the same.
+    Symbol(Symbol, Token),
+    /// The line's last piece, muted or in the terminal's colour, cut with
+    /// `…` to the screen's width.
+    Fit(Option<Token>, String),
 }
 
 /// One line of a [`Block::Reaches`]: its mark, `None` for an error's `✗`,
@@ -906,6 +924,34 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             lines
         }
         Block::Reaches { heading, entries } => reach_lines(heading, entries, style),
+        Block::Lines(lines) => lines
+            .iter()
+            .map(|bits| {
+                let mut used = 0;
+                let mut line = Vec::new();
+                for bit in bits {
+                    let piece = match bit {
+                        Bit::Text(text) => raw(text.as_str()),
+                        Bit::Bold(text) => bold(text.as_str()),
+                        Bit::Painted(token, text) => paint(*token, text.as_str()),
+                        Bit::Symbol(symbol, token) => {
+                            if !rich(style) {
+                                continue;
+                            }
+                            paint(*token, format!("{} ", symbol.text(style.symbols)))
+                        }
+                        Bit::Fit(token, text) => {
+                            let room = style.width.saturating_sub(used).max(8);
+                            let text = cut(text, room, style);
+                            Piece::new(text, *token, false)
+                        }
+                    };
+                    used += width(&piece.text);
+                    line.push(piece);
+                }
+                line
+            })
+            .collect(),
         Block::ChangeList { heading, rows } => {
             let columns = rows.iter().map(|(_, cells)| cells.len()).max().unwrap_or(0);
             // A column empty on every row takes no room.

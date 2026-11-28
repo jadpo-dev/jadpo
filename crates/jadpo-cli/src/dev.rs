@@ -155,6 +155,8 @@ struct Line {
     refused: Option<jadpo_runtime::SignInRefused>,
     /// The steps its action reached under a record (chunk 7.5f).
     steps: Vec<jadpo_runtime::steps::RunSteps>,
+    /// What it is flagged for (chunk E0).
+    flags: crate::trace::Flags,
 }
 
 /// What the session prints, as it happens: a request answered, a
@@ -250,6 +252,12 @@ impl jadpo_runtime::call_log::CallLog for DevCalls {
     }
 
     fn attempt_ended(&self, attempt: &jadpo_runtime::call_log::DeliveryAttempt<'_>) {
+        self.shared
+            .timelines
+            .delivery(&crate::trace::delivery_document(attempt));
+        if attempt.steps.is_empty() {
+            return;
+        }
         if let Ok(log) = self.shared.log.lock() {
             let _ = log.send(Event::Delivery(StepsLine {
                 id: attempt.delivery,
@@ -261,6 +269,9 @@ impl jadpo_runtime::call_log::CallLog for DevCalls {
     }
 }
 
+/// The timelines a worker's host hands over, by request id (chunk E0).
+type Timelines = Rc<RefCell<BTreeMap<String, Box<jadpo_runtime::timeline::Timeline>>>>;
+
 /// What every worker reads: the version being served and where its
 /// stores are.
 struct Shared {
@@ -270,6 +281,12 @@ struct Shared {
     /// How each store's connection says it is secured (chunk 8.1n).
     secured: BTreeMap<String, jadpo_host_native::Security>,
     log: Mutex<Sender<Event>>,
+    /// Where each request's timeline is kept (chunk E0).
+    timelines: crate::trace::DevTimelines,
+    /// The queries no index serves in the version being served, which a
+    /// request's line is flagged for running (area 17, "What gets
+    /// flagged").
+    known: Mutex<Arc<crate::trace::Known>>,
 }
 
 /// A worker's view of the program: the version it last served, rebuilt
@@ -313,6 +330,8 @@ impl Current {
 /// request it answers, each schedule's run or skipped tick, and each alert
 /// the tick raised.
 struct Lines {
+    /// The timelines this worker's host handed over, by request id.
+    timelines: Timelines,
     shared: Arc<Shared>,
     /// The schedules whose paused skip was printed, so a paused one prints
     /// once, not on every tick, until it runs again.
@@ -332,7 +351,36 @@ impl Lines {
 impl Observer for Lines {
     fn answered(&self, answered: &Answered<'_>) {
         let (request, response) = (answered.request, answered.response);
+        // Its timeline, kept for `jadpo trace` (chunk E0).
+        let known = match self.shared.known.lock() {
+            Ok(known) => Arc::clone(&known),
+            Err(poisoned) => Arc::clone(&poisoned.into_inner()),
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| {
+                i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+            });
+        let id = response.header("x-request-id").unwrap_or_default();
+        let timeline = self.timelines.borrow_mut().remove(id);
+        let document = timeline.and_then(|timeline| {
+            crate::trace::request_document(
+                answered,
+                &timeline,
+                &known,
+                now,
+                steps_json(&response.steps),
+            )
+        });
+        let flags = match document {
+            Some((document, flags)) => {
+                self.shared.timelines.request(&document);
+                flags
+            }
+            None => crate::trace::Flags::default(),
+        };
         self.send(vec![Event::Request(Line {
+            flags,
             id: response
                 .header("x-request-id")
                 .unwrap_or_default()
@@ -638,6 +686,16 @@ impl Out<'_> {
                 ),
                 ("steps", steps_json(&line.steps)),
                 (
+                    "flags",
+                    Json::object([
+                        ("queries", Json::from(line.flags.queries)),
+                        (
+                            "unindexed",
+                            Json::array(line.flags.unindexed.iter().map(String::as_str)),
+                        ),
+                    ]),
+                ),
+                (
                     "calls",
                     Json::array(line.calls.iter().map(|call| {
                         Json::object([
@@ -691,7 +749,21 @@ impl Out<'_> {
         let address = line.address.as_deref().map_or_else(String::new, |address| {
             format!("   {}", self.paint(Token::Muted, address))
         });
-        let mut text = format!("{short_id}  {request:<34} {status}{code}   {time}{address}\n");
+        // Several queries, or one no index serves (area 17, "What gets
+        // flagged"; chunk E0).
+        let flagged = if line.flags.any() {
+            let symbol = jadpo_term::Symbol::Warning.text(self.style.symbols);
+            let words = if self.style.mode == jadpo_term::Mode::Rich {
+                format!("{symbol} {}", line.flags.words())
+            } else {
+                line.flags.words()
+            };
+            format!("   {}", self.paint(Token::Warning, &words))
+        } else {
+            String::new()
+        };
+        let mut text =
+            format!("{short_id}  {request:<34} {status}{code}   {time}{flagged}{address}\n");
         // Each call it made, as a muted line of its trace (chunk 7.2d),
         // only a failed one in its colour; a step's call as its step, below.
         for call in line.calls.iter().filter(|call| call.step.is_none()) {
@@ -787,7 +859,7 @@ fn step_line(shown: &jadpo_runtime::steps::Shown, paint: &dyn Fn(Token, &str) ->
 }
 
 /// The steps runs reached, as `--json` gives them (chunk 7.5f).
-fn steps_json(runs: &[jadpo_runtime::steps::RunSteps]) -> Json {
+pub(crate) fn steps_json(runs: &[jadpo_runtime::steps::RunSteps]) -> Json {
     Json::array(runs.iter().flat_map(|run| {
         run.steps.iter().map(|shown| {
             Json::object([
@@ -815,7 +887,7 @@ fn steps_json(runs: &[jadpo_runtime::steps::RunSteps]) -> Json {
 
 /// How a delivery's line says the state an attempt left it in: its
 /// symbol, colour and word (chunk 7.5f).
-fn attempt_state(state: &str) -> (jadpo_term::Symbol, Token, &'static str) {
+pub(crate) fn attempt_state(state: &str) -> (jadpo_term::Symbol, Token, &'static str) {
     use jadpo_term::Symbol;
     match state {
         "succeeded" => (Symbol::Success, Token::Success, "succeeded"),
@@ -829,7 +901,7 @@ fn attempt_state(state: &str) -> (jadpo_term::Symbol, Token, &'static str) {
 }
 
 /// How a call ended, as a request line says it.
-fn ended_word(ended: &jadpo_runtime::capability::Ended) -> String {
+pub(crate) fn ended_word(ended: &jadpo_runtime::capability::Ended) -> String {
     use jadpo_runtime::capability::Ended;
     match ended {
         Ended::InFlight => "in flight".to_string(),
@@ -844,7 +916,7 @@ fn ended_word(ended: &jadpo_runtime::capability::Ended) -> String {
 
 /// A path as a request line shows it: a long segment, such as an id, cut
 /// to its first four characters (`/todos/0192…/complete`).
-fn shorten(path: &str) -> String {
+pub(crate) fn shorten(path: &str) -> String {
     path.split('/')
         .map(|segment| {
             if segment.chars().count() > 12 {
@@ -1030,6 +1102,8 @@ pub fn serve_unwatched_to(
         urls: urls.clone(),
         secured: secured.clone(),
         log: Mutex::new(sender),
+        timelines: crate::trace::DevTimelines::new(&root),
+        known: Mutex::new(Arc::clone(&first.known)),
     });
     let make_shared = Arc::clone(&shared);
     // Every store of files on this machine's disk, under `.jadpo/files/`
@@ -1098,6 +1172,10 @@ pub fn serve_unwatched_to(
                 .find(|(name, _, _)| *name == connection)
                 .map_or(0, |(_, _, floor)| floor)
         });
+        // Each request's timeline, which the host hands over as it is
+        // answered and its line takes (chunk E0).
+        let timelines: Timelines = Rc::default();
+        let handed = Rc::clone(&timelines);
         // Counting rate limits in the one table every worker shares
         // (chunk 8.1l).
         let mut native = worker
@@ -1111,6 +1189,9 @@ pub fn serve_unwatched_to(
                 jadpo_std::connections::files(current.plan().connections())
                     .any(|(name, _, _)| name == connection)
             })
+            .keeping_timelines(Rc::new(move |id: &str, timeline| {
+                handed.borrow_mut().insert(id.to_string(), timeline);
+            }))
             .with_call_log(Rc::new(DevCalls {
                 log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
                 shared: Arc::clone(&make_shared),
@@ -1190,6 +1271,7 @@ pub fn serve_unwatched_to(
             },
         );
         let lines = Lines {
+            timelines,
             shared: Arc::clone(&make_shared),
             paused: RefCell::new(Default::default()),
         };
@@ -1342,6 +1424,9 @@ pub fn serve_unwatched_to(
                 }
                 if let Ok(mut slot) = shared.current.lock() {
                     *slot = (Arc::clone(&ready.prepared), Arc::clone(&ready.config));
+                }
+                if let Ok(mut slot) = shared.known.lock() {
+                    slot.clone_from(&ready.known);
                 }
                 if let Some(issuer) = &issuer {
                     crate::dev_token::remember(&root, &ready.prepared, &ready.config, issuer);
@@ -1525,6 +1610,8 @@ fn dev_telemetry(
 /// A version of the project ready to serve.
 pub(crate) struct Ready {
     pub(crate) prepared: Arc<Prepared>,
+    /// Where its routes are and the queries no index serves (chunk E0).
+    pub(crate) known: Arc<crate::trace::Known>,
     /// Each store's migrations.
     pub(crate) steps: BTreeMap<String, Vec<jadpo_std::Migration>>,
     /// The stores its entities live in.
@@ -1622,6 +1709,7 @@ pub(crate) fn prepare_allowing(
     // With the latest migration's backfills worked out in Jadpo, which
     // applying its migrations runs (chunk 5.6b2).
     let prepared = Prepared::checked_with_backfills(db, project);
+    let known = Arc::new(crate::trace::Known::of(db, project));
     let routes = prepared.plan().routes().routes.len();
     let (config, configured, unset) = if run {
         let model = jadpo_check::config::config(db, project);
@@ -1641,6 +1729,7 @@ pub(crate) fn prepare_allowing(
     };
     Ok(Ready {
         prepared,
+        known,
         steps,
         stores,
         routes,
@@ -2716,6 +2805,7 @@ mod tests {
             step,
         };
         let line = Line {
+            flags: crate::trace::Flags::default(),
             id: "9c1f0a2b-0000".into(),
             method: "POST".into(),
             path: "/partners/subscriptions".into(),

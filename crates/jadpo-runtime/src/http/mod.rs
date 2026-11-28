@@ -444,7 +444,21 @@ pub async fn serve_request(
     response.steps = ctx.take_steps(0);
     response.spans = ctx.take_spans();
     response.recorded = ctx.take_recorded();
+    if ctx.watching() {
+        hand_on_timeline(&ctx, host, &id);
+    }
     response
+}
+
+/// Hands what answering request `id` did in full to `host`, which keeps
+/// timelines (area 17; chunk E0). Out of line, so answering a request
+/// keeps no room for it on the stack.
+#[cold]
+#[inline(never)]
+fn hand_on_timeline(ctx: &Ctx<'_>, host: &dyn Host, id: &str) {
+    if let Some(timeline) = ctx.timeline() {
+        host.timeline_kept(id, timeline);
+    }
 }
 
 /// Answers `request` with `app`'s routes, running what a route runs with
